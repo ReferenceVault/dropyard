@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Users,
   Clock,
@@ -25,6 +25,11 @@ import {
   Sparkles,
   HelpCircle,
   FileText,
+  Facebook,
+  Instagram,
+  Twitter,
+  Linkedin,
+  Youtube,
 } from "lucide-react";
 
 // ============================================================================
@@ -155,32 +160,41 @@ export default function DropYardWebsite() {
 
   if (view === "website") {
     return (
-      <Website
-        page={page}
-        setPage={setPage}
-        goBuyerAuth={goBuyerAuth}
-        goSellerAuth={goSellerAuth}
-        goMovingAuth={goMovingAuth}
-      />
+      <>
+        <SocialSidebar position="left" />
+        <Website
+          page={page}
+          setPage={setPage}
+          goBuyerAuth={goBuyerAuth}
+          goSellerAuth={goSellerAuth}
+          goMovingAuth={goMovingAuth}
+        />
+      </>
     );
   }
 
   if (view === "auth") {
     return (
-      <AuthFlow
-        userType={userType}
-        authMode={authMode}
-        onComplete={goSuccess}
-        onBack={() => goWebsite(userType === "buyer" ? "buyers" : "sellers")}
-        userData={userData}
-        setUserData={setUserData}
-      />
+      <>
+        <SocialSidebar position="left" />
+        <AuthFlow
+          userType={userType}
+          authMode={authMode}
+          onComplete={goSuccess}
+          onBack={() => goWebsite(userType === "buyer" ? "buyers" : "sellers")}
+          userData={userData}
+          setUserData={setUserData}
+        />
+      </>
     );
   }
 
   if (view === "success") {
     return (
-      <SuccessScreen userType={userType} userData={userData} onContinue={() => goWebsite("home")} />
+      <>
+        <SocialSidebar position="left" />
+        <SuccessScreen userType={userType} userData={userData} onContinue={() => goWebsite("home")} />
+      </>
     );
   }
 
@@ -496,6 +510,52 @@ function HomePage({
   goSellerAuth: (mode?: string) => void;
   goMovingAuth: (mode?: string) => void;
 }) {
+  const testimonials = [
+    {
+      id: 1,
+      name: "Sarah M.",
+      location: "Kanata",
+      image: "https://i.pravatar.cc/150?img=44",
+      rating: 5,
+      text: "Sold my old furniture in one weekend! So much easier than posting on Facebook.",
+    },
+    {
+      id: 2,
+      name: "Mike T.",
+      location: "Barrhaven",
+      image: "https://i.pravatar.cc/150?img=12",
+      rating: 5,
+      text: "Found amazing deals on kids' stuff. Love that it's all local pickup.",
+    },
+    {
+      id: 3,
+      name: "The Patel Family",
+      location: "Stittsville",
+      image: "https://i.pravatar.cc/150?img=5",
+      rating: 5,
+      text: "Our moving sale was a huge success. Sold almost everything!",
+    },
+  ];
+
+  const [activeTestimonialIndex, setActiveTestimonialIndex] = useState(0);
+
+  const nextTestimonial = () => {
+    setActiveTestimonialIndex((prev) => (prev + 1) % testimonials.length);
+  };
+
+  const prevTestimonial = () => {
+    setActiveTestimonialIndex((prev) => (prev - 1 + testimonials.length) % testimonials.length);
+  };
+
+  const getCirclePosition = (index: number) => {
+    const total = testimonials.length;
+    const angle = (index - activeTestimonialIndex) * (360 / total) - 90;
+    const radius = 157;
+    const x = Math.cos((angle * Math.PI) / 180) * radius;
+    const y = Math.sin((angle * Math.PI) / 180) * radius + 36;
+    return { x, y };
+  };
+
   return (
     <div>
       <section className="min-h-screen flex items-center bg-gradient-to-br from-amber-50 via-white to-emerald-50 pt-16">
@@ -1118,114 +1178,81 @@ function HomePage({
         </div>
       </section>
 
-      <section className="py-16 md:py-24 bg-gradient-to-b from-emerald-50/50 to-emerald-100/30 relative overflow-hidden">
-        <div className="absolute top-20 left-10 text-emerald-300 text-2xl">✦</div>
-        <div className="absolute top-40 right-20 text-amber-400 text-xl">✦</div>
-        <div className="absolute bottom-32 left-1/4 text-emerald-400 text-lg">✦</div>
+      <section className="py-12 md:py-16 bg-gradient-to-b from-emerald-50/50 to-white relative overflow-hidden">
+        <div className="absolute top-16 left-10 text-emerald-300 text-2xl">✦</div>
+        <div className="absolute top-28 right-20 text-amber-400 text-xl">✦</div>
+        <div className="absolute bottom-24 left-1/4 text-emerald-400 text-lg">✦</div>
         <div className="absolute top-1/3 right-1/3 text-amber-300 text-sm">✦</div>
 
-        <div className="absolute bottom-0 left-0 right-0">
-          <svg viewBox="0 0 1200 100" className="w-full h-20 text-emerald-100">
-            <path d="M0 50 Q200 0 400 50 T800 50 T1200 50 V100 H0 Z" fill="currentColor" />
-          </svg>
-        </div>
-
-        <div className="max-w-4xl mx-auto px-4 relative z-10">
-          <div className="text-center mb-4">
+        <div className="max-w-5xl mx-auto px-4 relative z-10">
+          <div className="text-center mb-6">
             <h2 className="text-3xl md:text-4xl font-bold text-gray-900">Loved by neighbors</h2>
+            <p className="text-gray-600 text-sm md:text-base mt-2">Real stories from real communities</p>
           </div>
 
-          <div className="flex items-center justify-center gap-1 mb-12">
-            <span className="w-2 h-2 rounded-full bg-gray-300"></span>
-            <span className="w-2 h-2 rounded-full bg-gray-300"></span>
-            <span className="text-emerald-500">✦</span>
-            <span className="text-emerald-400">✦</span>
-            <span className="text-emerald-500">✦</span>
-            <span className="text-emerald-400">✦</span>
-            <span className="text-emerald-500">✦</span>
-            <span className="w-2 h-2 rounded-full bg-gray-300"></span>
-            <span className="w-2 h-2 rounded-full bg-amber-400"></span>
-          </div>
-
-          <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 md:p-10">
-            <div className="space-y-6">
-              <div className="flex gap-4">
-                <span className="text-4xl text-emerald-200 font-serif leading-none">"</span>
-                <div className="flex-1">
-                  <p className="text-gray-700 mb-4">
-                    &quot;Sold my old furniture in one weekend! So much easier than posting on Facebook.&quot;
-                  </p>
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 bg-emerald-100 rounded-full flex items-center justify-center overflow-hidden">
-                      <svg viewBox="0 0 40 40" className="w-full h-full">
-                        <circle cx="20" cy="15" r="8" fill="#D4A574" />
-                        <path d="M10 13 Q15 8 20 10 Q25 8 30 13" fill="#8B6914" />
-                        <ellipse cx="20" cy="32" rx="12" ry="10" fill="#059669" />
-                      </svg>
-                    </div>
-                    <div>
-                      <p className="font-bold text-gray-900">Sarah M.</p>
-                      <p className="text-sm text-gray-500 flex items-center gap-1">
-                        Kanata <MapPin size={12} className="text-emerald-500" />
-                      </p>
+          <div className="relative min-h-[392px] flex items-center justify-center">
+            <div className="hidden lg:block absolute inset-0">
+              {testimonials.map((testimonial, index) => {
+                const pos = getCirclePosition(index);
+                const isActive = index === activeTestimonialIndex;
+                return (
+                  <div
+                    key={testimonial.id}
+                    className="absolute left-1/2 top-1/2 cursor-pointer"
+                    style={{
+                      transform: `translate(${pos.x - 22}px, ${pos.y - 22}px) scale(${isActive ? 1.3 : 0.9})`,
+                      zIndex: isActive ? 20 : 10,
+                      transition: "transform 0.5s cubic-bezier(0.4, 0, 0.2, 1)",
+                    }}
+                    onClick={() => setActiveTestimonialIndex(index)}
+                  >
+                    <div
+                      className={`relative w-11 h-11 rounded-full overflow-hidden border-[3px] transition-all duration-300 ${
+                        isActive
+                          ? "border-emerald-600 shadow-xl shadow-emerald-500/20"
+                          : "border-white shadow-lg hover:border-amber-300"
+                      }`}
+                    >
+                      <img src={testimonial.image} alt={testimonial.name} className="w-full h-full object-cover" />
                     </div>
                   </div>
+                );
+              })}
+            </div>
+
+            <div className="relative z-30 max-w-lg mx-auto mt-8">
+              <div className="bg-white rounded-2xl shadow-2xl shadow-emerald-100/50 px-6 pt-10 pb-6 text-center">
+                <p className="text-sm lg:text-base text-gray-700 leading-relaxed mb-3.5 italic">
+                  &ldquo;{testimonials[activeTestimonialIndex].text}&rdquo;
+                </p>
+                <h3 className="text-base font-bold text-gray-900 mb-0.5">
+                  {testimonials[activeTestimonialIndex].name}
+                </h3>
+                <p className="text-emerald-700 text-xs mb-1.5">
+                  {testimonials[activeTestimonialIndex].location}
+                </p>
+                <div className="flex items-center justify-center gap-1 text-amber-400 text-sm">
+                  {Array.from({ length: testimonials[activeTestimonialIndex].rating }).map((_, i) => (
+                    <span key={`star-${i}`}>★</span>
+                  ))}
                 </div>
               </div>
 
-              <div className="border-t border-gray-100"></div>
-
-              <div className="flex gap-4">
-                <span className="text-4xl text-emerald-200 font-serif leading-none">"</span>
-                <div className="flex-1">
-                  <p className="text-gray-700 mb-4">
-                    &quot;Found amazing deals on kids&apos; stuff. Love that it&apos;s all local pickup.&quot;
-                  </p>
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 bg-emerald-100 rounded-full flex items-center justify-center overflow-hidden">
-                      <svg viewBox="0 0 40 40" className="w-full h-full">
-                        <circle cx="20" cy="15" r="8" fill="#8B6914" />
-                        <ellipse cx="20" cy="11" rx="6" ry="4" fill="#4A3728" />
-                        <ellipse cx="20" cy="32" rx="12" ry="10" fill="#059669" />
-                      </svg>
-                    </div>
-                    <div>
-                      <p className="font-bold text-gray-900">Mike T.</p>
-                      <p className="text-sm text-gray-500 flex items-center gap-1">
-                        Barrhaven <MapPin size={12} className="text-emerald-500" />
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="border-t border-gray-100"></div>
-
-              <div className="flex gap-4">
-                <span className="text-4xl text-emerald-200 font-serif leading-none">"</span>
-                <div className="flex-1">
-                  <p className="text-gray-700 mb-4">
-                    &quot;Our moving sale was a huge success. Sold almost everything!&quot;
-                  </p>
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 bg-emerald-100 rounded-full flex items-center justify-center overflow-hidden">
-                      <svg viewBox="0 0 40 40" className="w-full h-full">
-                        <circle cx="14" cy="14" r="5" fill="#8B6914" />
-                        <circle cx="26" cy="14" r="5" fill="#D4A574" />
-                        <circle cx="20" cy="24" r="4" fill="#D4A574" />
-                        <ellipse cx="14" cy="32" rx="6" ry="6" fill="#059669" />
-                        <ellipse cx="26" cy="32" rx="6" ry="6" fill="#F59E0B" />
-                        <ellipse cx="20" cy="34" rx="5" ry="5" fill="#EF4444" />
-                      </svg>
-                    </div>
-                    <div>
-                      <p className="font-bold text-gray-900">The Patel Family</p>
-                      <p className="text-sm text-gray-500 flex items-center gap-1">
-                        Stittsville <MapPin size={12} className="text-emerald-500" />
-                      </p>
-                    </div>
-                  </div>
-                </div>
+              <div className="flex items-center justify-center gap-3 mt-4">
+                <button
+                  onClick={prevTestimonial}
+                  className="w-9 h-9 rounded-full border border-emerald-200 text-emerald-700 hover:bg-emerald-50 transition-colors"
+                  aria-label="Previous testimonial"
+                >
+                  <ChevronLeft className="w-4 h-4 mx-auto" />
+                </button>
+                <button
+                  onClick={nextTestimonial}
+                  className="w-9 h-9 rounded-full border border-emerald-200 text-emerald-700 hover:bg-emerald-50 transition-colors"
+                  aria-label="Next testimonial"
+                >
+                  <ChevronRight className="w-4 h-4 mx-auto" />
+                </button>
               </div>
             </div>
           </div>
@@ -2465,6 +2492,63 @@ function SuccessScreen({
           This demo returns to the homepage. In the real app, you&apos;d go to your dashboard.
         </p>
       </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// SOCIAL SIDEBAR
+// ============================================================================
+function SocialSidebar({ position = "left" }: { position?: "left" | "right" }) {
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    if (position === "left") {
+      const timer = setTimeout(() => {
+        setIsVisible(true);
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+
+    setIsVisible(true);
+  }, [position]);
+
+  const socialLinks = [
+    { icon: Facebook, href: "#", label: "Facebook" },
+    { icon: Instagram, href: "#", label: "Instagram" },
+    { icon: Twitter, href: "#", label: "Twitter" },
+    { icon: Linkedin, href: "#", label: "LinkedIn" },
+    { icon: Youtube, href: "#", label: "YouTube" },
+  ];
+
+  const isRight = position === "right";
+  const positionClasses = isRight ? "right-0 rounded-l-xl" : "left-0 rounded-r-xl";
+  const animationClasses = isRight ? "translate-x-0" : isVisible ? "translate-x-0" : "-translate-x-full";
+
+  return (
+    <div
+      className={`fixed ${positionClasses} top-1/2 -translate-y-1/2 z-50 hidden lg:flex flex-col gap-1 bg-white shadow-lg overflow-hidden transition-transform duration-700 ease-out ${animationClasses}`}
+    >
+      <div className="bg-emerald-700 text-white px-3 py-2 text-xs font-medium text-center">
+        <span className="writing-mode-vertical block" style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}>
+          Connect
+        </span>
+      </div>
+      {socialLinks.map((social) => {
+        const Icon = social.icon;
+        return (
+          <a
+            key={social.label}
+            href={social.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="p-3 text-emerald-700/60 hover:text-amber-500 hover:bg-amber-50 transition-colors duration-300"
+            aria-label={social.label}
+          >
+            <Icon className="w-5 h-5" />
+          </a>
+        );
+      })}
     </div>
   );
 }
