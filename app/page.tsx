@@ -126,8 +126,8 @@ const detectZone = (pc: string) => {
 export default function DropYardWebsite() {
   const [view, setView] = useState("website");
   const [page, setPage] = useState("home");
-  const [authMode, setAuthMode] = useState("signup");
-  const [userType, setUserType] = useState("buyer");
+  const [authMode, setAuthMode] = useState<"signup" | "login">("signup");
+  const [userType, setUserType] = useState<"buyer" | "seller" | "moving">("buyer");
   const [userData, setUserData] = useState({
     name: "",
     email: "",
@@ -141,17 +141,17 @@ export default function DropYardWebsite() {
     setView("website");
     setPage(p);
   };
-  const goBuyerAuth = (mode = "signup") => {
+  const goBuyerAuth = (mode: "signup" | "login" = "signup") => {
     setView("auth");
     setAuthMode(mode);
     setUserType("buyer");
   };
-  const goSellerAuth = (mode = "signup") => {
+  const goSellerAuth = (mode: "signup" | "login" = "signup") => {
     setView("auth");
     setAuthMode(mode);
     setUserType("seller");
   };
-  const goMovingAuth = (mode = "signup") => {
+  const goMovingAuth = (mode: "signup" | "login" = "signup") => {
     setView("auth");
     setAuthMode(mode);
     setUserType("moving");
@@ -213,9 +213,9 @@ function Website({
 }: {
   page: string;
   setPage: (p: string) => void;
-  goBuyerAuth: (mode?: string) => void;
-  goSellerAuth: (mode?: string) => void;
-  goMovingAuth: (mode?: string) => void;
+  goBuyerAuth: (mode?: "signup" | "login") => void;
+  goSellerAuth: (mode?: "signup" | "login") => void;
+  goMovingAuth: (mode?: "signup" | "login") => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -506,9 +506,9 @@ function HomePage({
   goMovingAuth,
 }: {
   setPage: (p: string) => void;
-  goBuyerAuth: (mode?: string) => void;
-  goSellerAuth: (mode?: string) => void;
-  goMovingAuth: (mode?: string) => void;
+  goBuyerAuth: (mode?: "signup" | "login") => void;
+  goSellerAuth: (mode?: "signup" | "login") => void;
+  goMovingAuth: (mode?: "signup" | "login") => void;
 }) {
   const testimonials = [
     {
@@ -1295,9 +1295,9 @@ function BuyersPage({
   goMovingAuth,
   setPage,
 }: {
-  goBuyerAuth: (mode?: string) => void;
-  goSellerAuth: (mode?: string) => void;
-  goMovingAuth: (mode?: string) => void;
+  goBuyerAuth: (mode?: "signup" | "login") => void;
+  goSellerAuth: (mode?: "signup" | "login") => void;
+  goMovingAuth: (mode?: "signup" | "login") => void;
   setPage: (p: string) => void;
 }) {
   return (
@@ -1442,9 +1442,9 @@ function SellersPage({
   goMovingAuth,
   setPage,
 }: {
-  goBuyerAuth: (mode?: string) => void;
-  goSellerAuth: (mode?: string) => void;
-  goMovingAuth: (mode?: string) => void;
+  goBuyerAuth: (mode?: "signup" | "login") => void;
+  goSellerAuth: (mode?: "signup" | "login") => void;
+  goMovingAuth: (mode?: "signup" | "login") => void;
   setPage: (p: string) => void;
 }) {
   return (
@@ -1581,9 +1581,9 @@ function Footer({
   goMovingAuth,
   setPage,
 }: {
-  goBuyerAuth: (mode?: string) => void;
-  goSellerAuth: (mode?: string) => void;
-  goMovingAuth: (mode?: string) => void;
+  goBuyerAuth: (mode?: "signup" | "login") => void;
+  goSellerAuth: (mode?: "signup" | "login") => void;
+  goMovingAuth: (mode?: "signup" | "login") => void;
   setPage: (p: string) => void;
 }) {
   return (
@@ -1667,8 +1667,8 @@ function HowItWorksPage({
   goSellerAuth,
   setPage,
 }: {
-  goBuyerAuth: (mode?: string) => void;
-  goSellerAuth: (mode?: string) => void;
+  goBuyerAuth: (mode?: "signup" | "login") => void;
+  goSellerAuth: (mode?: "signup" | "login") => void;
   setPage: (p: string) => void;
 }) {
   return (
@@ -1904,7 +1904,7 @@ function AuthFlow({
     }>
   >;
 }) {
-  const [step, setStep] = useState(authMode);
+  const [step, setStep] = useState<"signup" | "login" | "onboarding">(authMode);
   const [onboardingStep, setOnboardingStep] = useState(0);
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
