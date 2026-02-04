@@ -2589,9 +2589,12 @@ function SocialSidebar({ position = "left" }: { position?: "left" | "right" }) {
         setIsVisible(true);
       }, 1000);
       return () => clearTimeout(timer);
+    } else {
+      const timer = setTimeout(() => {
+        setIsVisible(true);
+      }, 0);
+      return () => clearTimeout(timer);
     }
-
-    setIsVisible(true);
   }, [position]);
 
   const socialLinks = [
