@@ -45,29 +45,14 @@ function DropYardLogo({ size = "default" }: { size?: "small" | "default" | "larg
 
   return (
     <div className={`${s.container} relative flex items-center justify-center`}>
-      <svg viewBox="0 0 100 100" className="w-full h-full">
-        <path d="M20 60 L50 85 L80 60 L80 75 Q50 95 20 75 Z" fill="#F59E0B" />
-        <path
-          d="M30 70 L45 82 L70 58"
-          stroke="white"
-          strokeWidth="6"
-          fill="none"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        <path d="M50 10 L15 40 L15 35 L50 5 L85 35 L85 40 L50 10" fill="#059669" />
-        <path d="M20 38 L50 12 L80 38 L80 65 L20 65 Z" fill="white" stroke="#059669" strokeWidth="4" />
-        <rect x="40" y="30" width="20" height="20" fill="#059669" rx="2" />
-        <line x1="50" y1="30" x2="50" y2="50" stroke="white" strokeWidth="2" />
-        <line x1="40" y1="40" x2="60" y2="40" stroke="white" strokeWidth="2" />
-      </svg>
+      <img src="/logo.jpeg" alt="DropYard logo" className="w-full h-full object-contain" />
     </div>
   );
 }
 
 function DropYardWordmark({ className = "" }: { className?: string }) {
   return (
-    <span className={`font-bold ${className}`}>
+    <span className={`font-brand font-bold ${className}`}>
       <span className="text-emerald-600">Drop</span>
       <span className="text-amber-500">Yard</span>
     </span>
@@ -558,21 +543,30 @@ function HomePage({
 
   return (
     <div>
-      <section className="min-h-screen flex items-center bg-gradient-to-br from-amber-50 via-white to-emerald-50 pt-16">
-        <div className="max-w-7xl mx-auto px-4 py-12 md:py-20">
-          <div className="grid lg:grid-cols-2 gap-8 lg:gap-12 items-center">
-            <div>
-              <div className="inline-flex items-center gap-2 bg-emerald-100 text-emerald-800 px-4 py-2 rounded-full text-sm font-medium mb-6">
+      <section
+        className="relative min-h-screen flex items-center py-20 md:py-24"
+        style={{
+          backgroundImage: "url('/hero_background.png')",
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+        }}
+      >
+        <div className="absolute inset-0 bg-white/60 backdrop-blur-sm"></div>
+        <div className="relative max-w-7xl mx-auto px-4 lg:px-8 w-full">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-[1.1fr,0.9fr] gap-10 items-center">
+            <div className="max-w-xl">
+              <div className="inline-flex items-center gap-2 bg-emerald-100 text-emerald-800 px-6 py-2 rounded-full text-sm md:text-base font-semibold mb-8 shadow-sm">
                 <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
                 Now live in your neighborhood
               </div>
-              <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-gray-900 mb-6 leading-tight">
+              <h1 className="font-brand text-4xl md:text-6xl lg:text-7xl font-extrabold text-slate-900 mb-6 leading-snug md:leading-tight tracking-tight">
                 Your community&apos;s
-                <span className="block text-emerald-700">yard sale—online.</span>
+                <span className="block text-emerald-600">yard </span> 
+                <span className="block text-emerald-600">sale-online.</span>
               </h1>
-              <p className="text-lg md:text-xl text-gray-600 mb-8">
+              <p className="font-brand text-base md:text-lg lg:text-xl text-slate-600 mb-10 max-w-2xl">
                 Buy and sell locally through curated weekend Drops.
-                <span className="block text-emerald-700 font-medium mt-2">From one home to another.</span>
+                <span className="block text-emerald-600 font-semibold mt-3">From one home to another.</span>
               </p>
               <div className="flex flex-col sm:flex-row gap-3">
                 <button
@@ -598,30 +592,14 @@ function HomePage({
               </p>
             </div>
 
-            <div className="hidden lg:block">
-              <div className="bg-white rounded-3xl p-6 shadow-xl border border-gray-100">
-                <div className="grid grid-cols-2 gap-3">
-                  {[
-                    { emoji: "🏠", label: "Home & Kitchen", count: "12 items" },
-                    { emoji: "👶", label: "Kids & Baby", count: "8 items" },
-                    { emoji: "📱", label: "Electronics", count: "5 items" },
-                    { emoji: "🛋️", label: "Furniture", count: "3 items" },
-                  ].map((item, i) => (
-                    <div key={i} className="bg-gray-50 rounded-2xl p-4 hover:bg-emerald-50 transition-colors cursor-pointer">
-                      <div className="text-3xl mb-2">{item.emoji}</div>
-                      <div className="font-medium text-gray-900 text-sm">{item.label}</div>
-                      <div className="text-xs text-emerald-600">{item.count}</div>
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-4 p-4 bg-gradient-to-r from-amber-100 to-amber-50 rounded-2xl border border-amber-200">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-xs text-amber-600 font-medium">NEXT DROP</div>
-                      <div className="font-semibold text-gray-900">This Weekend</div>
-                    </div>
-                    <div className="bg-amber-500 text-white px-4 py-2 rounded-full text-sm font-medium">28 items</div>
-                  </div>
+            <div className="flex items-center justify-center lg:justify-end h-full">
+              <div className="w-full max-w-xl lg:max-w-2xl">
+                <div className="h-80 md:h-[30rem] lg:h-[36rem]">
+                  <img
+                    src="/hero_right.png"
+                    alt="DropYard hero"
+                    className="w-full h-full object-cover"
+                  />
                 </div>
               </div>
             </div>
