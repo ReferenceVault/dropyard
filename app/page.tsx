@@ -717,206 +717,322 @@ function HomePage({
         </div>
       </section>
 
-      <section className="py-16 md:py-24 bg-white">
+      <section className="py-10 md:py-24 bg-white">
         <div className="max-w-7xl mx-auto px-4">
           <div className="text-center mb-12">
             <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">Built for everyone</h2>
             <p className="text-lg text-gray-600">Whether you&apos;re buying or selling, DropYard has you covered</p>
           </div>
+        </div>
+      </section>
 
-          <div className="grid md:grid-cols-2 gap-6 max-w-5xl mx-auto">
-            <div className="bg-gradient-to-br from-emerald-50 to-white rounded-3xl p-8 border border-emerald-100 hover:shadow-lg transition-shadow">
-              <div className="w-14 h-14 bg-emerald-100 rounded-2xl flex items-center justify-center mb-6">
-                <ShoppingBag size={28} className="text-emerald-600" />
+      {/* For Buyers Section */}
+      <section className="py-10 md:py-16 bg-white">
+        <div className="max-w-7xl mx-auto px-4">
+          <div className="grid lg:grid-cols-2 gap-8 items-center">
+            <div className="relative">
+              <div className="relative">
+                <div className="relative mb-4 md:mb-8">
+                  <figure className="relative z-10">
+                    <img src="/images/img1.png" alt="" className="w-full max-w-full sm:max-w-sm md:max-w-md lg:max-w-lg h-auto max-h-64 sm:max-h-72 md:max-h-80 lg:max-h-96 rounded-lg shadow-lg object-cover" />
+                  </figure>
+                </div>
+                <div className="relative -mt-8 sm:-mt-12 md:-mt-16 ml-4 sm:ml-8 md:ml-16">
+                  <figure className="relative z-20">
+                    <img src="/images/img2.png" alt="" className="w-full max-w-full sm:max-w-sm md:max-w-md lg:max-w-lg h-auto max-h-64 sm:max-h-72 md:max-h-80 lg:max-h-96 rounded-lg shadow-lg object-cover" />
+                  </figure>
+                </div>
+                <div className="absolute top-1/4 right-2 sm:right-4 transform -translate-y-1/2 z-30 animate-spin" style={{ animationDuration: '30s' }}>
+                  <img src="/images/contact-us-img.svg" alt="" className="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24" />
+                </div>
               </div>
-              <h3 className="text-2xl font-bold text-gray-900 mb-6">For Buyers</h3>
-              <ul className="space-y-4 mb-8">
-                {[
-                  "Shop locally from trusted neighbors",
-                  "Fair, clear pricing—no haggling",
-                  "No bidding wars",
-                  "Simple, scheduled pickup times",
-                ].map((item, i) => (
-                  <li key={i} className="flex items-center gap-3">
-                    <Check size={20} className="text-emerald-500 flex-shrink-0" />
-                    <span className="text-gray-700">{item}</span>
-                  </li>
-                ))}
-              </ul>
-              <button
-                onClick={() => goBuyerAuth("signup")}
-                className="w-full bg-emerald-700 text-white py-4 rounded-full font-semibold hover:bg-emerald-800 transition-colors flex items-center justify-center gap-2"
-              >
-                Browse the Next Drop
-                <ArrowRight size={18} />
-              </button>
             </div>
-
-            <div className="bg-gradient-to-br from-amber-50 to-white rounded-3xl p-8 border border-amber-100 hover:shadow-lg transition-shadow">
-              <div className="w-14 h-14 bg-amber-100 rounded-2xl flex items-center justify-center mb-6">
-                <Package size={28} className="text-amber-500" />
+            
+            <div>
+              <div className="mb-8 text-center md:text-left">
+                <h3 className="text-lg text-emerald-600 mb-2">For Buyers</h3>
+                <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">Shop locally from trusted neighbors</h2>
+                <p className="text-gray-600 text-lg">Whether you&apos;re buying or selling, DropYard has you covered</p>
               </div>
-              <h3 className="text-2xl font-bold text-gray-900 mb-6">For Sellers</h3>
-              <ul className="space-y-4 mb-8">
-                {[
-                  "Declutter easily in one weekend",
-                  "No endless messages or listings",
-                  "Sell to neighbors, not strangers",
-                  "Simple, fast payouts",
-                ].map((item, i) => (
-                  <li key={i} className="flex items-center gap-3">
-                    <Check size={20} className="text-amber-500 flex-shrink-0" />
-                    <span className="text-gray-700">{item}</span>
-                  </li>
-                ))}
-              </ul>
-              <button
-                onClick={() => goSellerAuth("signup")}
-                className="w-full bg-amber-500 text-white py-4 rounded-full font-semibold hover:bg-amber-600 transition-colors flex items-center justify-center gap-2"
-              >
-                Become a Seller
-                <ArrowRight size={18} />
-              </button>
+
+              <div className="grid md:grid-cols-2 gap-6">
+                <div>
+                  <div className="mb-6 text-center md:text-left">
+                    <div className="w-16 h-16 bg-emerald-100 rounded-2xl flex items-center justify-center mb-4 mx-auto md:mx-0">
+                      <ShoppingBag size={28} className="text-emerald-600" />
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-900 mb-2">Fair, clear pricing</h3>
+                    <p className="text-gray-600">No haggling, no bidding wars—just simple, scheduled pickup times.</p>
+                  </div>
+                  <div>
+                    <button
+                      onClick={() => goBuyerAuth("signup")}
+                      className="w-full bg-emerald-700 text-white py-3 px-6 rounded-full font-semibold hover:bg-emerald-800 transition-colors flex items-center justify-center gap-2"
+                    >
+                      Browse the Next Drop
+                      <ArrowRight size={18} />
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="mb-6 text-center md:text-left">
+                    <div className="w-16 h-16 bg-emerald-100 rounded-2xl flex items-center justify-center mb-4 mx-auto md:mx-0">
+                      <User size={28} className="text-emerald-600" />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold text-gray-900 mb-1">Shop locally</h3>
+                      <p className="text-gray-600">From neighbors</p>
+                    </div>
+                  </div>
+                  <div className="text-center md:text-left">
+                    <ul className="space-y-2 inline-block md:block">
+                      <li className="flex items-center gap-2 justify-center md:justify-start">
+                        <Check size={16} className="text-emerald-500 flex-shrink-0" />
+                        <span className="text-gray-700">Shop locally from trusted neighbors</span>
+                      </li>
+                      <li className="flex items-center gap-2 justify-center md:justify-start">
+                        <Check size={16} className="text-emerald-500 flex-shrink-0" />
+                        <span className="text-gray-700">Fair, clear pricing—no haggling</span>
+                      </li>
+                      <li className="flex items-center gap-2 justify-center md:justify-start">
+                        <Check size={16} className="text-emerald-500 flex-shrink-0" />
+                        <span className="text-gray-700">No bidding wars</span>
+                      </li>
+                      <li className="flex items-center gap-2 justify-center md:justify-start">
+                        <Check size={16} className="text-emerald-500 flex-shrink-0" />
+                        <span className="text-gray-700">Simple, scheduled pickup times</span>
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
+      {/* For Sellers Section */}
       <section className="py-16 md:py-24 bg-gray-50">
-        <div className="max-w-6xl mx-auto px-4">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">Two ways to Drop</h2>
-            <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+        <div className="max-w-7xl mx-auto px-4">
+          <div className="grid lg:grid-cols-2 gap-8 items-center">
+            <div className="order-1 lg:order-1">
+              <div className="mb-8 text-center md:text-left">
+                <h3 className="text-lg text-amber-600 mb-2">For Sellers</h3>
+                <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">Declutter easily in one weekend</h2>
+                <p className="text-gray-600 text-lg">Whether you&apos;re buying or selling, DropYard has you covered</p>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-6">
+                <div>
+                  <div className="mb-6 text-center md:text-left">
+                    <div className="w-16 h-16 bg-amber-100 rounded-2xl flex items-center justify-center mb-4 mx-auto md:mx-0">
+                      <Package size={28} className="text-amber-500" />
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-900 mb-2">Simple, fast payouts</h3>
+                    <p className="text-gray-600">No endless messages or listings—sell to neighbors, not strangers.</p>
+                  </div>
+                  <div>
+                    <button
+                      onClick={() => goSellerAuth("signup")}
+                      className="w-full bg-amber-500 text-white py-3 px-6 rounded-full font-semibold hover:bg-amber-600 transition-colors flex items-center justify-center gap-2"
+                    >
+                      Become a Seller
+                      <ArrowRight size={18} />
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="mb-6 text-center md:text-left">
+                    <div className="w-16 h-16 bg-amber-100 rounded-2xl flex items-center justify-center mb-4 mx-auto md:mx-0">
+                      <User size={28} className="text-amber-500" />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold text-gray-900 mb-1">Sell easily</h3>
+                      <p className="text-gray-600">To neighbors</p>
+                    </div>
+                  </div>
+                  <div className="text-center md:text-left">
+                    <ul className="space-y-2 inline-block md:block">
+                      <li className="flex items-center gap-2 justify-center md:justify-start">
+                        <Check size={16} className="text-amber-500 flex-shrink-0" />
+                        <span className="text-gray-700">Declutter easily in one weekend</span>
+                      </li>
+                      <li className="flex items-center gap-2 justify-center md:justify-start">
+                        <Check size={16} className="text-amber-500 flex-shrink-0" />
+                        <span className="text-gray-700">No endless messages or listings</span>
+                      </li>
+                      <li className="flex items-center gap-2 justify-center md:justify-start">
+                        <Check size={16} className="text-amber-500 flex-shrink-0" />
+                        <span className="text-gray-700">Sell to neighbors, not strangers</span>
+                      </li>
+                      <li className="flex items-center gap-2 justify-center md:justify-start">
+                        <Check size={16} className="text-amber-500 flex-shrink-0" />
+                        <span className="text-gray-700">Simple, fast payouts</span>
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="relative order-2 lg:order-2">
+              <div className="relative">
+                <div className="relative mb-4 md:mb-8 ml-4 sm:ml-8 md:ml-16">
+                  <figure className="relative z-10">
+                    <img src="/images/img1.png" alt="" className="w-full max-w-full sm:max-w-sm md:max-w-md lg:max-w-lg h-auto max-h-64 sm:max-h-72 md:max-h-80 lg:max-h-96 rounded-lg shadow-lg object-cover" />
+                  </figure>
+                </div>
+                <div className="relative -mt-8 sm:-mt-12 md:-mt-16 ml-0">
+                  <figure className="relative z-20">
+                    <img src="/images/img2.png" alt="" className="w-full max-w-full sm:max-w-sm md:max-w-md lg:max-w-lg h-auto max-h-64 sm:max-h-72 md:max-h-80 lg:max-h-96 rounded-lg shadow-lg object-cover" />
+                  </figure>
+                  <div className="absolute top-1/2 right-0 sm:right-2 md:right-4 transform -translate-y-1/2 z-30 animate-spin" style={{ animationDuration: '30s' }}>
+                    <img src="/images/contact-us-img.svg" alt="" className="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="py-12 sm:py-16 md:py-20 lg:py-24 bg-gray-50">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-8 sm:mb-10 md:mb-12">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-gray-900 mb-3 sm:mb-4">Two ways to Drop</h2>
+            <p className="text-base sm:text-lg text-gray-600 max-w-2xl mx-auto px-2">
               Choose the Drop that fits your needs—from weekly neighborhood sales to dedicated moving events
             </p>
           </div>
 
-          <div className="grid md:grid-cols-2 gap-8">
-            <div className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-              <div className="bg-gradient-to-br from-emerald-600 to-emerald-700 p-8 relative">
+          <div className="grid sm:grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 md:gap-8">
+            <div className="bg-white rounded-xl sm:rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+              <div className="bg-gradient-to-br from-emerald-600 to-emerald-700 p-6 sm:p-8 relative">
                 <div className="absolute inset-0 opacity-10">
-                  <div className="grid grid-cols-6 h-full">
+                  <div className="grid grid-cols-4 sm:grid-cols-6 h-full">
                     {[...Array(6)].map((_, i) => (
                       <div key={i} className="border-r border-white/20"></div>
                     ))}
                   </div>
-                  <div className="absolute inset-0 grid grid-rows-4">
+                  <div className="absolute inset-0 grid grid-rows-3 sm:grid-rows-4">
                     {[...Array(4)].map((_, i) => (
                       <div key={i} className="border-b border-white/20"></div>
                     ))}
                   </div>
                 </div>
 
-                <div className="absolute top-4 right-4">
-                  <span className="bg-emerald-800/80 text-white text-xs font-medium px-3 py-1 rounded-full">
+                <div className="absolute top-2 right-2 sm:top-3 sm:right-3 md:top-4 md:right-4">
+                  <span className="bg-emerald-800/80 text-white text-[10px] sm:text-xs font-medium px-2 sm:px-3 py-0.5 sm:py-1 rounded-full">
                     Most Popular
                   </span>
                 </div>
 
                 <div className="text-center relative z-10">
-                  <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center mx-auto mb-4">
-                    <Calendar size={24} className="text-white" />
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-white/20 rounded-lg sm:rounded-xl flex items-center justify-center mx-auto mb-3 sm:mb-4">
+                    <Calendar size={20} className="sm:w-6 sm:h-6 text-white flex-shrink-0" />
                   </div>
-                  <div className="text-4xl font-bold text-white mb-1">Every</div>
-                  <div className="text-emerald-200 text-lg">Weekend</div>
+                  <div className="text-3xl sm:text-4xl md:text-5xl font-bold text-white mb-1">Every</div>
+                  <div className="text-emerald-200 text-base sm:text-lg">Weekend</div>
                 </div>
               </div>
 
-              <div className="p-6">
-                <h3 className="text-xl font-bold text-gray-900 mb-3">Weekly Neighborhood Drop</h3>
-                <p className="text-gray-600 text-sm mb-6">
+              <div className="p-4 sm:p-5 md:p-6">
+                <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-2 sm:mb-3">Weekly Neighborhood Drop</h3>
+                <p className="text-gray-600 text-xs sm:text-sm mb-4 sm:mb-6 leading-relaxed">
                   The heart of DropYard. Your community&apos;s recurring yard sale, online. New items every weekend
                   from neighbors you trust.
                 </p>
 
-                <ul className="space-y-3 mb-6">
+                <ul className="space-y-2 sm:space-y-3 mb-4 sm:mb-6">
                   {[
                     { icon: Clock, text: "48-hour sale window (Sat-Sun)" },
                     { icon: MapPin, text: "Items from your neighborhood" },
                     { icon: Users, text: "5-50+ sellers per Drop" },
                     { icon: Package, text: "New inventory every week" },
                   ].map((feature, i) => (
-                    <li key={i} className="flex items-center gap-3 text-sm text-gray-600">
-                      <feature.icon size={16} className="text-emerald-600 flex-shrink-0" />
-                      {feature.text}
+                    <li key={i} className="flex items-center gap-2 sm:gap-3 text-xs sm:text-sm text-gray-600">
+                      <feature.icon size={14} className="sm:w-4 sm:h-4 text-emerald-600 flex-shrink-0" />
+                      <span className="break-words">{feature.text}</span>
                     </li>
                   ))}
                 </ul>
 
-                <div className="bg-emerald-50 rounded-xl p-4 mb-6">
+                <div className="bg-emerald-50 rounded-lg sm:rounded-xl p-3 sm:p-4 mb-4 sm:mb-6">
                   <div className="text-center">
-                    <div className="text-xs text-emerald-600 font-medium uppercase tracking-wide">For Sellers</div>
-                    <div className="text-lg font-bold text-gray-900">Free to list</div>
+                    <div className="text-[10px] sm:text-xs text-emerald-600 font-medium uppercase tracking-wide">For Sellers</div>
+                    <div className="text-base sm:text-lg font-bold text-gray-900">Free to list</div>
                   </div>
                 </div>
 
                 <button
                   onClick={() => goSellerAuth("signup")}
-                  className="w-full bg-emerald-700 text-white py-4 rounded-full font-semibold hover:bg-emerald-800 transition-colors flex items-center justify-center gap-2"
+                  className="w-full bg-emerald-700 text-white py-3 sm:py-4 rounded-full text-sm sm:text-base font-semibold hover:bg-emerald-800 transition-colors flex items-center justify-center gap-2"
                 >
                   Join This Week&apos;s Drop
-                  <ArrowRight size={18} />
+                  <ArrowRight size={16} className="sm:w-[18px] sm:h-[18px]" />
                 </button>
               </div>
             </div>
 
-            <div className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-              <div className="bg-gradient-to-br from-amber-400 to-orange-500 p-8 relative">
-                <div className="absolute top-4 right-4">
-                  <span className="bg-orange-600/80 text-white text-xs font-medium px-3 py-1 rounded-full">
+            <div className="bg-white rounded-xl sm:rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+              <div className="bg-gradient-to-br from-amber-400 to-orange-500 p-6 sm:p-8 relative">
+                <div className="absolute top-2 right-2 sm:top-3 sm:right-3 md:top-4 md:right-4">
+                  <span className="bg-orange-600/80 text-white text-[10px] sm:text-xs font-medium px-2 sm:px-3 py-0.5 sm:py-1 rounded-full">
                     Premium
                   </span>
                 </div>
 
                 <div className="text-center relative z-10">
-                  <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center mx-auto mb-4">
-                    <Truck size={24} className="text-white" />
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-white/20 rounded-lg sm:rounded-xl flex items-center justify-center mx-auto mb-3 sm:mb-4">
+                    <Truck size={20} className="sm:w-6 sm:h-6 text-white flex-shrink-0" />
                   </div>
-                  <div className="text-4xl font-bold text-white mb-1">Moving?</div>
-                  <div className="text-orange-100 text-lg">We&apos;ve got you</div>
+                  <div className="text-3xl sm:text-4xl md:text-5xl font-bold text-white mb-1">Moving?</div>
+                  <div className="text-orange-100 text-base sm:text-lg">We&apos;ve got you</div>
                 </div>
               </div>
 
-              <div className="p-6">
-                <h3 className="text-xl font-bold text-gray-900 mb-3">Moving Sale Drop</h3>
-                <p className="text-gray-600 text-sm mb-6">
+              <div className="p-4 sm:p-5 md:p-6">
+                <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-2 sm:mb-3">Moving Sale Drop</h3>
+                <p className="text-gray-600 text-xs sm:text-sm mb-4 sm:mb-6 leading-relaxed">
                   Relocating? Host your own dedicated Drop. Get featured placement, promotional support, and sell
                   everything before you go.
                 </p>
 
-                <ul className="space-y-3 mb-6">
+                <ul className="space-y-2 sm:space-y-3 mb-4 sm:mb-6">
                   {[
                     { icon: Sparkles, text: "Your own featured Drop event" },
                     { icon: Calendar, text: "You pick the weekend" },
                     { icon: Mail, text: "Promotional email to local buyers" },
                     { icon: Package, text: "Unlimited items, one flat fee" },
                   ].map((feature, i) => (
-                    <li key={i} className="flex items-center gap-3 text-sm text-gray-600">
-                      <feature.icon size={16} className="text-amber-500 flex-shrink-0" />
-                      {feature.text}
+                    <li key={i} className="flex items-center gap-2 sm:gap-3 text-xs sm:text-sm text-gray-600">
+                      <feature.icon size={14} className="sm:w-4 sm:h-4 text-amber-500 flex-shrink-0" />
+                      <span className="break-words">{feature.text}</span>
                     </li>
                   ))}
                 </ul>
 
-                <div className="bg-amber-50 rounded-xl p-4 mb-6">
-                  <div className="flex items-center justify-between">
+                <div className="bg-amber-50 rounded-lg sm:rounded-xl p-3 sm:p-4 mb-4 sm:mb-6">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
                     <div>
-                      <div className="text-xs text-amber-600 font-medium uppercase tracking-wide">Package</div>
-                      <div className="text-lg font-bold text-gray-900">Flat fee</div>
+                      <div className="text-[10px] sm:text-xs text-amber-600 font-medium uppercase tracking-wide">Package</div>
+                      <div className="text-base sm:text-lg font-bold text-gray-900">Flat fee</div>
                     </div>
-                    <div className="text-right">
-                      <div className="text-xs text-amber-600 font-medium uppercase tracking-wide">Starting at</div>
-                      <div className="text-lg font-bold text-gray-900">$49</div>
+                    <div className="text-left sm:text-right">
+                      <div className="text-[10px] sm:text-xs text-amber-600 font-medium uppercase tracking-wide">Starting at</div>
+                      <div className="text-base sm:text-lg font-bold text-gray-900">$49</div>
                     </div>
                   </div>
                 </div>
 
                 <button
                   onClick={() => goMovingAuth("signup")}
-                  className="w-full bg-amber-500 text-white py-4 rounded-full font-semibold hover:bg-amber-600 transition-colors flex items-center justify-center gap-2"
+                  className="w-full bg-amber-500 text-white py-3 sm:py-4 rounded-full text-sm sm:text-base font-semibold hover:bg-amber-600 transition-colors flex items-center justify-center gap-2"
                 >
                   Plan Your Moving Sale
-                  <ArrowRight size={18} />
+                  <ArrowRight size={16} className="sm:w-[18px] sm:h-[18px]" />
                 </button>
               </div>
             </div>
