@@ -930,63 +930,50 @@ function HomePage({
             <h2 className="text-3xl md:text-4xl font-bold text-emerald-800 mb-4">How DropYard Works</h2>
           </div>
 
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-2 items-start">
-            {[1, 2, 3, 4].map((step) => (
-              <div className="relative" key={`home-step-${step}`}>
-                <div className="bg-white rounded-3xl p-6 shadow-sm hover:shadow-md transition-shadow">
-                  <div className="absolute -top-3 left-6 bg-emerald-600 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm">
-                    {step}
-                  </div>
-                  <div className="mb-4 mt-2">
-                    <HowItWorksIllustration step={step} />
-                  </div>
-                  {step === 1 && (
-                    <>
-                      <h3 className="text-lg font-bold text-emerald-800 mb-2 text-center">Sellers submit items</h3>
-                      <p className="text-gray-600 text-center text-sm">
-                        Upload what you&apos;d like to sell or give away for free.
-                      </p>
-                    </>
-                  )}
-                  {step === 2 && (
-                    <>
-                      <h3 className="text-lg font-bold text-emerald-800 mb-2 text-center">We host the Drop</h3>
-                      <p className="text-gray-600 text-center text-sm">Items go live for a limited time</p>
-                    </>
-                  )}
-                  {step === 3 && (
-                    <>
-                      <h3 className="text-lg font-bold text-emerald-800 mb-2 text-center">Neighbors claim</h3>
-                      <p className="text-gray-600 text-center text-sm">Buyers browse and reserve</p>
-                    </>
-                  )}
-                  {step === 4 && (
-                    <>
-                      <h3 className="text-lg font-bold text-emerald-800 mb-2 text-center">Local pickup & payment</h3>
-                      <p className="text-gray-600 text-center text-sm">Items move home to home</p>
-                    </>
-                  )}
-                </div>
-                {step < 4 && (
-                  <div className="hidden lg:flex absolute -right-3 top-1/2 -translate-y-1/2 z-10">
-                    <div className="bg-amber-500 rounded-full p-1">
-                      <ChevronRight size={20} className="text-white" />
+          <div className="relative">
+            <div className="hidden lg:block absolute left-0 right-0 top-18">
+              <div className="mx-8 h-1 bg-emerald-200"></div>
+            </div>
+
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-8 items-start">
+              {[1, 2, 3, 4].map((step) => (
+                <div className="flex flex-col items-center text-center px-2" key={`home-step-${step}`}>
+                <div className="relative flex flex-col items-center">
+                  <div className="w-27 h-27 md:w-35 md:h-35 rounded-full bg-amber-200/90 flex items-center justify-center shadow-md mb-6">
+                    <div className="w-42 h-52 md:w-50 md:h-62 flex items-center justify-center">
+                      <HowItWorksIllustration step={step} />
                     </div>
                   </div>
+                </div>
+                {step === 1 && (
+                  <>
+                    <h3 className="text-lg md:text-xl font-bold text-emerald-800 mb-2">Sellers submit items</h3>
+                    <p className="text-gray-600 text-sm md:text-base">
+                      Upload what you&apos;d like to sell or give away for free.
+                    </p>
+                  </>
+                )}
+                {step === 2 && (
+                  <>
+                    <h3 className="text-lg md:text-xl font-bold text-emerald-800 mb-2">We host the Drop</h3>
+                    <p className="text-gray-600 text-sm md:text-base">Items go live for a limited time</p>
+                  </>
+                )}
+                {step === 3 && (
+                  <>
+                    <h3 className="text-lg md:text-xl font-bold text-emerald-800 mb-2">Neighbors claim</h3>
+                    <p className="text-gray-600 text-sm md:text-base">Buyers browse and reserve</p>
+                  </>
+                )}
+                {step === 4 && (
+                  <>
+                    <h3 className="text-lg md:text-xl font-bold text-emerald-800 mb-2">Local pickup & payment</h3>
+                    <p className="text-gray-600 text-sm md:text-base">Items move home to home</p>
+                  </>
                 )}
               </div>
-            ))}
-          </div>
-
-          <div className="flex lg:hidden justify-center mt-6 gap-2">
-            {[1, 2, 3, 4].map((step, i) => (
-              <div key={`home-step-indicator-${step}`} className="flex items-center">
-                <div className="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold text-sm">
-                  {step}
-                </div>
-                {i < 3 && <div className="w-8 h-0.5 bg-amber-500 mx-1"></div>}
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
       </section>
