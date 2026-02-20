@@ -507,6 +507,85 @@ function HomePage({
         </div>
       </div>
 
+      {/* Featured Moving Sales - Premium */}
+      <section className="py-12 md:py-16 bg-gradient-to-br from-amber-50 via-white to-emerald-50 border-b border-amber-100">
+        <div className="max-w-7xl mx-auto px-4">
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <div className="inline-flex items-center gap-2 bg-amber-100 text-amber-800 px-3 py-1 rounded-full text-sm font-semibold mb-2">
+                <Truck size={14} />
+                Premium
+              </div>
+              <h2 className="text-2xl md:text-3xl font-bold text-gray-900">
+                Featured Moving Sales
+              </h2>
+              <p className="text-gray-600 mt-1">
+                Custom dates, homepage spotlight, unlimited listings
+              </p>
+            </div>
+            <Link
+              href="/buyer"
+              className="hidden sm:flex items-center gap-2 text-emerald-600 font-semibold hover:text-emerald-700"
+            >
+              Browse all
+              <ChevronRight size={18} />
+            </Link>
+          </div>
+          <div className="grid md:grid-cols-2 gap-6">
+            <div className="bg-white rounded-2xl border-2 border-amber-200 shadow-lg overflow-hidden hover:shadow-xl transition-shadow group">
+              <div className="p-6 bg-gradient-to-r from-amber-50 to-orange-50 border-b border-amber-100">
+                <div className="flex items-center justify-between">
+                  <span className="px-3 py-1 bg-amber-500 text-white text-xs font-bold rounded-full">
+                    Moving Sale
+                  </span>
+                  <span className="text-sm text-amber-700 font-medium">Mar 22-23, 2025</span>
+                </div>
+                <h3 className="text-xl font-bold text-gray-900 mt-3">The Patel Family</h3>
+                <p className="text-gray-600 text-sm">Downtown Ottawa · 24 items</p>
+              </div>
+              <div className="p-4 flex gap-3 overflow-x-auto">
+                <div className="flex-shrink-0 w-20 h-20 rounded-xl bg-gray-100 flex items-center justify-center text-2xl">🛏️</div>
+                <div className="flex-shrink-0 w-20 h-20 rounded-xl bg-gray-100 flex items-center justify-center text-2xl">🍽️</div>
+                <div className="flex-shrink-0 w-20 h-20 rounded-xl bg-gray-100 flex items-center justify-center text-2xl">🛋️</div>
+              </div>
+              <div className="p-4 pt-0">
+                <Link
+                  href="/buyer"
+                  className="block w-full py-3 text-center bg-amber-500 text-white font-semibold rounded-xl hover:bg-amber-600 transition-colors"
+                >
+                  View sale
+                </Link>
+              </div>
+            </div>
+            <div className="bg-white rounded-2xl border-2 border-amber-200 shadow-lg overflow-hidden hover:shadow-xl transition-shadow group">
+              <div className="p-6 bg-gradient-to-r from-amber-50 to-orange-50 border-b border-amber-100">
+                <div className="flex items-center justify-between">
+                  <span className="px-3 py-1 bg-amber-500 text-white text-xs font-bold rounded-full">
+                    Moving Sale
+                  </span>
+                  <span className="text-sm text-amber-700 font-medium">Mar 29-30, 2025</span>
+                </div>
+                <h3 className="text-xl font-bold text-gray-900 mt-3">Sarah & Tom</h3>
+                <p className="text-gray-600 text-sm">Westboro · 18 items</p>
+              </div>
+              <div className="p-4 flex gap-3 overflow-x-auto">
+                <div className="flex-shrink-0 w-20 h-20 rounded-xl bg-gray-100 flex items-center justify-center text-2xl">🚲</div>
+                <div className="flex-shrink-0 w-20 h-20 rounded-xl bg-gray-100 flex items-center justify-center text-2xl">🪑</div>
+                <div className="flex-shrink-0 w-20 h-20 rounded-xl bg-gray-100 flex items-center justify-center text-2xl">📺</div>
+              </div>
+              <div className="p-4 pt-0">
+                <Link
+                  href="/buyer"
+                  className="block w-full py-3 text-center bg-amber-500 text-white font-semibold rounded-xl hover:bg-amber-600 transition-colors"
+                >
+                  View sale
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section className="pt-8 pb-10 md:pt-10 md:pb-14 bg-gradient-to-br from-emerald-50 via-white to-amber-50">
         <div className="max-w-5xl mx-auto px-4">
           <div className="text-center max-w-3xl mx-auto mb-10">
