@@ -14,7 +14,10 @@ import {
   Users,
   Heart,
   Check,
+  AlertCircle,
+  Loader2,
 } from "lucide-react";
+import { useAuth } from "@/context/AuthContext";
 
 function GoogleIcon() {
   return (
@@ -30,12 +33,16 @@ function GoogleIcon() {
 function JoinPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { signin, signup } = useAuth();
+
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     const mode = searchParams.get("mode");
@@ -43,9 +50,20 @@ function JoinPageContent() {
     else setAuthMode("signin");
   }, [searchParams]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    router.push("/buyer");
+    setError("");
+    setLoading(true);
+    try {
+      const user = authMode === "signup"
+        ? await signup(name, email, password)
+        : await signin(email, password);
+      router.push(user.role === "ADMIN" ? "/admin" : "/buyer");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -53,7 +71,7 @@ function JoinPageContent() {
       {/* Main content - Split layout */}
       <div className="flex-1 flex flex-col lg:flex-row px-4 md:px-[5%] lg:px-[10%] bg-gradient-to-br from-amber-50 via-orange-50/80 to-amber-100">
         {/* Left Panel - Informational */}
-        <div className="w-full lg:w-1/2 pt-16 lg:pt-20 pb-8 lg:pb-12 flex flex-col justify-start">
+        <div className="w-full lg:w-1/2 pt-8 lg:pt-10 pb-8 lg:pb-12 flex flex-col justify-start">
           <div>
             <div className="inline-flex items-center gap-2 border-2 border-amber-500/60 text-amber-800 px-4 py-2 rounded-full text-sm font-medium mb-8">
             <Lock size={14} />
@@ -116,7 +134,7 @@ function JoinPageContent() {
           {/* Tabs */}
           <div className="flex gap-2 mb-8">
             <button
-              onClick={() => setAuthMode("signin")}
+              onClick={() => { setAuthMode("signin"); setError(""); }}
               className={`flex-1 py-3 rounded-xl font-semibold text-sm transition-colors ${
                 authMode === "signin"
                   ? "bg-emerald-600 text-white"
@@ -126,7 +144,7 @@ function JoinPageContent() {
               Sign In
             </button>
             <button
-              onClick={() => setAuthMode("signup")}
+              onClick={() => { setAuthMode("signup"); setError(""); }}
               className={`flex-1 py-3 rounded-xl font-semibold text-sm transition-colors ${
                 authMode === "signup"
                   ? "bg-emerald-600 text-white"
@@ -140,6 +158,13 @@ function JoinPageContent() {
           <h2 className="text-2xl font-bold text-gray-900 mb-8 text-center">
             {authMode === "signin" ? "Welcome Back" : "Create your account"}
           </h2>
+
+          {error && (
+            <div className="flex items-center gap-2 px-4 py-3 mb-2 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">
+              <AlertCircle size={16} className="shrink-0" />
+              {error}
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {authMode === "signup" && (
@@ -220,8 +245,10 @@ function JoinPageContent() {
 
             <button
               type="submit"
-              className="w-full py-4 rounded-xl font-semibold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors"
+              disabled={loading}
+              className="w-full py-4 rounded-xl font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
             >
+              {loading && <Loader2 size={18} className="animate-spin" />}
               {authMode === "signin" ? "Sign In" : "Sign Up"}
             </button>
           </form>

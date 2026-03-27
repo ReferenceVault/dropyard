@@ -6,7 +6,7 @@ import { GlobalFooter } from "./GlobalFooter";
 
 export function GlobalLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const isDashboard = pathname === "/buyer";
+  const isDashboard = pathname === "/buyer" || pathname.startsWith("/admin");
 
   return (
     <div className="min-h-screen flex flex-col">

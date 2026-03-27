@@ -48,26 +48,26 @@ function getCountdownLabel(ms: number): string {
 
 export function DropCycleProvider({ children }: { children: React.ReactNode }) {
   const [simulatedDate, setSimulatedDateState] = useState<Date | null>(null);
-  const [tick, setTick] = useState(0);
+  const [now, setNow] = useState<Date | null>(null);
 
   const setSimulatedDate = useCallback((d: Date | null) => {
     setSimulatedDateState(d);
   }, []);
 
-  const effectiveNow = simulatedDate ?? new Date();
-  const info = getDropCycleInfo(effectiveNow);
-  const msUntilNextEvent = Math.max(
-    0,
-    info.nextEventAt.getTime() - effectiveNow.getTime()
-  );
-  const countdownLabel = getCountdownLabel(msUntilNextEvent);
-
-  // Re-tick every second so countdown updates (only when not simulated, or to refresh)
+  // Only start the clock on the client to avoid SSR/client mismatch
   useEffect(() => {
+    setNow(simulatedDate ?? new Date());
     if (simulatedDate) return;
-    const id = setInterval(() => setTick((t) => t + 1), 1000);
+    const id = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(id);
   }, [simulatedDate]);
+
+  const effectiveNow = now ?? simulatedDate ?? new Date(0);
+  const info = getDropCycleInfo(effectiveNow);
+  const msUntilNextEvent = now
+    ? Math.max(0, info.nextEventAt.getTime() - effectiveNow.getTime())
+    : 0;
+  const countdownLabel = now ? getCountdownLabel(msUntilNextEvent) : "";
 
   return (
     <DropCycleContext.Provider
