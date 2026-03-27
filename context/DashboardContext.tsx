@@ -40,7 +40,7 @@ export interface DashboardState {
 }
 
 const defaultState: DashboardState = {
-  mode: "seller",
+  mode: "buyer",
   sellerOnboardingComplete: false,
   buyerOnboardingComplete: false,
   dropType: "weekly",
@@ -82,7 +82,7 @@ const defaultState: DashboardState = {
 const DashboardContext = createContext<DashboardState>(defaultState);
 
 export function DashboardProvider({ children }: { children: React.ReactNode }) {
-  const [mode, setMode] = useState<DashboardMode>("seller");
+  const [mode, setMode] = useState<DashboardMode>("buyer");
   const [sellerOnboardingComplete, setSellerOnboardingComplete] = useState(false);
   const [buyerOnboardingComplete, setBuyerOnboardingComplete] = useState(false);
   const [dropType, setDropType] = useState<DropType>("weekly");
