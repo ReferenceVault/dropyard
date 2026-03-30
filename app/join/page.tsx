@@ -17,7 +17,7 @@ import {
   AlertCircle,
   Loader2,
 } from "lucide-react";
-import { GoogleLogin } from "@react-oauth/google";
+import { useGoogleLogin } from "@react-oauth/google";
 import { useAuth } from "@/context/AuthContext";
 
 function JoinPageContent() {
@@ -34,6 +34,26 @@ function JoinPageContent() {
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const login = useGoogleLogin({
+    flow: "implicit",
+    onSuccess: async (tokenResponse) => {
+      if (!tokenResponse.access_token) return;
+      setError("");
+      setLoading(true);
+      try {
+        const user = await signInWithGoogle(tokenResponse.access_token);
+        router.push(user.role === "ADMIN" ? "/admin" : "/buyer");
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : "Google sign-in failed");
+      } finally {
+        setLoading(false);
+      }
+    },
+    onError: () => {
+      setError("Google sign-in was cancelled or failed");
+    },
+  });
 
   useEffect(() => {
     const mode = searchParams.get("mode");
@@ -254,33 +274,20 @@ function JoinPageContent() {
           </div>
 
           {googleClientId ? (
-            <div className="w-full [&>div]:w-full">
-              <GoogleLogin
-                width="100%"
-                size="large"
-                text="continue_with"
-                logo_alignment="center"
-                shape="rectangular"
-                theme="outline"
-                containerProps={{ style: { width: "100%" } }}
-                useOneTap={false}
-                onSuccess={async (res) => {
-                  if (!res.credential) return;
-                  setError("");
-                  setLoading(true);
-                  try {
-                    const user = await signInWithGoogle(res.credential);
-                    router.push(user.role === "ADMIN" ? "/admin" : "/buyer");
-                  } catch (err: unknown) {
-                    setError(err instanceof Error ? err.message : "Google sign-in failed");
-                  } finally {
-                    setLoading(false);
-                  }
-                }}
-                onError={() => {
-                  setError("Google sign-in was cancelled or failed");
-                }}
-              />
+            <div className="w-full">
+              <button
+                type="button"
+                onClick={() => login()}
+                disabled={loading}
+                  className="w-full py-4 rounded-xl font-semibold border border-gray-200 bg-white hover:bg-gray-50 transition-colors flex items-center justify-center gap-3 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <img
+                  src="https://developers.google.com/identity/images/g-logo.png"
+                  alt="Google"
+                  className="w-5 h-5"
+                />
+                Continue with Google
+              </button>
             </div>
           ) : (
             <p className="text-center text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-xl py-3 px-4">
