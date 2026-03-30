@@ -270,6 +270,9 @@ function BuyerDashboardContent() {
   const [listOriginalPrice, setListOriginalPrice] = useState("");
   const [listSubmitting, setListSubmitting] = useState(false);
   const [listError, setListError] = useState("");
+  const [listPhotoFiles, setListPhotoFiles] = useState<File[]>([]);
+  const [listPhotoPreviews, setListPhotoPreviews] = useState<string[]>([]);
+  const [photoInputKey, setPhotoInputKey] = useState(0);
 
   // Fetch seller's items
   useEffect(() => {
@@ -300,6 +303,39 @@ function BuyerDashboardContent() {
     setListError("");
     setListSubmitting(true);
     try {
+      const photoUrls: string[] = [];
+      for (const file of listPhotoFiles) {
+        if (!file.type.startsWith("image/")) {
+          throw new Error("Only image files are allowed.");
+        }
+
+        const presign = await apiRequest<{ uploadUrl: string; publicUrl: string; maxFilesPerItem: number }>(
+          "/api/uploads/s3/presign",
+          {
+            method: "POST",
+            token: accessToken,
+            body: JSON.stringify({
+              fileName: file.name,
+              contentType: file.type,
+              size: file.size,
+            }),
+          }
+        );
+
+        const putRes = await fetch(presign.uploadUrl, {
+          method: "PUT",
+          headers: {
+            "Content-Type": file.type,
+          },
+          body: file,
+        });
+
+        if (!putRes.ok) {
+          throw new Error("Photo upload failed. Please try again.");
+        }
+        photoUrls.push(presign.publicUrl);
+      }
+
       await apiRequest("/api/items", {
         method: "POST",
         token: accessToken,
@@ -310,11 +346,16 @@ function BuyerDashboardContent() {
           condition: CONDITION_MAP[condition] || "GOOD",
           price: parseFloat(listPrice),
           originalPrice: listOriginalPrice ? parseFloat(listOriginalPrice) : undefined,
+          photos: photoUrls,
           isMovingSale: false,
         }),
       });
       // Reset form and go to My Items
       setListTitle(""); setListDescription(""); setListPrice(""); setListOriginalPrice("");
+      listPhotoPreviews.forEach((u) => URL.revokeObjectURL(u));
+      setListPhotoPreviews([]);
+      setListPhotoFiles([]);
+      setPhotoInputKey((k) => k + 1);
       setActiveSellerTab("items");
     } catch (err: unknown) {
       setListError(err instanceof Error ? err.message : "Failed to list item");
@@ -1649,7 +1690,7 @@ function BuyerDashboardContent() {
                     <>
                       <div className="p-6 border-b border-gray-100 bg-gradient-to-r from-emerald-50 to-amber-50">
                         <h2 className="text-xl font-bold text-gray-900 mb-2">List a New Item</h2>
-                        <p className="text-gray-600 text-sm">Photos coming soon (S3). Fill in details below.</p>
+                        <p className="text-gray-600 text-sm">Upload photos and publish your listing.</p>
                       </div>
                       <form onSubmit={handleListItem} className="p-6 space-y-6">
                         {listError && (
@@ -1658,6 +1699,45 @@ function BuyerDashboardContent() {
                             {listError}
                           </div>
                         )}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Photos (up to 5)</label>
+                          <input
+                            key={photoInputKey}
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            disabled={listSubmitting}
+                            onChange={(e) => {
+                              const files = Array.from(e.target.files ?? []).slice(0, 5);
+                              listPhotoPreviews.forEach((u) => URL.revokeObjectURL(u));
+                              setListPhotoFiles(files);
+                              setListPhotoPreviews(files.map((f) => URL.createObjectURL(f)));
+                            }}
+                            className="w-full px-4 py-2 border border-gray-200 rounded-xl text-sm"
+                          />
+                          <p className="text-xs text-gray-500 mt-2">JPG, PNG, WEBP, GIF. Max 10MB each.</p>
+                          {listPhotoPreviews.length > 0 && (
+                            <div className="flex flex-wrap gap-2 mt-3">
+                              {listPhotoPreviews.map((url, idx) => (
+                                <div key={`${url}-${idx}`} className="relative">
+                                  <img src={url} alt={`Selected ${idx + 1}`} className="w-20 h-20 object-cover rounded-lg border border-gray-200" />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      URL.revokeObjectURL(url);
+                                      setListPhotoFiles((prev) => prev.filter((_, i) => i !== idx));
+                                      setListPhotoPreviews((prev) => prev.filter((_, i) => i !== idx));
+                                    }}
+                                    className="absolute -top-2 -right-2 w-6 h-6 bg-white border border-gray-300 rounded-full flex items-center justify-center hover:bg-gray-50"
+                                    aria-label="Remove selected photo"
+                                  >
+                                    <X size={12} />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-2">Title</label>
                           <input
