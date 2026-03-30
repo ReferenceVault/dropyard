@@ -31,6 +31,8 @@ interface AuthState {
 interface AuthContextValue extends AuthState {
   signup: (name: string, email: string, password: string, phone?: string) => Promise<AuthUser>;
   signin: (email: string, password: string) => Promise<AuthUser>;
+  /** Google Identity Services JWT (`credential` from GoogleLogin) */
+  signInWithGoogle: (credential: string) => Promise<AuthUser>;
   signout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
@@ -94,6 +96,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return data.user;
   }, []);
 
+  const signInWithGoogle = useCallback(async (credential: string): Promise<AuthUser> => {
+    const data = await apiRequest<{ user: AuthUser; accessToken: string; refreshToken: string }>(
+      '/api/auth/google',
+      { method: 'POST', body: JSON.stringify({ credential }) }
+    );
+    localStorage.setItem(ACCESS_TOKEN_KEY, data.accessToken);
+    localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
+    setState({ user: data.user, accessToken: data.accessToken, loading: false });
+    return data.user;
+  }, []);
+
   const refreshUser = useCallback(async () => {
     const token = localStorage.getItem(ACCESS_TOKEN_KEY);
     if (!token) return;
@@ -114,7 +127,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ ...state, signup, signin, signout, refreshUser }}>
+    <AuthContext.Provider value={{ ...state, signup, signin, signInWithGoogle, signout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );
