@@ -254,14 +254,15 @@ function JoinPageContent() {
           </div>
 
           {googleClientId ? (
-            <div className="flex justify-center w-full min-w-[200px] [&>div]:w-full">
+            <div className="w-full flex justify-center">
               <GoogleLogin
-                width="100%"
+                type="standard"
                 size="large"
                 text="continue_with"
                 logo_alignment="center"
                 shape="rectangular"
                 theme="outline"
+                containerProps={{ style: { width: "100%" } }}
                 onSuccess={async (res) => {
                   if (!res.credential) return;
                   setError("");
