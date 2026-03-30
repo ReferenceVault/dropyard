@@ -259,6 +259,7 @@ function JoinPageContent() {
                 width="100%"
                 size="large"
                 text="continue_with"
+                logo_alignment="center"
                 shape="rectangular"
                 theme="outline"
                 onSuccess={async (res) => {
