@@ -82,3 +82,22 @@ export async function apiRequest<T = unknown>(
 
   return data as T;
 }
+
+export async function uploadItemPhoto(
+  file: File
+): Promise<{ key: string; publicUrl: string; maxFilesPerItem: number }> {
+  const token =
+    typeof window !== 'undefined' ? localStorage.getItem(ACCESS_TOKEN_KEY) : null;
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch(`${BASE_URL}/api/uploads/s3`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: form,
+  });
+  const data = (await res.json().catch(() => ({}))) as { error?: string };
+  if (!res.ok) {
+    throw new Error(typeof data.error === 'string' ? data.error : 'Upload failed');
+  }
+  return data as { key: string; publicUrl: string; maxFilesPerItem: number };
+}

@@ -46,7 +46,7 @@ import {
 import { DashboardProvider, useDashboard } from "@/context/DashboardContext";
 import { DropCycleProvider, useDropCycle } from "@/context/DropCycleContext";
 import { useAuth } from "@/context/AuthContext";
-import { apiRequest } from "@/lib/api";
+import { apiRequest, uploadItemPhoto } from "@/lib/api";
 
 // ── API item type (matches backend response) ──────────────────
 interface ApiItem {
@@ -168,6 +168,9 @@ function BuyerDashboardContent() {
   const [editTitle, setEditTitle] = useState("");
   const [editPrice, setEditPrice] = useState("");
   const [editDescription, setEditDescription] = useState("");
+  const [editPhotoPreview, setEditPhotoPreview] = useState<string | null>(null);
+  const [editPhotoKey, setEditPhotoKey] = useState<string | null>(null);
+  const [editPhotoUploading, setEditPhotoUploading] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState("");
 
@@ -270,8 +273,9 @@ function BuyerDashboardContent() {
   const [listOriginalPrice, setListOriginalPrice] = useState("");
   const [listSubmitting, setListSubmitting] = useState(false);
   const [listError, setListError] = useState("");
-  const [listPhotoFiles, setListPhotoFiles] = useState<File[]>([]);
+  const [listPhotoKeys, setListPhotoKeys] = useState<string[]>([]);
   const [listPhotoPreviews, setListPhotoPreviews] = useState<string[]>([]);
+  const [listPhotoUploading, setListPhotoUploading] = useState(false);
   const [photoInputKey, setPhotoInputKey] = useState(0);
 
   // Fetch seller's items
@@ -303,37 +307,8 @@ function BuyerDashboardContent() {
     setListError("");
     setListSubmitting(true);
     try {
-      const photoUrls: string[] = [];
-      for (const file of listPhotoFiles) {
-        if (!file.type.startsWith("image/")) {
-          throw new Error("Only image files are allowed.");
-        }
-
-        const presign = await apiRequest<{ uploadUrl: string; publicUrl: string; maxFilesPerItem: number }>(
-          "/api/uploads/s3/presign",
-          {
-            method: "POST",
-            token: accessToken,
-            body: JSON.stringify({
-              fileName: file.name,
-              contentType: file.type,
-              size: file.size,
-            }),
-          }
-        );
-
-        const putRes = await fetch(presign.uploadUrl, {
-          method: "PUT",
-          headers: {
-            "Content-Type": file.type,
-          },
-          body: file,
-        });
-
-        if (!putRes.ok) {
-          throw new Error("Photo upload failed. Please try again.");
-        }
-        photoUrls.push(presign.publicUrl);
+      if (listPhotoPreviews.length > 0 && listPhotoKeys.length !== listPhotoPreviews.length) {
+        throw new Error("Please wait for photos to finish uploading.");
       }
 
       await apiRequest("/api/items", {
@@ -346,7 +321,7 @@ function BuyerDashboardContent() {
           condition: CONDITION_MAP[condition] || "GOOD",
           price: parseFloat(listPrice),
           originalPrice: listOriginalPrice ? parseFloat(listOriginalPrice) : undefined,
-          photos: photoUrls,
+          photos: listPhotoKeys.length > 0 ? listPhotoKeys : undefined,
           isMovingSale: false,
         }),
       });
@@ -354,7 +329,7 @@ function BuyerDashboardContent() {
       setListTitle(""); setListDescription(""); setListPrice(""); setListOriginalPrice("");
       listPhotoPreviews.forEach((u) => URL.revokeObjectURL(u));
       setListPhotoPreviews([]);
-      setListPhotoFiles([]);
+      setListPhotoKeys([]);
       setPhotoInputKey((k) => k + 1);
       setActiveSellerTab("items");
     } catch (err: unknown) {
@@ -429,11 +404,68 @@ function BuyerDashboardContent() {
             {/* Content */}
             <div className="flex-1 overflow-y-auto p-6 space-y-5">
               {/* Photo */}
-              <div className="aspect-video bg-gray-50 rounded-xl flex items-center justify-center overflow-hidden">
-                {itemPanel.photos[0]
-                  ? <img src={itemPanel.photos[0]} alt={itemPanel.title} className="w-full h-full object-cover" />
-                  : <Package size={48} className="text-gray-300" />
-                }
+              <div className="aspect-video bg-gray-50 rounded-xl flex items-center justify-center overflow-hidden relative group">
+                {editMode ? (
+                  <>
+                    {editPhotoPreview || itemPanel.photos[0] ? (
+                      <img
+                        src={editPhotoPreview ?? itemPanel.photos[0]}
+                        alt={itemPanel.title}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <Package size={48} className="text-gray-300" />
+                    )}
+                    <label className="absolute bottom-3 right-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/60 text-white text-xs font-medium shadow-sm cursor-pointer hover:bg-black/70">
+                      <Upload size={12} />
+                      <span>Change photo</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        disabled={editSaving || editPhotoUploading}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          if (!file.type.startsWith("image/")) {
+                            setEditError("Only image files are allowed.");
+                            return;
+                          }
+                          const previewUrl = URL.createObjectURL(file);
+                          setEditPhotoPreview(previewUrl);
+                          setEditPhotoKey(null);
+                          setEditError("");
+                          setEditPhotoUploading(true);
+                          (async () => {
+                            try {
+                              const { key, publicUrl } = await uploadItemPhoto(file);
+                              fetch('http://127.0.0.1:7352/ingest/a078bd89-8601-4e40-9648-4d6f9a1cbe0e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b51b30'},body:JSON.stringify({sessionId:'b51b30',location:'buyer/page.tsx:edit-upload',message:'edit photo uploaded',data:{itemId:itemPanel.id,newKey:key,newUrl:publicUrl},timestamp:Date.now(),hypothesisId:'H1',runId:'pre-fix'})}).catch(()=>{});
+                              setEditPhotoKey(key);
+                              setItemPanel(prev =>
+                                prev ? { ...prev, photos: [publicUrl, ...prev.photos.slice(1)] } : prev
+                              );
+                            } catch (err) {
+                              URL.revokeObjectURL(previewUrl);
+                              setEditPhotoPreview(null);
+                              setEditPhotoKey(null);
+                              setEditError(err instanceof Error ? err.message : "Photo upload failed.");
+                            } finally {
+                              setEditPhotoUploading(false);
+                              e.target.value = "";
+                            }
+                          })();
+                        }}
+                      />
+                    </label>
+                  </>
+                ) : (
+                  <>
+                    {itemPanel.photos[0]
+                      ? <img src={itemPanel.photos[0]} alt={itemPanel.title} className="w-full h-full object-cover" />
+                      : <Package size={48} className="text-gray-300" />
+                    }
+                  </>
+                )}
               </div>
 
               {/* Status badge */}
@@ -461,6 +493,12 @@ function BuyerDashboardContent() {
                     <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
                     <textarea value={editDescription} onChange={e => setEditDescription(e.target.value)} rows={4} className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none resize-none" />
                   </div>
+                  {editPhotoUploading && (
+                    <p className="text-[11px] text-emerald-700 flex items-center gap-1.5">
+                      <Loader2 size={12} className="animate-spin" />
+                      Uploading photo…
+                    </p>
+                  )}
                   {editError && <p className="text-red-600 text-sm">{editError}</p>}
                 </div>
               ) : (
@@ -492,15 +530,31 @@ function BuyerDashboardContent() {
                     Cancel
                   </button>
                   <button
-                    disabled={editSaving}
+                    disabled={
+                      editSaving ||
+                      editPhotoUploading ||
+                      (editPhotoPreview !== null && !editPhotoKey)
+                    }
                     onClick={async () => {
                       setEditSaving(true); setEditError("");
                       try {
+                        const payload: Record<string, unknown> = {
+                          title: editTitle,
+                          price: parseFloat(editPrice),
+                          description: editDescription,
+                        };
+                        if (editPhotoKey) {
+                          payload.photos = [editPhotoKey];
+                        }
+                        fetch('http://127.0.0.1:7352/ingest/a078bd89-8601-4e40-9648-4d6f9a1cbe0e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b51b30'},body:JSON.stringify({sessionId:'b51b30',location:'buyer/page.tsx:edit-save',message:'edit save payload',data:{itemId:itemPanel.id,hasPhotoKey:Boolean(editPhotoKey),payload},timestamp:Date.now(),hypothesisId:'H2',runId:'pre-fix'})}).catch(()=>{});
                         const updated = await apiRequest<{ item: ApiItem }>(`/api/items/${itemPanel.id}`, {
                           method: "PATCH",
-                          body: JSON.stringify({ title: editTitle, price: parseFloat(editPrice), description: editDescription }),
+                          body: JSON.stringify(payload),
                         });
+                        fetch('http://127.0.0.1:7352/ingest/a078bd89-8601-4e40-9648-4d6f9a1cbe0e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b51b30'},body:JSON.stringify({sessionId:'b51b30',location:'buyer/page.tsx:edit-save',message:'edit save response',data:{itemId:updated.item.id,photos:updated.item.photos},timestamp:Date.now(),hypothesisId:'H3',runId:'pre-fix'})}).catch(()=>{});
                         setSellerItems(items => items.map(i => i.id === updated.item.id ? updated.item : i));
+                        setBrowseItems(items => items.map(i => i.id === updated.item.id ? updated.item : i));
+                        setSavedItems(items => items.map(i => i.id === updated.item.id ? updated.item : i));
                         setItemPanel(updated.item);
                         setEditMode(false);
                       } catch (err) {
@@ -518,7 +572,16 @@ function BuyerDashboardContent() {
               ) : (
                 <>
                   <button
-                    onClick={() => { setEditMode(true); setEditTitle(itemPanel.title); setEditPrice(String(itemPanel.price)); setEditDescription(itemPanel.description); setEditError(""); }}
+                    onClick={() => {
+                      setEditMode(true);
+                      setEditTitle(itemPanel.title);
+                      setEditPrice(String(itemPanel.price));
+                      setEditDescription(itemPanel.description);
+                      setEditPhotoPreview(null);
+                      setEditPhotoKey(null);
+                      setEditPhotoUploading(false);
+                      setEditError("");
+                    }}
                     className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-700 hover:bg-gray-50 flex items-center justify-center gap-2"
                   >
                     <FileText size={15} /> Edit
@@ -1700,22 +1763,61 @@ function BuyerDashboardContent() {
                           </div>
                         )}
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Photos (up to 5)</label>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Add Item Photo</label>
                           <input
                             key={photoInputKey}
                             type="file"
                             accept="image/*"
                             multiple
-                            disabled={listSubmitting}
+                            disabled={listSubmitting || listPhotoUploading}
                             onChange={(e) => {
-                              const files = Array.from(e.target.files ?? []).slice(0, 5);
-                              listPhotoPreviews.forEach((u) => URL.revokeObjectURL(u));
-                              setListPhotoFiles(files);
-                              setListPhotoPreviews(files.map((f) => URL.createObjectURL(f)));
+                              void (async () => {
+                                const input = e.target;
+                                const files = Array.from(input.files ?? []).slice(0, 5);
+                                listPhotoPreviews.forEach((u) => URL.revokeObjectURL(u));
+                                if (files.length === 0) {
+                                  setListPhotoPreviews([]);
+                                  setListPhotoKeys([]);
+                                  return;
+                                }
+                                if (!accessToken) return;
+                                const previewUrls = files.map((f) => URL.createObjectURL(f));
+                                setListPhotoPreviews(previewUrls);
+                                setListPhotoKeys([]);
+                                setListError("");
+                                setListPhotoUploading(true);
+                                try {
+                                  const keys: string[] = [];
+                                  for (const f of files) {
+                                    if (!f.type.startsWith("image/")) {
+                                      throw new Error("Only image files are allowed.");
+                                    }
+                                    const { key } = await uploadItemPhoto(f);
+                                    keys.push(key);
+                                  }
+                                  setListPhotoKeys(keys);
+                                } catch (err) {
+                                  previewUrls.forEach((u) => URL.revokeObjectURL(u));
+                                  setListPhotoPreviews([]);
+                                  setListPhotoKeys([]);
+                                  setListError(err instanceof Error ? err.message : "Photo upload failed.");
+                                } finally {
+                                  setListPhotoUploading(false);
+                                  input.value = "";
+                                }
+                              })();
                             }}
                             className="w-full px-4 py-2 border border-gray-200 rounded-xl text-sm"
                           />
-                          <p className="text-xs text-gray-500 mt-2">JPG, PNG, WEBP, GIF. Max 10MB each.</p>
+                          <p className="text-xs text-gray-500 mt-2">
+                            JPG, PNG, WEBP, GIF. Max 10MB each. Files upload as soon as you choose them.
+                          </p>
+                          {listPhotoUploading && (
+                            <p className="text-xs text-emerald-700 mt-2 flex items-center gap-2">
+                              <Loader2 size={14} className="animate-spin shrink-0" />
+                              Uploading to server…
+                            </p>
+                          )}
                           {listPhotoPreviews.length > 0 && (
                             <div className="flex flex-wrap gap-2 mt-3">
                               {listPhotoPreviews.map((url, idx) => (
@@ -1725,7 +1827,7 @@ function BuyerDashboardContent() {
                                     type="button"
                                     onClick={() => {
                                       URL.revokeObjectURL(url);
-                                      setListPhotoFiles((prev) => prev.filter((_, i) => i !== idx));
+                                      setListPhotoKeys((prev) => prev.filter((_, i) => i !== idx));
                                       setListPhotoPreviews((prev) => prev.filter((_, i) => i !== idx));
                                     }}
                                     className="absolute -top-2 -right-2 w-6 h-6 bg-white border border-gray-300 rounded-full flex items-center justify-center hover:bg-gray-50"
@@ -1814,7 +1916,12 @@ function BuyerDashboardContent() {
                         </div>
                         <button
                           type="submit"
-                          disabled={listSubmitting}
+                          disabled={
+                            listSubmitting ||
+                            listPhotoUploading ||
+                            (listPhotoPreviews.length > 0 &&
+                              listPhotoKeys.length !== listPhotoPreviews.length)
+                          }
                           className="w-full py-4 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 disabled:opacity-60 transition-colors flex items-center justify-center gap-2"
                         >
                           {listSubmitting ? <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Publishing…</> : <><ImagePlus size={20} />Publish Item</>}
