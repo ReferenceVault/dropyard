@@ -173,6 +173,8 @@ function BuyerDashboardContent() {
   const [editPhotoUploading, setEditPhotoUploading] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState("");
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
 
   // ── Claim modal state ─────────────────────────────────────────
   type ClaimModalItem = { id: string; title: string; price: number };
@@ -439,7 +441,6 @@ function BuyerDashboardContent() {
                           (async () => {
                             try {
                               const { key, publicUrl } = await uploadItemPhoto(file);
-                              fetch('http://127.0.0.1:7352/ingest/a078bd89-8601-4e40-9648-4d6f9a1cbe0e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b51b30'},body:JSON.stringify({sessionId:'b51b30',location:'buyer/page.tsx:edit-upload',message:'edit photo uploaded',data:{itemId:itemPanel.id,newKey:key,newUrl:publicUrl},timestamp:Date.now(),hypothesisId:'H1',runId:'pre-fix'})}).catch(()=>{});
                               setEditPhotoKey(key);
                               setItemPanel(prev =>
                                 prev ? { ...prev, photos: [publicUrl, ...prev.photos.slice(1)] } : prev
@@ -546,12 +547,10 @@ function BuyerDashboardContent() {
                         if (editPhotoKey) {
                           payload.photos = [editPhotoKey];
                         }
-                        fetch('http://127.0.0.1:7352/ingest/a078bd89-8601-4e40-9648-4d6f9a1cbe0e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b51b30'},body:JSON.stringify({sessionId:'b51b30',location:'buyer/page.tsx:edit-save',message:'edit save payload',data:{itemId:itemPanel.id,hasPhotoKey:Boolean(editPhotoKey),payload},timestamp:Date.now(),hypothesisId:'H2',runId:'pre-fix'})}).catch(()=>{});
                         const updated = await apiRequest<{ item: ApiItem }>(`/api/items/${itemPanel.id}`, {
                           method: "PATCH",
                           body: JSON.stringify(payload),
                         });
-                        fetch('http://127.0.0.1:7352/ingest/a078bd89-8601-4e40-9648-4d6f9a1cbe0e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b51b30'},body:JSON.stringify({sessionId:'b51b30',location:'buyer/page.tsx:edit-save',message:'edit save response',data:{itemId:updated.item.id,photos:updated.item.photos},timestamp:Date.now(),hypothesisId:'H3',runId:'pre-fix'})}).catch(()=>{});
                         setSellerItems(items => items.map(i => i.id === updated.item.id ? updated.item : i));
                         setBrowseItems(items => items.map(i => i.id === updated.item.id ? updated.item : i));
                         setSavedItems(items => items.map(i => i.id === updated.item.id ? updated.item : i));
@@ -587,14 +586,7 @@ function BuyerDashboardContent() {
                     <FileText size={15} /> Edit
                   </button>
                   <button
-                    onClick={async () => {
-                      if (!confirm("Delete this item?")) return;
-                      try {
-                        await apiRequest(`/api/items/${itemPanel.id}`, { method: "DELETE" });
-                        setSellerItems(items => items.filter(i => i.id !== itemPanel.id));
-                        setItemPanel(null);
-                      } catch { /* ignore */ }
-                    }}
+                    onClick={() => setDeleteConfirmOpen(true)}
                     className="px-4 py-2.5 rounded-xl border border-red-200 text-red-600 text-sm font-semibold hover:bg-red-50 flex items-center justify-center gap-2"
                   >
                     <X size={15} /> Delete
@@ -604,6 +596,50 @@ function BuyerDashboardContent() {
             </div>
           </div>
         </>
+      )}
+
+      {/* ── Delete confirmation modal ── */}
+      {deleteConfirmOpen && itemPanel && (
+        <div className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="p-6 border-b border-gray-100">
+              <h2 className="text-lg font-bold text-gray-900">Delete Item</h2>
+              <p className="text-sm text-gray-500 mt-1">
+                Are you sure you want to delete <span className="font-medium text-gray-700">{itemPanel.title}</span>? This action cannot be undone.
+              </p>
+            </div>
+            <div className="px-6 py-5 flex gap-3">
+              <button
+                onClick={() => setDeleteConfirmOpen(false)}
+                disabled={deleteSubmitting}
+                className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  if (!itemPanel) return;
+                  setDeleteSubmitting(true);
+                  try {
+                    await apiRequest(`/api/items/${itemPanel.id}`, { method: "DELETE" });
+                    setSellerItems((items) => items.filter((i) => i.id !== itemPanel.id));
+                    setDeleteConfirmOpen(false);
+                    setItemPanel(null);
+                  } catch {
+                    setDeleteConfirmOpen(false);
+                  } finally {
+                    setDeleteSubmitting(false);
+                  }
+                }}
+                disabled={deleteSubmitting}
+                className="flex-1 py-2.5 rounded-xl bg-red-600 text-white text-sm font-semibold hover:bg-red-700 disabled:opacity-60 flex items-center justify-center gap-2"
+              >
+                {deleteSubmitting && <Loader2 size={14} className="animate-spin" />}
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ── Claim modal ── */}
