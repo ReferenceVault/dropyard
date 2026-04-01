@@ -4,7 +4,7 @@ cd /var/www/dropyard/frontend
 
 echo "==> Pull latest code"
 git fetch origin
-git reset --hard origin/main   # change branch if needed
+git reset --hard origin/pooja   # change branch if needed
 
 
 
