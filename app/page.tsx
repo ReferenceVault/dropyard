@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -25,11 +25,17 @@ import {
   Sparkles,
   HelpCircle,
   FileText,
-  Facebook,
+  ShieldCheck,
+  X,
+  Bell,
+  Heart,
+  Search,
+  ChevronDown,
   Instagram,
+  Facebook,
   Twitter,
-  Linkedin,
   Youtube,
+  Linkedin,
 } from "lucide-react";
 
 // ============================================================================
@@ -134,7 +140,6 @@ export default function DropYardWebsite() {
 
   return (
     <>
-      <SocialSidebar position="left" />
       <Website
         page={page}
         setPage={setPage}
@@ -179,6 +184,200 @@ function Website({
     </div>
   );
 }
+
+// ============================================================================
+// FEATURED ITEMS DATA
+// ============================================================================
+const NEIGHBORHOODS = [
+  { id: "kanata-north", name: "Kanata North", drops: 3, items: 156 },
+  { id: "barrhaven", name: "Barrhaven", drops: 4, items: 203 },
+  { id: "orleans", name: "Orleans", drops: 3, items: 124 },
+  { id: "nepean", name: "Nepean", drops: 4, items: 176 },
+  { id: "westboro", name: "Westboro", drops: 4, items: 198 },
+  { id: "stittsville", name: "Stittsville", drops: 2, items: 87 },
+];
+
+const CATEGORIES = [
+  { id: "all", name: "All Items", icon: "🏠", count: 156, color: "emerald" },
+  { id: "furniture", name: "Furniture", icon: "🪑", count: 34, color: "amber" },
+  { id: "electronics", name: "Electronics", icon: "📱", count: 28, color: "blue" },
+  { id: "kitchen", name: "Kitchen", icon: "🍳", count: 22, color: "orange" },
+  { id: "kids", name: "Kids & Baby", icon: "👶", count: 31, color: "pink" },
+  { id: "clothing", name: "Clothing", icon: "👕", count: 18, color: "purple" },
+  { id: "sports", name: "Sports", icon: "⚽", count: 12, color: "green" },
+  { id: "tools", name: "Tools", icon: "🔧", count: 11, color: "gray" },
+];
+
+const FEATURED_ITEMS = [
+  { id: 1, title: "IKEA Kallax Shelf Unit", price: 45, originalPrice: 120, image: "📦", category: "Furniture", seller: "Patel Family", neighborhood: "Kanata North", distance: "2.3 km", saves: 12, condition: "Like New" },
+  { id: 2, title: "Dyson V8 Cordless Vacuum", price: 180, originalPrice: 450, image: "🔌", category: "Electronics", seller: "Chen Family", neighborhood: "Barrhaven", distance: "4.1 km", saves: 28, condition: "Good" },
+  { id: 3, title: "Kids Balance Bike (Blue)", price: 35, originalPrice: 90, image: "🚲", category: "Kids & Baby", seller: "Johnson Family", neighborhood: "Orleans", distance: "6.2 km", saves: 8, condition: "Good" },
+  { id: 4, title: "KitchenAid Stand Mixer", price: 120, originalPrice: 350, image: "🍳", category: "Kitchen", seller: "Williams Family", neighborhood: "Westboro", distance: "3.5 km", saves: 45, condition: "Excellent" },
+];
+
+// ============================================================================
+// ITEM CARD
+// ============================================================================
+function ItemCard({ item }: { item: typeof FEATURED_ITEMS[0] }) {
+  const [saved, setSaved] = useState(false);
+  const discount = Math.round((1 - item.price / item.originalPrice) * 100);
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden hover:shadow-lg hover:border-emerald-200 transition-all duration-300 group">
+      <div className="relative bg-gradient-to-br from-gray-50 to-gray-100 h-44 flex items-center justify-center">
+        <span className="text-6xl group-hover:scale-110 transition-transform duration-300">{item.image}</span>
+        <div className="absolute top-3 left-3 bg-amber-500 text-white text-xs font-bold px-2 py-1 rounded-full">-{discount}%</div>
+        <button
+          onClick={() => setSaved(!saved)}
+          className={`absolute top-3 right-3 w-8 h-8 rounded-full flex items-center justify-center ${saved ? "bg-rose-500 text-white" : "bg-white/90 text-gray-400 hover:text-rose-500"}`}
+        >
+          <Heart size={16} fill={saved ? "currentColor" : "none"} />
+        </button>
+        <div className="absolute bottom-3 left-3 bg-white/90 text-xs font-medium px-2 py-1 rounded-full text-gray-700">{item.condition}</div>
+      </div>
+      <div className="p-4">
+        <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
+          <span className="bg-gray-100 px-2 py-0.5 rounded-full">{item.category}</span>
+          <span className="flex items-center gap-1"><MapPin size={12} />{item.distance}</span>
+        </div>
+        <h3 className="font-semibold text-gray-900 mb-2 line-clamp-2 group-hover:text-emerald-700">{item.title}</h3>
+        <div className="flex items-center gap-2 mb-3">
+          <div className="w-6 h-6 bg-emerald-100 rounded-full flex items-center justify-center"><User size={12} className="text-emerald-600" /></div>
+          <span className="text-xs text-gray-600">{item.seller}</span>
+          <span className="text-xs text-gray-400">• {item.neighborhood}</span>
+        </div>
+        <div className="flex items-center justify-between">
+          <div>
+            <span className="text-lg font-bold text-emerald-600">${item.price}</span>
+            <span className="text-sm text-gray-400 line-through ml-2">${item.originalPrice}</span>
+          </div>
+          <div className="flex items-center gap-1 text-xs text-gray-400"><Heart size={12} />{item.saves}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// SEARCH BAR
+// ============================================================================
+function SearchBar() {
+  const [query, setQuery] = useState("");
+  const [selectedNeighborhood, setSelectedNeighborhood] = useState("");
+  const [showDropdown, setShowDropdown] = useState(false);
+
+  return (
+    <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-2 flex flex-col md:flex-row gap-2">
+      <div className="flex-1 flex items-center gap-3 px-4 py-3 bg-gray-50 rounded-xl">
+        <Search size={20} className="text-gray-400" />
+        <input
+          type="text"
+          placeholder="Search items..."
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          className="flex-1 bg-transparent outline-none text-gray-900 placeholder:text-gray-400"
+        />
+      </div>
+      <div className="relative">
+        <button
+          onClick={() => setShowDropdown(!showDropdown)}
+          className="flex items-center gap-2 px-4 py-3 bg-gray-50 rounded-xl hover:bg-gray-100 min-w-[180px]"
+        >
+          <MapPin size={18} className="text-emerald-600" />
+          <span className="text-gray-700 text-sm">{selectedNeighborhood || "All Neighborhoods"}</span>
+          <ChevronDown size={16} className="text-gray-400 ml-auto" />
+        </button>
+        {showDropdown && (
+          <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50">
+            <button
+              onClick={() => { setSelectedNeighborhood(""); setShowDropdown(false); }}
+              className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50"
+            >
+              All Neighborhoods
+            </button>
+            {NEIGHBORHOODS.map((n) => (
+              <button
+                key={n.id}
+                onClick={() => { setSelectedNeighborhood(n.name); setShowDropdown(false); }}
+                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center justify-between"
+              >
+                <span>{n.name}</span>
+                <span className="text-xs text-gray-400">{n.items} items</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <button className="bg-emerald-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-emerald-700 flex items-center justify-center gap-2">
+        <Search size={18} /><span className="hidden sm:inline">Search</span>
+      </button>
+    </div>
+  );
+}
+
+// ============================================================================
+// CATEGORY CARD
+// ============================================================================
+function CategoryCard({ category, onClick }: { category: typeof CATEGORIES[0]; onClick: () => void }) {
+  const colors: Record<string, string> = {
+    emerald: "bg-emerald-50 hover:bg-emerald-100 border-emerald-200 text-emerald-700",
+    amber: "bg-amber-50 hover:bg-amber-100 border-amber-200 text-amber-700",
+    blue: "bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700",
+    orange: "bg-orange-50 hover:bg-orange-100 border-orange-200 text-orange-700",
+    pink: "bg-pink-50 hover:bg-pink-100 border-pink-200 text-pink-700",
+    purple: "bg-purple-50 hover:bg-purple-100 border-purple-200 text-purple-700",
+    green: "bg-green-50 hover:bg-green-100 border-green-200 text-green-700",
+    gray: "bg-gray-50 hover:bg-gray-100 border-gray-200 text-gray-700",
+  };
+  return (
+    <button onClick={onClick} className={`p-4 rounded-2xl border-2 transition-all duration-300 hover:scale-105 hover:shadow-md ${colors[category.color]}`}>
+      <span className="text-3xl block mb-2">{category.icon}</span>
+      <span className="font-semibold text-sm block">{category.name}</span>
+      <span className="text-xs opacity-70">{category.count} items</span>
+    </button>
+  );
+}
+
+// ============================================================================
+// DROP COUNTDOWN
+// ============================================================================
+function DropCountdown() {
+  const [time, setTime] = useState({ hours: 23, minutes: 45, seconds: 32 });
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTime((prev) => {
+        let { hours, minutes, seconds } = prev;
+        seconds--;
+        if (seconds < 0) { seconds = 59; minutes--; }
+        if (minutes < 0) { minutes = 59; hours--; }
+        if (hours < 0) { hours = 47; minutes = 59; seconds = 59; }
+        return { hours, minutes, seconds };
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const pad = (n: number) => String(n).padStart(2, "0");
+
+  return (
+    <div className="flex items-center gap-1.5 font-mono text-sm">
+      <span className="bg-emerald-900/60 px-1.5 py-0.5 rounded text-white font-bold">{pad(time.hours)}</span>
+      <span className="text-emerald-300 font-bold">:</span>
+      <span className="bg-emerald-900/60 px-1.5 py-0.5 rounded text-white font-bold">{pad(time.minutes)}</span>
+      <span className="text-emerald-300 font-bold">:</span>
+      <span className="bg-emerald-900/60 px-1.5 py-0.5 rounded text-white font-bold">{pad(time.seconds)}</span>
+    </div>
+  );
+}
+
+const COMING_SOON_HOODS = [
+  { name: "Kanata", interest: 84 },
+  { name: "Orléans", interest: 67 },
+  { name: "Nepean", interest: 53 },
+  { name: "Stittsville", interest: 41 },
+  { name: "Gloucester", interest: 38 },
+  { name: "Westboro", interest: 29 },
+];
 
 // ============================================================================
 // HOW IT WORKS ILLUSTRATIONS
@@ -367,6 +566,120 @@ function HowItWorksIllustration({ step }: { step: number }) {
 }
 
 // ============================================================================
+// HOW IT WORKS SECTION (animated)
+// ============================================================================
+function HowItWorksSection() {
+  const [visible, setVisible] = useState(false);
+  const sectionRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) setVisible(true); },
+      { threshold: 0.2 }
+    );
+    if (sectionRef.current) observer.observe(sectionRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  const steps = [
+    { num: 1, img: "/images/step1.jpg", alt: "Sellers submit items" },
+    { num: 2, img: "/images/step2.jpg", alt: "We host the Drop" },
+    { num: 3, img: "/images/step3.jpg", alt: "Neighbours claim" },
+    { num: 4, img: "/images/step4.jpg", alt: "Local pickup & payment" },
+  ];
+
+  return (
+    <>
+      <style>{`
+        @keyframes slideInFromLeft {
+          0% { opacity: 0; transform: translateX(-60px) scale(0.95); }
+          60% { opacity: 1; transform: translateX(8px) scale(1.01); }
+          100% { opacity: 1; transform: translateX(0) scale(1); }
+        }
+        @keyframes growLine {
+          0% { width: 0%; }
+          100% { width: 100%; }
+        }
+        @keyframes fadeInUp {
+          0% { opacity: 0; transform: translateY(20px); }
+          100% { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes popIn {
+          0% { opacity: 0; transform: scale(0); }
+          70% { transform: scale(1.2); }
+          100% { opacity: 1; transform: scale(1); }
+        }
+        .step-card { opacity: 0; }
+        .step-card.animate { animation: slideInFromLeft 0.6s ease-out forwards; }
+        .step-line { width: 0%; }
+        .step-line.animate { animation: growLine 1.2s ease-out 0.3s forwards; }
+        .step-dot { opacity: 0; transform: scale(0); }
+        .step-dot.animate { animation: popIn 0.3s ease-out forwards; }
+        .header-anim { opacity: 0; }
+        .header-anim.animate { animation: fadeInUp 0.5s ease-out forwards; }
+      `}</style>
+
+      <section
+        ref={sectionRef}
+        className="pt-6 pb-8 md:pt-12 md:pb-10 font-sans bg-gradient-to-br from-emerald-800 via-emerald-700 to-emerald-900 relative overflow-hidden"
+      >
+        <div className="absolute inset-0 opacity-10">
+          <div className="absolute top-20 left-10 w-40 h-40 rounded-full bg-amber-400 blur-3xl"></div>
+          <div className="absolute bottom-20 right-20 w-60 h-60 rounded-full bg-emerald-400 blur-3xl"></div>
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 h-80 rounded-full bg-amber-300 blur-3xl"></div>
+        </div>
+
+        <div className="max-w-4xl mx-auto px-4 w-full relative z-10">
+          <div className="text-center mb-6">
+            <h2 className={`text-3xl md:text-4xl font-bold text-white mb-3 header-anim ${visible ? "animate" : ""}`}>
+              How DropYard Works
+            </h2>
+            <p
+              className={`text-emerald-200 text-lg max-w-xl mx-auto header-anim ${visible ? "animate" : ""}`}
+              style={{ animationDelay: "0.15s" }}
+            >
+              Four simple steps from listing to pickup
+            </p>
+          </div>
+
+          <div className="hidden lg:block relative max-w-xl lg:max-w-2xl mx-auto">
+            <div className="absolute top-[100px] left-[8%] right-[8%] h-0.5 overflow-hidden z-0">
+              <div className={`h-full bg-amber-400/50 step-line ${visible ? "animate" : ""}`}></div>
+            </div>
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className={`absolute top-[97px] w-3 h-3 rounded-full bg-amber-400 shadow-sm shadow-amber-400/50 step-dot ${visible ? "animate" : ""}`}
+                style={{ left: `${27 + i * 23}%`, animationDelay: `${0.6 + i * 0.25}s` }}
+              ></div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 md:gap-4 max-w-xl lg:max-w-2xl mx-auto">
+            {steps.map((step) => (
+              <div
+                key={step.num}
+                className={`group step-card ${visible ? "animate" : ""}`}
+                style={{ animationDelay: `${(step.num - 1) * 0.2}s` }}
+              >
+                <div className="bg-white rounded-xl overflow-hidden shadow-lg hover:shadow-xl transition-all hover:-translate-y-1 relative">
+                  <div className="absolute top-2 left-2 z-10 bg-amber-500 text-white w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs shadow-md">
+                    {step.num}
+                  </div>
+                  <div className="flex items-center justify-center p-1">
+                    <img src={step.img} alt={step.alt} className="w-full h-full object-contain" />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    </>
+  );
+}
+
+// ============================================================================
 // PAGE SECTIONS (to be filled)
 // ============================================================================
 function HomePage({
@@ -408,6 +721,14 @@ function HomePage({
   ];
 
   const [activeTestimonialIndex, setActiveTestimonialIndex] = useState(0);
+  const [waitlistEmail, setWaitlistEmail] = useState("");
+  const [waitlistHood, setWaitlistHood] = useState("");
+  const [waitlistSubmitted, setWaitlistSubmitted] = useState(false);
+
+  const handleWaitlistSubmit = () => {
+    if (waitlistEmail && waitlistHood) setWaitlistSubmitted(true);
+  };
+
 
   const nextTestimonial = () => {
     setActiveTestimonialIndex((prev) => (prev + 1) % testimonials.length);
@@ -428,62 +749,127 @@ function HomePage({
 
   return (
     <div>
-      <section
-        className="relative min-h-[89vh] flex items-start pt-0 pb-0 md:pt-0 md:pb-0"
-        style={{
-          backgroundImage: "url('/images/hero_background.png')",
-          backgroundSize: "cover",
-          backgroundPosition: "center",
-        }}
-      >
-        <div className="absolute inset-0 bg-white/80"></div>
-        <div className="relative max-w-7xl mx-auto px-4 lg:px-8 w-full">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-[1.1fr,0.9fr] gap-10 items-center">
-            <div className="max-w-xl">
-              <div className="inline-flex items-center gap-2 bg-emerald-100 text-emerald-800 px-6 py-2 rounded-full text-sm md:text-base font-semibold mb-8 shadow-sm">
-                <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
-                Now live in your neighborhood
-              </div>
-              <h1 className="font-brand text-[1.65rem] md:text-[2.475rem] lg:text-[3.3rem] font-extrabold text-slate-900 mb-6 leading-tight tracking-tight">
-                Your community&apos;s
-                <span className="block text-emerald-600">yard sale-online.</span>
-              </h1>
-              <p className="font-brand text-base md:text-lg lg:text-xl text-slate-600 mb-10 max-w-2xl">
-                Buy and sell locally through curated weekend Drops.
-                <span className="block text-emerald-600 font-semibold mt-3">From one home to another.</span>
-              </p>
-              <div className="flex flex-col sm:flex-row gap-3">
-                <button
-                  onClick={() => goBuyerAuth("signup")}
-                  className="bg-emerald-700 text-white px-6 md:px-8 py-3 md:py-4 rounded-full font-semibold hover:bg-emerald-800 shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2"
-                >
-                  Join the Next Drop
-                  <ArrowRight size={18} />
-                </button>
-                <button
-                  onClick={() => goSellerAuth("signup")}
-                  className="border-2 border-emerald-700 text-emerald-700 px-6 md:px-8 py-3 md:py-4 rounded-full font-semibold hover:bg-emerald-50 transition-colors flex items-center justify-center gap-2"
-                >
-                  Sell with DropYard
-                  <ChevronRight size={18} />
-                </button>
-              </div>
-              <p className="mt-6 text-sm text-gray-500">
-                Already have an account?
-                <button onClick={() => goBuyerAuth("login")} className="text-emerald-700 font-medium ml-1 hover:underline">
-                  Log in
-                </button>
-              </p>
-            </div>
+      {/* HERO */}
+      <section className="relative min-h-[580px] md:min-h-[640px] flex items-start overflow-hidden">
+        {/* Photo Background */}
+        <div className="absolute inset-0">
+          <img
+            src="/images/hero-bg.jpg"
+            alt="Neighbourhood yard sale"
+            className="w-full h-full object-cover"
+          />
+          <div className="absolute inset-0 bg-gradient-to-r from-white/85 via-white/60 to-transparent"></div>
+          <div className="absolute inset-0 bg-gradient-to-t from-white/40 to-transparent"></div>
+        </div>
 
-            <div className="flex items-center justify-center lg:justify-end h-full">
-              <div className="w-full max-w-xl lg:max-w-2xl">
-                <div className="h-80 md:h-[30rem] lg:h-[36rem]">
-                  <img
-                    src="/hero_right.png"
-                    alt="DropYard hero"
-                    className="w-full h-full object-cover"
-                  />
+        {/* Hero Content */}
+        <div className="relative z-10 w-full">
+          <div className="max-w-7xl mx-auto px-4 pt-12 pb-10 md:pt-16 md:pb-16">
+            <div className="grid lg:grid-cols-5 gap-8 lg:gap-12 items-center">
+              {/* Left copy */}
+              <div className="lg:col-span-3">
+                <div className="inline-flex items-center gap-2 bg-emerald-700 text-white pl-3 pr-4 py-2 rounded-full text-sm font-semibold mb-6 shadow-lg">
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-300 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-300"></span>
+                  </span>
+                  Now live in Barrhaven
+                </div>
+
+                <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-gray-900 mb-4 leading-tight">
+                  Barrhaven neighbourhood
+                  <span className="block text-emerald-700">yardsale — Online.</span>
+                </h1>
+                <p className="text-lg md:text-xl text-gray-700 mb-3 max-w-xl">
+                  Buy and sell locally through curated weekend Drops.
+                </p>
+                <p className="text-emerald-700 font-medium text-base md:text-lg mb-8">
+                  From one home to another.™
+                </p>
+
+                <div className="flex flex-col sm:flex-row gap-3 mb-4">
+                  <button
+                    onClick={() => goBuyerAuth("signup")}
+                    className="bg-emerald-700 text-white px-7 py-3.5 rounded-full font-semibold hover:bg-emerald-800 shadow-lg flex items-center justify-center gap-2 transition-colors"
+                  >
+                    Browse the Barrhaven Drop <ArrowRight size={18} />
+                  </button>
+                  <button
+                    onClick={() => goSellerAuth("signup")}
+                    className="bg-amber-500 border-2 border-amber-500 text-white px-7 py-3.5 rounded-full font-semibold hover:bg-amber-600 hover:border-amber-600 flex items-center justify-center gap-2 shadow-md transition-colors"
+                  >
+                    Sell with DropYard <ChevronRight size={18} />
+                  </button>
+                </div>
+                <p className="text-sm text-gray-600">
+                  Already have an account?{" "}
+                  <button onClick={() => goBuyerAuth("login")} className="text-emerald-700 font-medium ml-1 hover:underline">
+                    Log in
+                  </button>
+                </p>
+              </div>
+
+              {/* Right: Live Drop card */}
+              <div className="lg:col-span-2 hidden lg:block">
+                <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
+                  <div className="bg-emerald-700 px-5 py-4 flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <span className="relative flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-300 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-300"></span>
+                        </span>
+                        <span className="text-emerald-200 text-xs font-semibold uppercase tracking-wider">Live Now</span>
+                      </div>
+                      <p className="text-white font-bold text-lg">Barrhaven Launch Drop</p>
+                    </div>
+                    <DropCountdown />
+                  </div>
+
+                  <div className="grid grid-cols-3 divide-x divide-gray-100 border-b border-gray-100">
+                    <div className="px-4 py-3 text-center">
+                      <p className="text-xl font-bold text-gray-900">150+</p>
+                      <p className="text-xs text-gray-500">Items</p>
+                    </div>
+                    <div className="px-4 py-3 text-center">
+                      <p className="text-xl font-bold text-emerald-600">42</p>
+                      <p className="text-xs text-gray-500">Claimed</p>
+                    </div>
+                    <div className="px-4 py-3 text-center">
+                      <p className="text-xl font-bold text-amber-500">24</p>
+                      <p className="text-xs text-gray-500">Sellers</p>
+                    </div>
+                  </div>
+
+                  <div className="p-4 space-y-3">
+                    {[
+                      { emoji: "🪑", title: "IKEA Kallax Shelf", price: "$45", status: "available" },
+                      { emoji: "🔌", title: "Dyson V8 Vacuum", price: "$180", status: "claimed" },
+                      { emoji: "🍳", title: "KitchenAid Mixer", price: "$120", status: "available" },
+                    ].map((item, i) => (
+                      <div key={i} className="flex items-center gap-3 p-2.5 rounded-xl bg-gray-50 hover:bg-emerald-50 transition-colors cursor-pointer">
+                        <span className="text-2xl w-10 text-center">{item.emoji}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-gray-900 text-sm truncate">{item.title}</p>
+                          <p className="text-emerald-600 font-bold text-sm">{item.price}</p>
+                        </div>
+                        {item.status === "available" ? (
+                          <span className="text-xs font-semibold text-emerald-600 bg-emerald-100 px-2.5 py-1 rounded-full">Available</span>
+                        ) : (
+                          <span className="text-xs font-semibold text-amber-600 bg-amber-100 px-2.5 py-1 rounded-full">Claimed</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="px-4 pb-4">
+                    <button
+                      onClick={() => goBuyerAuth("signup")}
+                      className="w-full bg-emerald-700 text-white py-3 rounded-xl font-semibold hover:bg-emerald-800 transition-colors flex items-center justify-center gap-2 text-sm"
+                    >
+                      Browse All 150+ Items <ArrowRight size={16} />
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -491,11 +877,12 @@ function HomePage({
         </div>
       </section>
 
-      <div className="bg-emerald-800 text-white py-4 -mt-8 md:-mt-12 relative z-10">
+      {/* Trust Bar */}
+      <div className="bg-emerald-800 text-white py-4">
         <div className="max-w-7xl mx-auto px-4 flex flex-wrap justify-center gap-4 md:gap-12">
           {[
-            { icon: MapPin, text: "Local pickup only" },
-            { icon: Users, text: "Real neighbors" },
+            { icon: MapPin, text: "Local pickup · Barrhaven only" },
+            { icon: Users, text: "Real neighbours" },
             { icon: Clock, text: "Time-limited Drops" },
             { icon: Recycle, text: "Reuse, not waste" },
           ].map((item, i) => (
@@ -507,88 +894,175 @@ function HomePage({
         </div>
       </div>
 
-      {/* Featured Moving Sales - Premium */}
-      <section className="py-12 md:py-16 bg-gradient-to-br from-amber-50 via-white to-emerald-50 border-b border-amber-100">
+      {/* Featured This Week */}
+      <section className="py-16 bg-gray-50">
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex items-center justify-between mb-8">
             <div>
-              <div className="inline-flex items-center gap-2 bg-amber-100 text-amber-800 px-3 py-1 rounded-full text-sm font-semibold mb-2">
-                <Truck size={14} />
-                Premium
-              </div>
-              <h2 className="text-2xl md:text-3xl font-bold text-gray-900">
-                Featured Moving Sales
-              </h2>
-              <p className="text-gray-600 mt-1">
-                Custom dates, homepage spotlight, unlimited listings
-              </p>
+              <h2 className="text-2xl md:text-3xl font-bold text-gray-900">Featured This Week</h2>
+              <p className="text-gray-600 mt-1">Hand-picked deals from your neighbors</p>
             </div>
-            <Link
-              href="/buyer"
-              className="hidden sm:flex items-center gap-2 text-emerald-600 font-semibold hover:text-emerald-700"
+            <button
+              onClick={() => goBuyerAuth("signup")}
+              className="hidden md:flex items-center gap-2 text-emerald-600 font-medium hover:text-emerald-700"
             >
-              Browse all
-              <ChevronRight size={18} />
-            </Link>
+              View All <ChevronRight size={18} />
+            </button>
           </div>
-          <div className="grid md:grid-cols-2 gap-6">
-            <div className="bg-white rounded-2xl border-2 border-amber-200 shadow-lg overflow-hidden hover:shadow-xl transition-shadow group">
-              <div className="p-6 bg-gradient-to-r from-amber-50 to-orange-50 border-b border-amber-100">
-                <div className="flex items-center justify-between">
-                  <span className="px-3 py-1 bg-amber-500 text-white text-xs font-bold rounded-full">
-                    Moving Sale
-                  </span>
-                  <span className="text-sm text-amber-700 font-medium">Mar 22-23, 2025</span>
-                </div>
-                <h3 className="text-xl font-bold text-gray-900 mt-3">The Patel Family</h3>
-                <p className="text-gray-600 text-sm">Downtown Ottawa · 24 items</p>
-              </div>
-              <div className="p-4 flex gap-3 overflow-x-auto">
-                <div className="flex-shrink-0 w-20 h-20 rounded-xl bg-gray-100 flex items-center justify-center text-2xl">🛏️</div>
-                <div className="flex-shrink-0 w-20 h-20 rounded-xl bg-gray-100 flex items-center justify-center text-2xl">🍽️</div>
-                <div className="flex-shrink-0 w-20 h-20 rounded-xl bg-gray-100 flex items-center justify-center text-2xl">🛋️</div>
-              </div>
-              <div className="p-4 pt-0">
-                <Link
-                  href="/buyer"
-                  className="block w-full py-3 text-center bg-amber-500 text-white font-semibold rounded-xl hover:bg-amber-600 transition-colors"
-                >
-                  View sale
-                </Link>
-              </div>
-            </div>
-            <div className="bg-white rounded-2xl border-2 border-amber-200 shadow-lg overflow-hidden hover:shadow-xl transition-shadow group">
-              <div className="p-6 bg-gradient-to-r from-amber-50 to-orange-50 border-b border-amber-100">
-                <div className="flex items-center justify-between">
-                  <span className="px-3 py-1 bg-amber-500 text-white text-xs font-bold rounded-full">
-                    Moving Sale
-                  </span>
-                  <span className="text-sm text-amber-700 font-medium">Mar 29-30, 2025</span>
-                </div>
-                <h3 className="text-xl font-bold text-gray-900 mt-3">Sarah & Tom</h3>
-                <p className="text-gray-600 text-sm">Westboro · 18 items</p>
-              </div>
-              <div className="p-4 flex gap-3 overflow-x-auto">
-                <div className="flex-shrink-0 w-20 h-20 rounded-xl bg-gray-100 flex items-center justify-center text-2xl">🚲</div>
-                <div className="flex-shrink-0 w-20 h-20 rounded-xl bg-gray-100 flex items-center justify-center text-2xl">🪑</div>
-                <div className="flex-shrink-0 w-20 h-20 rounded-xl bg-gray-100 flex items-center justify-center text-2xl">📺</div>
-              </div>
-              <div className="p-4 pt-0">
-                <Link
-                  href="/buyer"
-                  className="block w-full py-3 text-center bg-amber-500 text-white font-semibold rounded-xl hover:bg-amber-600 transition-colors"
-                >
-                  View sale
-                </Link>
-              </div>
-            </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {FEATURED_ITEMS.map((item) => <ItemCard key={item.id} item={item} />)}
+          </div>
+          <div className="text-center mt-10">
+            <button
+              onClick={() => goBuyerAuth("signup")}
+              className="bg-emerald-600 text-white px-8 py-3 rounded-full font-semibold hover:bg-emerald-700 inline-flex items-center gap-2"
+            >
+              Browse All Items <ArrowRight size={18} />
+            </button>
           </div>
         </div>
       </section>
 
-      <section className="pt-8 pb-10 md:pt-10 md:pb-14 bg-gradient-to-br from-emerald-50 via-white to-amber-50">
+      {/* Search Items Section */}
+      <section className="py-6 md:py-8 bg-white">
+        <div className="max-w-4xl mx-auto px-4">
+          <div className="text-center mb-8">
+            <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">Find what you&apos;re looking for</h2>
+            <p className="text-gray-600">Search 156+ items available in this weekend&apos;s Drop</p>
+          </div>
+          <SearchBar />
+          <div className="flex flex-wrap justify-center gap-2 mt-6">
+            {["Furniture", "Electronics", "Kids & Baby", "Kitchen", "Sports"].map((tag, i) => (
+              <button
+                key={i}
+                onClick={() => goBuyerAuth("signup")}
+                className="px-4 py-2 bg-gray-100 hover:bg-emerald-100 hover:text-emerald-700 rounded-full text-sm font-medium text-gray-600 transition-colors"
+              >
+                {tag}
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Browse by Category */}
+      <section className="py-6 md:py-8 bg-gray-50">
+        <div className="max-w-7xl mx-auto px-4">
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <h2 className="text-2xl md:text-3xl font-bold text-gray-900">Browse by Category</h2>
+              <p className="text-gray-600 mt-1">Find exactly what you&apos;re looking for</p>
+            </div>
+            <button
+              onClick={() => goBuyerAuth("signup")}
+              className="hidden md:flex items-center gap-2 text-emerald-600 font-medium hover:text-emerald-700"
+            >
+              View All <ChevronRight size={18} />
+            </button>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+            {CATEGORIES.map((cat) => (
+              <CategoryCard key={cat.id} category={cat} onClick={() => goBuyerAuth("signup")} />
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Coming Soon — Neighbourhood Waitlist */}
+      <section className="py-8 md:py-12 bg-gradient-to-b from-gray-50 to-white">
+        <div className="max-w-4xl mx-auto px-4">
+          <div className="text-center mb-10">
+            <div className="inline-flex items-center gap-2 bg-amber-100 text-amber-800 px-4 py-2 rounded-full text-sm font-semibold mb-4">
+              <MapPin size={15} />
+              Expanding across Ottawa
+            </div>
+            <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-3">
+              Not in Barrhaven? We&apos;re coming to you.
+            </h2>
+            <p className="text-gray-600 max-w-xl mx-auto">
+              Join the waitlist for your neighbourhood and be the first to know when your Drop goes live.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-10">
+            {COMING_SOON_HOODS.map((hood) => (
+              <button
+                key={hood.name}
+                onClick={() => { setWaitlistHood(hood.name); setWaitlistSubmitted(false); }}
+                className={`relative p-4 rounded-xl border-2 text-left transition-all hover:shadow-md ${
+                  waitlistHood === hood.name
+                    ? "border-emerald-500 bg-emerald-50 shadow-sm"
+                    : "border-gray-200 bg-white hover:border-gray-300"
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <p className={`font-semibold ${waitlistHood === hood.name ? "text-emerald-700" : "text-gray-900"}`}>
+                    {hood.name}
+                  </p>
+                  {waitlistHood === hood.name && <CheckCircle size={16} className="text-emerald-500" />}
+                </div>
+                <p className="text-xs text-gray-500">{hood.interest} people interested</p>
+                <div className="mt-2 w-full bg-gray-200 rounded-full h-1.5">
+                  <div
+                    className="bg-amber-400 h-1.5 rounded-full transition-all"
+                    style={{ width: `${Math.min((hood.interest / 100) * 100, 100)}%` }}
+                  />
+                </div>
+              </button>
+            ))}
+          </div>
+
+          {!waitlistSubmitted ? (
+            <div className="max-w-md mx-auto">
+              <div className="flex gap-2">
+                <input
+                  type="email"
+                  value={waitlistEmail}
+                  onChange={(e) => setWaitlistEmail(e.target.value)}
+                  placeholder="you@email.com"
+                  className="flex-1 px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
+                />
+                <button
+                  onClick={handleWaitlistSubmit}
+                  disabled={!waitlistEmail || !waitlistHood}
+                  className={`px-6 py-3 rounded-xl font-semibold text-sm flex items-center gap-2 transition-colors whitespace-nowrap ${
+                    waitlistEmail && waitlistHood
+                      ? "bg-emerald-700 text-white hover:bg-emerald-800"
+                      : "bg-gray-200 text-gray-400 cursor-not-allowed"
+                  }`}
+                >
+                  <Bell size={16} />
+                  Notify Me
+                </button>
+              </div>
+              {!waitlistHood && (
+                <p className="text-xs text-gray-400 mt-2 text-center">Select your neighbourhood above, then enter your email</p>
+              )}
+              {waitlistHood && !waitlistEmail && (
+                <p className="text-xs text-emerald-600 mt-2 text-center">Great — enter your email to join the {waitlistHood} waitlist</p>
+              )}
+            </div>
+          ) : (
+            <div className="max-w-md mx-auto text-center">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-5">
+                <CheckCircle size={28} className="text-emerald-500 mx-auto mb-2" />
+                <p className="font-semibold text-gray-900 mb-1">You&apos;re on the {waitlistHood} waitlist!</p>
+                <p className="text-sm text-gray-600">We&apos;ll email you at {waitlistEmail} when the {waitlistHood} Drop goes live.</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+
+
+      {/* Built for Communities Section */}
+      <section className="pt-6 pb-8 md:pt-12 md:pb-10 bg-gray-50">
         <div className="max-w-5xl mx-auto px-4">
           <div className="text-center max-w-3xl mx-auto mb-10">
+            <div className="inline-flex items-center gap-2 bg-emerald-100 text-emerald-800 px-4 py-1.5 rounded-full text-sm font-medium mb-5">
+              <MapPin size={14} />
+              Launching in Barrhaven
+            </div>
             <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
               Built for communities, <span className="text-emerald-700">not crowds.</span>
             </h2>
@@ -596,270 +1070,89 @@ function HomePage({
               DropYard brings back the simplicity of yard sales—without the hassle.
             </p>
             <p className="text-gray-600 text-sm md:text-base">
-              Every Drop connects neighbors, keeps value local, and gives everyday items a second life. We believe
-              communities thrive when value stays local.
+              No more ghosting, no more scams, no more strangers at your door.
+              Just neighbours buying and selling like neighbours do.
             </p>
           </div>
 
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8">
-            <div className="flex flex-row items-center justify-around gap-4 md:gap-8 overflow-x-auto">
-              <div className="text-center flex-shrink-0 min-w-[100px]">
-                <div className="text-2xl md:text-4xl font-bold text-emerald-700 mb-1">500+</div>
-                <div className="text-gray-600 font-medium text-xs md:text-sm mb-2 md:mb-3">Items rehomed</div>
-                <svg viewBox="0 0 120 80" className="w-16 md:w-24 h-12 md:h-16 mx-auto">
-                  <ellipse cx="60" cy="75" rx="50" ry="5" fill="#E8F5E9" />
-                  <ellipse cx="25" cy="65" rx="5" ry="10" fill="#A7F3D0" transform="rotate(-15 25 65)" />
-                  <ellipse cx="32" cy="62" rx="4" ry="8" fill="#6EE7B7" transform="rotate(10 32 62)" />
-                  <path d="M60 20 L35 40 L35 70 L85 70 L85 40 Z" fill="#059669" />
-                  <rect x="42" y="45" width="36" height="25" fill="white" stroke="#059669" strokeWidth="1.5" />
-                  <rect x="48" y="50" width="10" height="10" fill="#059669" />
-                  <rect x="62" y="50" width="10" height="10" fill="#059669" />
-                  <rect x="50" y="58" width="20" height="15" fill="#D4A574" stroke="#8B6914" strokeWidth="1" rx="1" />
-                  <ellipse cx="92" cy="65" rx="5" ry="10" fill="#A7F3D0" transform="rotate(15 92 65)" />
-                </svg>
-              </div>
-
-              <div className="w-px h-16 md:h-24 bg-gray-200 flex-shrink-0"></div>
-
-              <div className="text-center flex-shrink-0 min-w-[100px]">
-                <div className="text-2xl md:text-4xl font-bold text-amber-500 mb-1">50+</div>
-                <div className="text-gray-600 font-medium text-xs md:text-sm mb-2 md:mb-3">Neighborhoods</div>
-                <svg viewBox="0 0 120 80" className="w-16 md:w-24 h-12 md:h-16 mx-auto">
-                  <ellipse cx="60" cy="75" rx="50" ry="5" fill="#FEF3C7" />
-                  <g transform="translate(10, 50)">
-                    <path d="M12 0 L0 10 L0 25 L24 25 L24 10 Z" fill="#059669" />
-                    <rect x="3" y="12" width="18" height="13" fill="white" stroke="#059669" strokeWidth="1" />
-                  </g>
-                  <g transform="translate(35, 30)">
-                    <rect x="0" y="0" width="50" height="35" rx="3" fill="#E8F5E9" stroke="#059669" strokeWidth="1.5" />
-                    <line x1="0" y1="12" x2="50" y2="12" stroke="#A7F3D0" strokeWidth="0.5" />
-                    <line x1="0" y1="24" x2="50" y2="24" stroke="#A7F3D0" strokeWidth="0.5" />
-                    <line x1="17" y1="0" x2="17" y2="35" stroke="#A7F3D0" strokeWidth="0.5" />
-                    <line x1="34" y1="0" x2="34" y2="35" stroke="#A7F3D0" strokeWidth="0.5" />
-                  </g>
-                  <g transform="translate(65, 20)">
-                    <path d="M10 0 C4.5 0 0 4.5 0 10 C0 17.5 10 27 10 27 C10 27 20 17.5 20 10 C20 4.5 15.5 0 10 0 Z" fill="#F59E0B" />
-                    <circle cx="10" cy="9" r="4" fill="white" />
-                  </g>
-                  <g transform="translate(86, 50)">
-                    <path d="M12 0 L0 10 L0 25 L24 25 L24 10 Z" fill="#F59E0B" />
-                    <rect x="3" y="12" width="18" height="13" fill="white" stroke="#F59E0B" strokeWidth="1" />
-                  </g>
-                </svg>
-              </div>
-
-              <div className="w-px h-16 md:h-24 bg-gray-200 flex-shrink-0"></div>
-
-              <div className="text-center flex-shrink-0 min-w-[100px]">
-                <div className="text-2xl md:text-4xl font-bold text-amber-500 mb-1">100%</div>
-                <div className="text-gray-600 font-medium text-xs md:text-sm mb-2 md:mb-3">Local</div>
-                <svg viewBox="0 0 120 80" className="w-16 md:w-24 h-12 md:h-16 mx-auto">
-                  <ellipse cx="60" cy="40" rx="35" ry="25" fill="#FEF3C7" opacity="0.4" />
-                  <ellipse cx="60" cy="75" rx="50" ry="5" fill="#E8F5E9" />
-                  <g transform="translate(10, 45)">
-                    <path d="M15 0 L0 12 L0 30 L30 30 L30 12 Z" fill="#059669" />
-                    <rect x="4" y="14" width="22" height="16" fill="white" stroke="#059669" strokeWidth="1" />
-                    <rect x="8" y="17" width="5" height="5" fill="#059669" />
-                    <rect x="17" y="17" width="5" height="5" fill="#059669" />
-                  </g>
-                  <g transform="translate(45, 30)">
-                    <path d="M8 18 Q20 8 32 12 L38 18 Q42 22 38 26 L26 34 Q18 38 10 34 L4 26 Q0 22 4 18 Z" fill="#D4A574" stroke="#8B6914" strokeWidth="1.5" />
-                  </g>
-                  <g transform="translate(80, 45)">
-                    <path d="M15 0 L0 12 L0 30 L30 30 L30 12 Z" fill="#F59E0B" />
-                    <rect x="4" y="14" width="22" height="16" fill="white" stroke="#F59E0B" strokeWidth="1" />
-                    <rect x="8" y="17" width="5" height="5" fill="#F59E0B" />
-                    <rect x="17" y="17" width="5" height="5" fill="#F59E0B" />
-                  </g>
-                  <path d="M40 72 Q60 62 80 72" stroke="#059669" strokeWidth="1.5" strokeDasharray="3 2" fill="none" />
-                  <path d="M40 74 Q60 64 80 74" stroke="#F59E0B" strokeWidth="1.5" strokeDasharray="3 2" fill="none" />
-                </svg>
-              </div>
-            </div>
+          <div className="max-w-3xl mx-auto">
+            <img
+              src="/images/stats-card.jpg"
+              alt="Fresh every weekend · 0% Strangers · 100% Local · $0 To list"
+              className="w-full rounded-2xl shadow-sm"
+            />
           </div>
         </div>
       </section>
 
-      <section className="pt-6 pb-10 md:pt-12 md:pb-24 bg-gradient-to-b from-amber-50 via-white to-emerald-50 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.8)]">
-        <div className="max-w-7xl mx-auto px-4">
+      {/* Why Not Marketplace Section */}
+      <section className="pt-6 pb-8 md:pt-12 md:pb-10 bg-white">
+        <div className="max-w-4xl mx-auto px-4">
           <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">Built for everyone</h2>
-            <p className="text-lg text-emerald-700">Whether you&apos;re buying or selling, <span className="font-semibold">DropYard</span> has you covered</p>
+            <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-3">
+              Tired of <span className="text-gray-400 line-through">Facebook Marketplace</span> and <span className="text-gray-400 line-through">Kijiji</span>?
+            </h2>
+            <p className="text-gray-600 max-w-xl mx-auto">
+              We built DropYard because buying and selling locally shouldn&apos;t feel like a gamble.
+            </p>
           </div>
-        </div>
-      </section>
 
-      {/* For Buyers Section */}
-      <section className="-mt-20 pt-0 pb-10 md:-mt-24 md:pt-0 md:pb-16 bg-white">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="grid lg:grid-cols-2 gap-8 items-center">
-            <div className="relative">
-              <div className="relative">
-                <div className="relative mb-4 md:mb-8">
-                  <figure className="relative z-10">
-                    <img src="/images/img1.png" alt="" className="w-full max-w-full sm:max-w-sm md:max-w-md lg:max-w-lg h-auto max-h-[12.8rem] sm:max-h-[14.4rem] md:max-h-[16rem] lg:max-h-[19.2rem] rounded-lg shadow-lg object-cover" />
-                  </figure>
-                </div>
-                <div className="relative -mt-8 sm:-mt-12 md:-mt-16 ml-4 sm:ml-8 md:ml-16">
-                  <figure className="relative z-20">
-                    <img src="/images/img2.png" alt="" className="w-full max-w-full sm:max-w-sm md:max-w-md lg:max-w-lg h-auto max-h-[12.8rem] sm:max-h-[14.4rem] md:max-h-[16rem] lg:max-h-[19.2rem] rounded-lg shadow-lg object-cover" />
-                  </figure>
-                </div>
-                <div className="absolute top-1/4 right-2 sm:right-4 transform -translate-y-1/2 z-30 animate-spin" style={{ animationDuration: '30s' }}>
-                  <img src="/images/contact-us-img.svg" alt="" className="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24" />
-                </div>
-              </div>
-            </div>
-            
-            <div className="-mt-4 md:-mt-6">
-              <div className="mb-8 text-center md:text-left">
-                <h3 className="text-lg text-emerald-600 mb-2">For Buyers</h3>
-                <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">Shop locally from trusted neighbors</h2>
-                <p className="text-emerald-700 text-lg">Whether you&apos;re buying or selling, <span className="font-semibold">DropYard</span> has you covered</p>
-              </div>
-
-              <div className="grid md:grid-cols-2 gap-6">
-                <div>
-                  <div className="mb-6 text-center md:text-left">
-                    <div className="w-16 h-16 bg-emerald-100 rounded-2xl flex items-center justify-center mb-4 mx-auto md:mx-0">
-                      <ShoppingBag size={28} className="text-emerald-600" />
-                    </div>
-                    <h3 className="text-xl font-bold text-gray-900 mb-2">Fair, clear pricing</h3>
-                    <p className="text-gray-600">No haggling, no bidding wars—just simple, scheduled pickup times.</p>
-                  </div>
-                  <div>
-                    <button
-                      onClick={() => goBuyerAuth("signup")}
-                      className="w-full bg-emerald-700 text-white py-3 px-6 rounded-full font-semibold hover:bg-emerald-800 transition-colors flex items-center justify-center gap-2"
-                    >
-                      Browse the Next Drop
-                      <ArrowRight size={18} />
-                    </button>
-                  </div>
-                </div>
-
-                <div>
-                  <div className="mb-6 text-center md:text-left">
-                    <div className="w-16 h-16 bg-emerald-100 rounded-2xl flex items-center justify-center mb-4 mx-auto md:mx-0">
-                      <User size={28} className="text-emerald-600" />
+          <div className="grid md:grid-cols-2 gap-5">
+            {/* Pain points */}
+            <div className="bg-gray-50 rounded-2xl p-6 border border-gray-200">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-5">The old way</p>
+              <div className="space-y-4">
+                {[
+                  { text: "Ghosted 10–17 times before a sale", source: "FB Marketplace sellers" },
+                  { text: '"Is this still available?" on repeat', source: "Kijiji reviews" },
+                  { text: "34% of listings potentially scams", source: "TSB Bank, 2024" },
+                  { text: "30% spike in peer-to-peer robberies", source: "Ottawa Police, 2023" },
+                  { text: "Stale listings that never expire", source: "Both platforms" },
+                ].map((pain, i) => (
+                  <div key={i} className="flex gap-3">
+                    <div className="mt-0.5 flex-shrink-0">
+                      <X size={16} className="text-red-400" />
                     </div>
                     <div>
-                      <h3 className="text-xl font-bold text-gray-900 mb-1">Shop locally</h3>
-                      <p className="text-gray-600">From neighbors</p>
+                      <p className="text-gray-700 text-sm font-medium">{pain.text}</p>
+                      <p className="text-gray-400 text-xs mt-0.5">{pain.source}</p>
                     </div>
                   </div>
-                  <div className="text-center md:text-left">
-                    <ul className="space-y-2 inline-block md:block">
-                      <li className="flex items-center gap-2 justify-center md:justify-start">
-                        <Check size={16} className="text-emerald-500 flex-shrink-0" />
-                        <span className="text-gray-700">Shop locally from trusted neighbors</span>
-                      </li>
-                      <li className="flex items-center gap-2 justify-center md:justify-start">
-                        <Check size={16} className="text-emerald-500 flex-shrink-0" />
-                        <span className="text-gray-700">Fair, clear pricing—no haggling</span>
-                      </li>
-                      <li className="flex items-center gap-2 justify-center md:justify-start">
-                        <Check size={16} className="text-emerald-500 flex-shrink-0" />
-                        <span className="text-gray-700">No bidding wars</span>
-                      </li>
-                      <li className="flex items-center gap-2 justify-center md:justify-start">
-                        <Check size={16} className="text-emerald-500 flex-shrink-0" />
-                        <span className="text-gray-700">Simple, scheduled pickup times</span>
-                      </li>
-                    </ul>
-                  </div>
-                </div>
+                ))}
               </div>
             </div>
+
+            {/* DropYard solutions */}
+            <div className="bg-emerald-50 rounded-2xl p-6 border border-emerald-200">
+              <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wider mb-5">The DropYard way</p>
+              <div className="space-y-4">
+                {[
+                  { text: "Claim during a live Drop — real intent, not empty promises", icon: Clock },
+                  { text: "If it's in the Drop, it's available. No DMs needed.", icon: Check },
+                  { text: "Neighbourhood-verified sellers you can trust", icon: ShieldCheck },
+                  { text: "Neighbours, not strangers — community accountability", icon: Users },
+                  { text: "Everything auto-expires at Drop close. Always fresh.", icon: Clock },
+                ].map((solution, i) => (
+                  <div key={i} className="flex gap-3">
+                    <div className="mt-0.5 flex-shrink-0">
+                      <solution.icon size={16} className="text-emerald-600" />
+                    </div>
+                    <p className="text-gray-800 text-sm font-medium">{solution.text}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="text-center mt-8">
+            <p className="text-sm text-gray-500 italic">
+              &quot;DropYard does not need to be better than Facebook Marketplace or Kijiji. It needs to be structurally different — and it is.&quot;
+            </p>
           </div>
         </div>
       </section>
 
-      {/* For Sellers Section */}
-      <section className="-mt-8 pt-12 pb-8 md:-mt-10 md:pt-14 md:pb-12 bg-gradient-to-br from-amber-50 via-amber-50/80 to-yellow-50">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="grid lg:grid-cols-2 gap-8 items-center">
-            <div className="order-1 lg:order-1 -mt-4 md:-mt-6">
-              <div className="mb-8 text-center md:text-left">
-                <h3 className="text-lg text-amber-600 mb-2">For Sellers</h3>
-                <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">Declutter easily in one weekend</h2>
-                <p className="text-emerald-700 text-lg">Whether you&apos;re buying or selling, <span className="font-semibold">DropYard</span> has you covered</p>
-              </div>
 
-              <div className="grid md:grid-cols-2 gap-6">
-                <div>
-                  <div className="mb-6 text-center md:text-left">
-                    <div className="w-16 h-16 bg-amber-100 rounded-2xl flex items-center justify-center mb-4 mx-auto md:mx-0">
-                      <Package size={28} className="text-amber-500" />
-                    </div>
-                    <h3 className="text-xl font-bold text-gray-900 mb-2">Simple, fast payouts</h3>
-                    <p className="text-gray-600">No endless messages or listings—sell to neighbors, not strangers.</p>
-                  </div>
-                  <div>
-                    <button
-                      onClick={() => goSellerAuth("signup")}
-                      className="w-full bg-amber-500 text-white py-3 px-6 rounded-full font-semibold hover:bg-amber-600 transition-colors flex items-center justify-center gap-2"
-                    >
-                      Become a Seller
-                      <ArrowRight size={18} />
-                    </button>
-                  </div>
-                </div>
-
-                <div>
-                  <div className="mb-6 text-center md:text-left">
-                    <div className="w-16 h-16 bg-amber-100 rounded-2xl flex items-center justify-center mb-4 mx-auto md:mx-0">
-                      <User size={28} className="text-amber-500" />
-                    </div>
-                    <div>
-                      <h3 className="text-xl font-bold text-gray-900 mb-1">Sell easily</h3>
-                      <p className="text-gray-600">To neighbors</p>
-                    </div>
-                  </div>
-                  <div className="text-center md:text-left">
-                    <ul className="space-y-2 inline-block md:block">
-                      <li className="flex items-center gap-2 justify-center md:justify-start">
-                        <Check size={16} className="text-amber-500 flex-shrink-0" />
-                        <span className="text-gray-700">Declutter easily in one weekend</span>
-                      </li>
-                      <li className="flex items-center gap-2 justify-center md:justify-start">
-                        <Check size={16} className="text-amber-500 flex-shrink-0" />
-                        <span className="text-gray-700">No endless messages or listings</span>
-                      </li>
-                      <li className="flex items-center gap-2 justify-center md:justify-start">
-                        <Check size={16} className="text-amber-500 flex-shrink-0" />
-                        <span className="text-gray-700">Sell to neighbors, not strangers</span>
-                      </li>
-                      <li className="flex items-center gap-2 justify-center md:justify-start">
-                        <Check size={16} className="text-amber-500 flex-shrink-0" />
-                        <span className="text-gray-700">Simple, fast payouts</span>
-                      </li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            <div className="relative order-2 lg:order-2">
-              <div className="relative">
-                <div className="relative mb-4 md:mb-8 ml-4 sm:ml-8 md:ml-16">
-                  <figure className="relative z-10">
-                    <img src="/images/img1.png" alt="" className="w-full max-w-full sm:max-w-sm md:max-w-md lg:max-w-lg h-auto max-h-[12.8rem] sm:max-h-[14.4rem] md:max-h-[16rem] lg:max-h-[19.2rem] rounded-lg shadow-lg object-cover" />
-                  </figure>
-                </div>
-                <div className="relative -mt-8 sm:-mt-12 md:-mt-16 ml-0">
-                  <figure className="relative z-20">
-                    <img src="/images/img2.png" alt="" className="w-full max-w-full sm:max-w-sm md:max-w-md lg:max-w-lg h-auto max-h-[12.8rem] sm:max-h-[14.4rem] md:max-h-[16rem] lg:max-h-[19.2rem] rounded-lg shadow-lg object-cover" />
-                  </figure>
-                  <div className="absolute top-1/2 right-0 sm:right-2 md:right-4 transform -translate-y-1/2 z-30 animate-spin" style={{ animationDuration: '30s' }}>
-                    <img src="/images/contact-us-img.svg" alt="" className="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24" />
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
 
       <section className="-mt-4 pt-4 pb-8 sm:-mt-6 sm:pt-6 sm:pb-10 md:-mt-6 md:pt-8 md:pb-12 lg:pt-10 lg:pb-16 bg-gradient-to-br from-emerald-50 via-amber-50/70 to-emerald-50">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -1001,223 +1294,30 @@ function HomePage({
         </div>
       </section>
 
-      <section className="py-6 md:py-10 bg-emerald-50">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="text-center mb-8">
-            <h2 className="text-3xl md:text-4xl font-bold text-emerald-800 mb-4">How DropYard Works</h2>
-          </div>
+      <HowItWorksSection />
 
-          <div className="relative">
-            <div className="hidden lg:block absolute left-0 right-0 top-18">
-              <div className="mx-8 h-1 bg-emerald-200"></div>
-            </div>
 
-            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-8 items-start">
-              {[1, 2, 3, 4].map((step) => (
-                <div className="flex flex-col items-center text-center px-2" key={`home-step-${step}`}>
-                <div className="relative flex flex-col items-center">
-                  <div className="w-27 h-27 md:w-35 md:h-35 rounded-full bg-amber-200/90 flex items-center justify-center shadow-md mb-6">
-                    <div className="w-42 h-52 md:w-50 md:h-62 flex items-center justify-center">
-                      <HowItWorksIllustration step={step} />
-                    </div>
-                  </div>
-                </div>
-                {step === 1 && (
-                  <>
-                    <h3 className="text-lg md:text-xl font-bold text-emerald-800 mb-2">Sellers submit items</h3>
-                    <p className="text-gray-600 text-sm md:text-base">
-                      Upload what you&apos;d like to sell or give away for free.
-                    </p>
-                  </>
-                )}
-                {step === 2 && (
-                  <>
-                    <h3 className="text-lg md:text-xl font-bold text-emerald-800 mb-2">We host the Drop</h3>
-                    <p className="text-gray-600 text-sm md:text-base">Items go live for a limited time</p>
-                  </>
-                )}
-                {step === 3 && (
-                  <>
-                    <h3 className="text-lg md:text-xl font-bold text-emerald-800 mb-2">Neighbors claim</h3>
-                    <p className="text-gray-600 text-sm md:text-base">Buyers browse and reserve</p>
-                  </>
-                )}
-                {step === 4 && (
-                  <>
-                    <h3 className="text-lg md:text-xl font-bold text-emerald-800 mb-2">Local pickup & payment</h3>
-                    <p className="text-gray-600 text-sm md:text-base">Items move home to home</p>
-                  </>
-                )}
+      <section className="font-sans overflow-hidden">
+        <div className="relative" style={{ height: 'clamp(220px, 30vw, 380px)' }}>
+          <img src="/images/moving-sale-banner.jpg" alt="Moving Sale" className="absolute inset-0 w-full h-full object-cover object-left" />
+          <div className="absolute top-0 bottom-0 flex items-center" style={{ left: '42%', right: '0' }}>
+            <div className="px-4 sm:px-6 md:px-8 lg:px-12 max-w-full overflow-hidden">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 md:w-12 md:h-12 bg-white/20 rounded-lg flex items-center justify-center mb-2 md:mb-3">
+                <Truck className="text-white w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" />
               </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="py-6 md:py-10 bg-white relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-b from-emerald-50/40 via-transparent to-amber-50/30 pointer-events-none" />
-        <div className="absolute top-8 right-[15%] text-emerald-200/60 text-xl">✦</div>
-        <div className="absolute bottom-12 left-[10%] text-amber-200/50 text-lg">✦</div>
-        <div className="max-w-7xl mx-auto px-4 relative">
-          <div className="grid md:grid-cols-2 gap-8 lg:gap-16 items-center">
-            <div>
-              <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-6">
-                <span className="text-emerald-700">Shop local deals</span>
-                <br />
-                from real neighbors
-              </h2>
-              <div className="space-y-4">
-                {[
-                  { title: "Curated weekend drops", desc: "Fresh items every weekend, organized by neighborhood" },
-                  { title: "Verified local sellers", desc: "Only real neighbors in your community" },
-                  { title: "Easy claiming system", desc: "Reserve items instantly, pick up on your schedule" },
-                  { title: "Safe local pickup", desc: "Meet at your neighbor's home during set windows" },
-                ].map((feature, i) => (
-                  <div key={i} className="flex items-start gap-3">
-                    <div className="w-6 h-6 bg-emerald-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-                      <Check size={14} className="text-emerald-600" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-gray-900">{feature.title}</h3>
-                      <p className="text-sm text-emerald-800/80">{feature.desc}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <h3 className="text-base sm:text-xl md:text-3xl lg:text-4xl font-bold text-white mb-1 sm:mb-2 md:mb-3 leading-tight">
+                Planning a Moving Sale?
+              </h3>
+              <p className="text-white/90 text-xs sm:text-sm md:text-base lg:text-lg mb-2 sm:mb-3 md:mb-5 leading-snug">
+                Sell everything at once with our<br className="hidden sm:inline" /> dedicated Moving Sale Drop.
+              </p>
               <button
-                onClick={() => goBuyerAuth("signup")}
-                className="mt-8 bg-emerald-700 text-white px-6 py-3 rounded-full font-semibold hover:bg-emerald-800 hover:shadow-lg hover:shadow-emerald-200/50 transition-all duration-300 flex items-center gap-2"
+                onClick={() => goMovingAuth("signup")}
+                className="bg-white/95 text-amber-600 px-3 sm:px-5 md:px-7 py-1.5 sm:py-2.5 md:py-3 rounded-full font-semibold hover:bg-white transition-colors inline-flex items-center gap-1.5 sm:gap-2 shadow-lg text-xs sm:text-sm md:text-base lg:text-lg whitespace-nowrap"
               >
-                Start Browsing
-                <ArrowRight size={18} />
+                Plan Your Moving Sale
+                <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5" />
               </button>
-            </div>
-            <div className="bg-white rounded-3xl p-6 border border-emerald-100 shadow-lg shadow-emerald-100/50">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                  <span className="text-sm font-medium text-green-700">Live Now</span>
-                </div>
-                <span className="text-sm text-gray-500">Kanata North</span>
-              </div>
-              <div className="space-y-3">
-                {[
-                  { title: "IKEA Kallax Shelf", price: "$45", original: "$120", emoji: "📦", discount: "-63%" },
-                  { title: "Dyson V8 Vacuum", price: "$180", original: "$450", emoji: "🔌", discount: "-60%" },
-                  { title: "Kids Balance Bike", price: "$35", original: "$90", emoji: "🚲", discount: "-61%" },
-                ].map((item, i) => (
-                  <div key={i} className="flex items-center gap-3 p-3 bg-emerald-50/50 rounded-xl border border-emerald-100">
-                    <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center text-2xl">
-                      {item.emoji}
-                    </div>
-                    <div className="flex-1">
-                      <p className="font-medium text-gray-900 text-sm">{item.title}</p>
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-emerald-600">{item.price}</span>
-                        <span className="text-xs text-gray-400 line-through">{item.original}</span>
-                        <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-medium">
-                          {item.discount}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="pt-2 pb-8 md:pt-4 md:pb-12 bg-white">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-500 rounded-3xl overflow-hidden relative">
-            <div className="absolute top-4 right-20 text-white/30 text-2xl">✦</div>
-            <div className="absolute top-12 right-40 text-white/20 text-lg">✦</div>
-            <div className="absolute bottom-20 right-32 text-white/25 text-xl">✦</div>
-            <div className="absolute top-20 left-1/3 text-white/15 text-sm">✦</div>
-
-            <div className="absolute bottom-0 left-0 right-0">
-              <svg viewBox="0 0 1200 80" className="w-full h-12 text-amber-600/30">
-                <path d="M0 40 Q300 80 600 40 T1200 40 V80 H0 Z" fill="currentColor" />
-              </svg>
-            </div>
-
-            <div className="flex flex-col md:flex-row items-center p-8 md:p-10 lg:p-12 relative z-10">
-              <div className="w-full md:w-1/2 lg:w-2/5 mb-6 md:mb-0 flex justify-center">
-                <svg viewBox="0 0 350 220" className="w-full max-w-sm h-auto">
-                  <circle cx="175" cy="110" r="90" fill="#FDE68A" opacity="0.3" />
-                  <circle cx="175" cy="110" r="65" fill="#FEF3C7" opacity="0.4" />
-
-                  <g transform="translate(30, 50)">
-                    <rect x="18" y="0" width="10" height="120" fill="#6B7280" rx="3" />
-                    <circle cx="12" cy="130" r="12" fill="#4B5563" stroke="#374151" strokeWidth="2" />
-                    <circle cx="36" cy="130" r="12" fill="#4B5563" stroke="#374151" strokeWidth="2" />
-                    <rect x="0" y="85" width="55" height="8" fill="#6B7280" rx="3" />
-                  </g>
-
-                  <g transform="translate(75, 45)">
-                    <rect x="0" y="55" width="75" height="60" fill="#D4A574" stroke="#8B6914" strokeWidth="2" rx="4" />
-                    <line x1="0" y1="70" x2="75" y2="70" stroke="#8B6914" strokeWidth="2" />
-                    <path d="M30 70 L30 55 L45 55 L45 70" fill="none" stroke="#8B6914" strokeWidth="2" />
-                    <rect x="12" y="15" width="55" height="45" fill="#E5C9A8" stroke="#8B6914" strokeWidth="2" rx="3" />
-                    <line x1="12" y1="28" x2="67" y2="28" stroke="#8B6914" strokeWidth="1.5" />
-                    <rect x="80" y="70" width="45" height="40" fill="#D4A574" stroke="#8B6914" strokeWidth="2" rx="3" />
-                    <line x1="80" y1="80" x2="125" y2="80" stroke="#8B6914" strokeWidth="1.5" />
-                  </g>
-
-                  <g transform="translate(120, 15)">
-                    <rect x="10" y="40" width="5" height="35" fill="#6B7280" />
-                    <path d="M0 40 L12.5 5 L25 40 Z" fill="#059669" />
-                    <ellipse cx="12.5" cy="40" rx="12" ry="3" fill="#047857" />
-                  </g>
-
-                  <g transform="translate(200, 95)">
-                    <rect x="0" y="0" width="85" height="50" fill="#8B6914" rx="4" />
-                    <rect x="4" y="4" width="77" height="42" fill="#D4A574" rx="3" />
-                    <text x="42" y="22" textAnchor="middle" fontSize="12" fontWeight="bold" fill="#8B6914">
-                      MOVING
-                    </text>
-                    <text x="42" y="38" textAnchor="middle" fontSize="12" fontWeight="bold" fill="#8B6914">
-                      SALE
-                    </text>
-                    <rect x="35" y="50" width="14" height="35" fill="#8B6914" />
-                  </g>
-
-                  <circle cx="260" cy="170" r="18" fill="white" stroke="#374151" strokeWidth="2" />
-                  <path d="M260 152 L253 165 L267 165 Z" fill="#374151" />
-                  <path d="M245 175 L255 168 L255 182 Z" fill="#374151" />
-                  <path d="M275 175 L265 168 L265 182 Z" fill="#374151" />
-
-                  <g transform="translate(20, 145)">
-                    <rect x="0" y="15" width="28" height="35" fill="#F59E0B" rx="3" />
-                    <ellipse cx="14" cy="8" rx="16" ry="14" fill="#059669" />
-                    <ellipse cx="8" cy="2" rx="8" ry="12" fill="#10B981" />
-                    <ellipse cx="20" cy="4" rx="7" ry="10" fill="#34D399" />
-                  </g>
-
-                  <circle cx="310" cy="80" r="4" fill="white" opacity="0.5" />
-                  <circle cx="55" cy="35" r="3" fill="white" opacity="0.4" />
-                  <circle cx="290" cy="50" r="2" fill="white" opacity="0.3" />
-                </svg>
-              </div>
-
-              <div className="w-full md:w-1/2 lg:w-3/5 text-center md:text-left md:pl-8 lg:pl-12">
-                <div className="w-14 h-14 bg-white/20 rounded-2xl flex items-center justify-center mb-5 mx-auto md:mx-0">
-                  <Truck size={28} className="text-white" />
-                </div>
-                <h3 className="text-2xl md:text-3xl lg:text-4xl font-bold text-white mb-4">Planning a Moving Sale?</h3>
-                <p className="text-white/90 text-lg mb-8 max-w-md">
-                  Sell everything at once with our dedicated Moving Sale Drop.
-                </p>
-                <button
-                  onClick={() => goMovingAuth("signup")}
-                  className="bg-white/95 text-amber-600 px-10 py-4 rounded-full font-semibold hover:bg-white transition-colors inline-flex items-center gap-2 shadow-lg text-lg"
-                >
-                  Plan Your Moving Sale
-                  <ArrowRight size={20} />
-                </button>
-              </div>
             </div>
           </div>
         </div>
@@ -1663,7 +1763,7 @@ export function Footer({
       <div className="absolute bottom-20 left-0 w-64 h-64 bg-amber-500/10 rounded-full blur-3xl translate-y-1/2" />
 
       <div className="max-w-7xl mx-auto px-4 relative z-10">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-8 md:gap-10 mb-10">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-8 md:gap-10 mb-10">
           <div className="col-span-2 md:col-span-1">
             <div className="flex items-center gap-3 mb-5">
               <DropYardLogo size="default" />
@@ -1676,39 +1776,58 @@ export function Footer({
             <p className="text-slate-300 text-sm leading-relaxed max-w-xs">
               DropYard brings back the simplicity of yard sales—without the hassle of setting up in your driveway.
             </p>
+            <div className="flex items-center gap-3 mt-5">
+              {[
+                { icon: Instagram, label: "Instagram", hover: "hover:bg-pink-500" },
+                { icon: Facebook, label: "Facebook", hover: "hover:bg-blue-600" },
+                { icon: Twitter, label: "Twitter / X", hover: "hover:bg-sky-500" },
+                { icon: Youtube, label: "YouTube", hover: "hover:bg-red-600" },
+                { icon: Linkedin, label: "LinkedIn", hover: "hover:bg-blue-700" },
+              ].map(({ icon: Icon, label, hover }) => (
+                <button
+                  key={label}
+                  aria-label={label}
+                  className={`w-9 h-9 rounded-full bg-slate-700 flex items-center justify-center text-slate-300 hover:text-white transition-all duration-200 ${hover}`}
+                >
+                  <Icon size={16} />
+                </button>
+              ))}
+            </div>
           </div>
           <div>
-            <h4 className="font-bold mb-4 text-emerald-400 text-sm uppercase tracking-wider">Quick Links</h4>
+            <h4 className="font-bold mb-4 text-emerald-400 text-sm uppercase tracking-wider">Discover</h4>
             <div className="flex flex-col gap-3">
-              <button onClick={() => setPage("howitworks")} className="text-slate-300 hover:text-emerald-300 text-sm text-left transition-colors">
-                How it works
-              </button>
+              <button onClick={() => setPage("howitworks")} className="text-slate-300 hover:text-emerald-300 text-sm text-left transition-colors">How it Works</button>
+              <button onClick={() => setPage("buyers")} className="text-slate-300 hover:text-emerald-300 text-sm text-left transition-colors">Browse Items</button>
               <button onClick={() => setPage("buyers")} className="text-slate-300 hover:text-emerald-300 text-sm text-left transition-colors">For Buyers</button>
               <button onClick={() => setPage("sellers")} className="text-slate-300 hover:text-emerald-300 text-sm text-left transition-colors">For Sellers</button>
-              <button className="text-slate-300 hover:text-emerald-300 text-sm text-left transition-colors flex items-center gap-2">
-                <HelpCircle size={14} className="text-emerald-500/70 flex-shrink-0" />
-                FAQ
-              </button>
-              <button className="text-slate-300 hover:text-emerald-300 text-sm text-left transition-colors flex items-center gap-2">
-                <FileText size={14} className="text-amber-500/70 flex-shrink-0" />
-                Community Guidelines
-              </button>
+              <button onClick={() => setPage("howitworks")} className="text-slate-300 hover:text-emerald-300 text-sm text-left transition-colors">Active Drops</button>
             </div>
           </div>
           <div>
-            <h4 className="font-bold mb-4 text-amber-400 text-sm uppercase tracking-wider">Get Started</h4>
+            <h4 className="font-bold mb-4 text-amber-400 text-sm uppercase tracking-wider">For Sellers</h4>
             <div className="flex flex-col gap-3">
-              <button onClick={() => goBuyerAuth("signup")} className="text-slate-300 hover:text-emerald-300 text-sm text-left transition-colors">Join the Next Drop</button>
-              <button onClick={() => goSellerAuth("signup")} className="text-slate-300 hover:text-emerald-300 text-sm text-left transition-colors">Become a Seller</button>
-              <button onClick={() => goMovingAuth("signup")} className="text-slate-300 hover:text-amber-300 text-sm text-left transition-colors">Plan a Moving Sale</button>
+              <button onClick={() => goSellerAuth("signup")} className="text-slate-300 hover:text-amber-300 text-sm text-left transition-colors">Weekly Drop</button>
+              <button onClick={() => goMovingAuth("signup")} className="text-slate-300 hover:text-amber-300 text-sm text-left transition-colors">Moving Sale</button>
+              <button className="text-slate-300 hover:text-amber-300 text-sm text-left transition-colors">Seller FAQ</button>
             </div>
           </div>
           <div>
-            <h4 className="font-bold mb-4 text-emerald-400 text-sm uppercase tracking-wider">Account</h4>
+            <h4 className="font-bold mb-4 text-emerald-400 text-sm uppercase tracking-wider">Company</h4>
             <div className="flex flex-col gap-3">
-              <button onClick={() => goBuyerAuth("login")} className="text-slate-300 hover:text-white text-sm text-left transition-colors">Log in</button>
+              <button onClick={() => setPage("about")} className="text-slate-300 hover:text-emerald-300 text-sm text-left transition-colors">About Us</button>
+              <button onClick={() => setPage("contact")} className="text-slate-300 hover:text-emerald-300 text-sm text-left transition-colors">Contact Us</button>
+              <button className="text-slate-300 hover:text-emerald-300 text-sm text-left transition-colors">FAQ</button>
+              <button className="text-slate-300 hover:text-emerald-300 text-sm text-left transition-colors">Guidelines</button>
+              <button className="text-slate-300 hover:text-emerald-300 text-sm text-left transition-colors">Privacy Policy</button>
+            </div>
+          </div>
+          <div>
+            <h4 className="font-bold mb-4 text-emerald-400 text-sm uppercase tracking-wider">Join Free</h4>
+            <div className="flex flex-col gap-3">
               <button onClick={() => goBuyerAuth("signup")} className="text-slate-300 hover:text-white text-sm text-left transition-colors">Sign up</button>
-              <span className="text-slate-500 text-sm">Help Center</span>
+              <button onClick={() => goBuyerAuth("login")} className="text-slate-300 hover:text-white text-sm text-left transition-colors">Log in</button>
+              <button className="text-slate-300 hover:text-white text-sm text-left transition-colors">Help Center</button>
             </div>
           </div>
         </div>
@@ -1928,59 +2047,3 @@ export function HowItWorksPage({
 // ============================================================================
 // SOCIAL SIDEBAR
 // ============================================================================
-function SocialSidebar({ position = "left" }: { position?: "left" | "right" }) {
-  const [isVisible, setIsVisible] = useState(false);
-
-  useEffect(() => {
-    if (position === "left") {
-      const timer = setTimeout(() => {
-        setIsVisible(true);
-      }, 1000);
-      return () => clearTimeout(timer);
-    } else {
-      const timer = setTimeout(() => {
-        setIsVisible(true);
-      }, 0);
-      return () => clearTimeout(timer);
-    }
-  }, [position]);
-
-  const socialLinks = [
-    { icon: Facebook, href: "#", label: "Facebook" },
-    { icon: Instagram, href: "#", label: "Instagram" },
-    { icon: Twitter, href: "#", label: "Twitter" },
-    { icon: Linkedin, href: "#", label: "LinkedIn" },
-    { icon: Youtube, href: "#", label: "YouTube" },
-  ];
-
-  const isRight = position === "right";
-  const positionClasses = isRight ? "right-0 rounded-l-xl" : "left-0 rounded-r-xl";
-  const animationClasses = isRight ? "translate-x-0" : isVisible ? "translate-x-0" : "-translate-x-full";
-
-  return (
-    <div
-      className={`fixed ${positionClasses} top-1/2 -translate-y-1/2 z-50 hidden lg:flex flex-col gap-1 bg-white shadow-lg overflow-hidden transition-transform duration-700 ease-out ${animationClasses}`}
-    >
-      <div className="bg-emerald-700 text-white px-3 py-2 text-xs font-medium text-center">
-        <span className="writing-mode-vertical block" style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}>
-          Connect
-        </span>
-      </div>
-      {socialLinks.map((social) => {
-        const Icon = social.icon;
-        return (
-          <a
-            key={social.label}
-            href={social.href}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="p-3 text-emerald-700/60 hover:text-amber-500 hover:bg-amber-50 transition-colors duration-300"
-            aria-label={social.label}
-          >
-            <Icon className="w-5 h-5" />
-          </a>
-        );
-      })}
-    </div>
-  );
-}
