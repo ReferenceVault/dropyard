@@ -3,9 +3,7 @@
 cd /var/www/dropyard/frontend
 
 echo "==> Pull latest code"
-git fetch origin
-git reset --hard origin/pooja   # change branch if needed
-
+git pull origin main
 
 
 echo "==> Install dependencies"
