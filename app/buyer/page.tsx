@@ -42,6 +42,8 @@ import {
   Sparkles,
   Eye,
   Loader2,
+  History,
+  TrendingDown,
 } from "lucide-react";
 import { DashboardProvider, useDashboard } from "@/context/DashboardContext";
 import { DropCycleProvider, useDropCycle } from "@/context/DropCycleContext";
@@ -86,14 +88,16 @@ type SellerTab =
   | "pickups"
   | "messages"
   | "list"
-  | "moving-sale";
+  | "moving-sale"
+  | "history";
 // Buyer tabs
 type BuyerTab =
   | "discover"
   | "browse"
   | "saved"
   | "claims"
-  | "messages";
+  | "messages"
+  | "history";
 
 function BuyerDashboardContent() {
   const {
@@ -349,6 +353,7 @@ function BuyerDashboardContent() {
     { id: "messages", label: "Messages", icon: MessageSquare },
     { id: "list", label: "List Item", icon: Plus },
     { id: "moving-sale", label: sellerOnboardingComplete ? "My Drop" : user?.role === "BOTH" ? "Pending Approval" : "Start a Moving Sale", icon: Truck },
+    { id: "history", label: "History", icon: History },
   ];
 
   const buyerTabs: { id: BuyerTab; label: string; icon: React.ElementType }[] = [
@@ -357,6 +362,7 @@ function BuyerDashboardContent() {
     { id: "saved", label: "Saved", icon: Heart },
     { id: "claims", label: "Claims", icon: ShoppingBag },
     { id: "messages", label: "Messages", icon: MessageSquare },
+    { id: "history", label: "History", icon: History },
   ];
 
   const navTabs = mode === "seller" ? sellerTabs : buyerTabs;
@@ -1305,6 +1311,139 @@ function BuyerDashboardContent() {
                   </div>
                 </div>
               )}
+
+              {/* History Tab — Buyer */}
+              {activeBuyerTab === "history" && (
+                <div className="space-y-6">
+                  <div>
+                    <h2 className="text-2xl font-bold text-gray-900">Drop History</h2>
+                    <p className="text-gray-500 mt-1">Your activity across past weekly drops</p>
+                  </div>
+
+                  {/* Summary Stats */}
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                    {[
+                      { label: "Drops Attended", value: "5", icon: Calendar, bg: "bg-emerald-100", text: "text-emerald-600" },
+                      { label: "Items Claimed", value: "12", icon: ShoppingBag, bg: "bg-amber-100", text: "text-amber-600" },
+                      { label: "Total Spent", value: "$620", icon: DollarSign, bg: "bg-teal-100", text: "text-teal-600" },
+                      { label: "Total Saved", value: "$1,610", icon: TrendingDown, bg: "bg-purple-100", text: "text-purple-600" },
+                      { label: "vs Retail", value: "72%", icon: Sparkles, bg: "bg-pink-100", text: "text-pink-600" },
+                    ].map((stat) => (
+                      <div key={stat.label} className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm text-center">
+                        <div className={`w-10 h-10 ${stat.bg} rounded-xl flex items-center justify-center mx-auto mb-2`}>
+                          <stat.icon size={20} className={stat.text} />
+                        </div>
+                        <p className="text-xl font-bold text-gray-900">{stat.value}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">{stat.label}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Past Drops */}
+                  <div className="space-y-4">
+                    {[
+                      {
+                        dates: "Feb 22–23, 2025",
+                        neighborhood: "Barrhaven",
+                        available: 38,
+                        claimed: 4,
+                        spent: "$185",
+                        browsed: 12,
+                        saved: 3,
+                        savedDollars: "$390",
+                        badge: "Most Active",
+                        badgeColor: "bg-emerald-100 text-emerald-700",
+                      },
+                      {
+                        dates: "Feb 15–16, 2025",
+                        neighborhood: "Westboro",
+                        available: 42,
+                        claimed: 2,
+                        spent: "$95",
+                        browsed: 8,
+                        saved: 1,
+                        savedDollars: "$155",
+                        badge: null,
+                        badgeColor: "",
+                      },
+                      {
+                        dates: "Feb 8–9, 2025",
+                        neighborhood: "Glebe",
+                        available: 29,
+                        claimed: 3,
+                        spent: "$140",
+                        browsed: 11,
+                        saved: 2,
+                        savedDollars: "$280",
+                        badge: null,
+                        badgeColor: "",
+                      },
+                      {
+                        dates: "Feb 1–2, 2025",
+                        neighborhood: "Kanata",
+                        available: 35,
+                        claimed: 2,
+                        spent: "$110",
+                        browsed: 9,
+                        saved: 1,
+                        savedDollars: "$210",
+                        badge: null,
+                        badgeColor: "",
+                      },
+                      {
+                        dates: "Jan 25–26, 2025",
+                        neighborhood: "Orleans",
+                        available: 31,
+                        claimed: 1,
+                        spent: "$90",
+                        browsed: 6,
+                        saved: 0,
+                        savedDollars: "$575",
+                        badge: "First Drop",
+                        badgeColor: "bg-blue-100 text-blue-700",
+                      },
+                    ].map((drop) => (
+                      <div key={drop.dates} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                        <div className="p-5">
+                          <div className="flex items-start justify-between gap-3 mb-4">
+                            <div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h3 className="font-semibold text-gray-900">{drop.dates}</h3>
+                                {drop.badge && (
+                                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${drop.badgeColor}`}>{drop.badge}</span>
+                                )}
+                              </div>
+                              <p className="text-sm text-gray-500 mt-0.5 flex items-center gap-1">
+                                <MapPin size={13} /> {drop.neighborhood}
+                              </p>
+                            </div>
+                            <span className="text-sm text-gray-400">{drop.available} items available</span>
+                          </div>
+
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            <div className="bg-gray-50 rounded-xl p-3 text-center">
+                              <p className="text-lg font-bold text-gray-900">{drop.claimed}</p>
+                              <p className="text-xs text-gray-500">Claimed</p>
+                            </div>
+                            <div className="bg-gray-50 rounded-xl p-3 text-center">
+                              <p className="text-lg font-bold text-gray-900">{drop.spent}</p>
+                              <p className="text-xs text-gray-500">Spent</p>
+                            </div>
+                            <div className="bg-gray-50 rounded-xl p-3 text-center">
+                              <p className="text-lg font-bold text-gray-900">{drop.browsed}</p>
+                              <p className="text-xs text-gray-500">Browsed</p>
+                            </div>
+                            <div className="bg-emerald-50 rounded-xl p-3 text-center">
+                              <p className="text-lg font-bold text-emerald-700">{drop.savedDollars}</p>
+                              <p className="text-xs text-emerald-600">Saved vs Retail</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </>
           )}
 
@@ -1965,6 +2104,114 @@ function BuyerDashboardContent() {
                       </form>
                     </>
                   )}
+                </div>
+              )}
+
+              {/* History Tab — Seller */}
+              {activeSellerTab === "history" && (
+                <div className="space-y-6">
+                  <div>
+                    <h2 className="text-2xl font-bold text-gray-900">Seller History</h2>
+                    <p className="text-gray-500 mt-1">Your performance across past weekly drops</p>
+                  </div>
+
+                  {/* Summary Stats */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {[
+                      { label: "Drops Hosted", value: "4", icon: Calendar, bg: "bg-emerald-100", text: "text-emerald-600" },
+                      { label: "Items Sold", value: "18", icon: Package, bg: "bg-amber-100", text: "text-amber-600" },
+                      { label: "Total Earned", value: "$940", icon: DollarSign, bg: "bg-teal-100", text: "text-teal-600" },
+                      { label: "Avg per Drop", value: "$235", icon: Sparkles, bg: "bg-purple-100", text: "text-purple-600" },
+                    ].map((stat) => (
+                      <div key={stat.label} className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm text-center">
+                        <div className={`w-10 h-10 ${stat.bg} rounded-xl flex items-center justify-center mx-auto mb-2`}>
+                          <stat.icon size={20} className={stat.text} />
+                        </div>
+                        <p className="text-xl font-bold text-gray-900">{stat.value}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">{stat.label}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Past Drops */}
+                  <div className="space-y-4">
+                    {[
+                      {
+                        dates: "Feb 22–23, 2025",
+                        neighborhood: "Barrhaven",
+                        listed: 12,
+                        sold: 7,
+                        earned: "$315",
+                        claims: 9,
+                        badge: "Best Drop",
+                        badgeColor: "bg-emerald-100 text-emerald-700",
+                      },
+                      {
+                        dates: "Feb 15–16, 2025",
+                        neighborhood: "Westboro",
+                        listed: 9,
+                        sold: 4,
+                        earned: "$210",
+                        claims: 5,
+                        badge: null,
+                        badgeColor: "",
+                      },
+                      {
+                        dates: "Feb 8–9, 2025",
+                        neighborhood: "Glebe",
+                        listed: 8,
+                        sold: 4,
+                        earned: "$230",
+                        claims: 6,
+                        badge: null,
+                        badgeColor: "",
+                      },
+                      {
+                        dates: "Feb 1–2, 2025",
+                        neighborhood: "Kanata",
+                        listed: 6,
+                        sold: 3,
+                        earned: "$185",
+                        claims: 4,
+                        badge: "First Drop",
+                        badgeColor: "bg-blue-100 text-blue-700",
+                      },
+                    ].map((drop) => (
+                      <div key={drop.dates} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                        <div className="p-5">
+                          <div className="flex items-start justify-between gap-3 mb-4">
+                            <div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h3 className="font-semibold text-gray-900">{drop.dates}</h3>
+                                {drop.badge && (
+                                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${drop.badgeColor}`}>{drop.badge}</span>
+                                )}
+                              </div>
+                              <p className="text-sm text-gray-500 mt-0.5 flex items-center gap-1">
+                                <MapPin size={13} /> {drop.neighborhood}
+                              </p>
+                            </div>
+                            <span className="text-sm text-gray-400">{drop.listed} items listed</span>
+                          </div>
+
+                          <div className="grid grid-cols-3 gap-3">
+                            <div className="bg-gray-50 rounded-xl p-3 text-center">
+                              <p className="text-lg font-bold text-gray-900">{drop.sold}</p>
+                              <p className="text-xs text-gray-500">Sold</p>
+                            </div>
+                            <div className="bg-gray-50 rounded-xl p-3 text-center">
+                              <p className="text-lg font-bold text-gray-900">{drop.claims}</p>
+                              <p className="text-xs text-gray-500">Claims</p>
+                            </div>
+                            <div className="bg-emerald-50 rounded-xl p-3 text-center">
+                              <p className="text-lg font-bold text-emerald-700">{drop.earned}</p>
+                              <p className="text-xs text-emerald-600">Earned</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </>
