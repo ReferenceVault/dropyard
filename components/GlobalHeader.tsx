@@ -27,10 +27,9 @@ export function GlobalHeader() {
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-xl shadow-sm border-b border-amber-100/60">
-      <div className="relative max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
-        <Link href="/" className="flex items-center gap-2 shrink-0">
-          <DropYardLogo size="default" />
-          <DropYardWordmark className="text-xl" />
+      <div className="relative max-w-7xl mx-auto px-4 py-0 flex items-center justify-between gap-4">
+        <Link href="/" className="flex items-center shrink-0">
+          <DropYardLogo size="large" />
         </Link>
         <div className="hidden md:flex absolute left-1/2 -translate-x-1/2 items-center gap-1 bg-gray-50/80 rounded-full px-2 py-1.5 border border-gray-100 shadow-inner">
           {navLink("/how-it-works", "How it works")}

@@ -5,6 +5,7 @@ import "./globals.css";
 import { GlobalLayout } from "@/components/GlobalLayout";
 import { GoogleOAuthProviderWrapper } from "@/components/GoogleOAuthProviderWrapper";
 import { AuthProvider } from "@/context/AuthContext";
+import { SocketProvider } from "@/context/SocketContext";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -20,7 +21,7 @@ export const metadata: Metadata = {
   title: "DropYard",
   description: "From one home to another. Local yard sales, simplified.",
   icons: {
-    icon: "/logo.jpeg",
+    icon: "/Logo.png",
   },
 };
 
@@ -37,9 +38,11 @@ export default function RootLayout({
       >
         <GoogleOAuthProviderWrapper>
           <AuthProvider>
-            <Suspense fallback={<div className="min-h-screen" />}>
-              <GlobalLayout>{children}</GlobalLayout>
-            </Suspense>
+            <SocketProvider>
+              <Suspense fallback={<div className="min-h-screen" />}>
+                <GlobalLayout>{children}</GlobalLayout>
+              </Suspense>
+            </SocketProvider>
           </AuthProvider>
         </GoogleOAuthProviderWrapper>
       </body>
