@@ -3,6 +3,8 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { DropYardLogo, DropYardWordmark } from "../page";
+import DropYardSellerDashboard from "@/components/previews/DropYard_SellerDashboard";
+import DropYardBuyerDashboard from "@/components/previews/DropYard_BuyerDashboard";
 import {
   LayoutDashboard,
   Package,
@@ -44,6 +46,20 @@ import {
   Loader2,
   History,
   TrendingDown,
+  ArrowLeft,
+  Share2,
+  Tag,
+  MessageCircle,
+  Send,
+  Star,
+  ShoppingCart,
+  Award,
+  Repeat,
+  ChevronDown,
+  Camera,
+  Zap,
+  ArrowRight,
+  RefreshCw,
 } from "lucide-react";
 import { DashboardProvider, useDashboard } from "@/context/DashboardContext";
 import { DropCycleProvider, useDropCycle } from "@/context/DropCycleContext";
@@ -89,6 +105,7 @@ type SellerTab =
   | "messages"
   | "list"
   | "moving-sale"
+  | "sell-with-ai"
   | "history";
 // Buyer tabs
 type BuyerTab =
@@ -140,8 +157,10 @@ function BuyerDashboardContent() {
   // Seed mode + onboarding flags from authenticated user
   useEffect(() => {
     if (!user) return;
-    const isSeller = user.role === "SELLER" || user.role === "BOTH";
-    setMode(isSeller ? "seller" : "buyer");
+    // Default landing: Buyer for everyone except pure sellers.
+    // BOTH-role users land on Buyer and can flip to Seller via the role toggle.
+    const isOnlySeller = user.role === "SELLER";
+    setMode(isOnlySeller ? "seller" : "buyer");
     setSellerOnboardingComplete(user.sellerOnboardingDone);
     setBuyerOnboardingComplete(user.buyerOnboardingDone);
     // Moving Sale sellers can list anytime — not gated by weekly drop phase
@@ -352,6 +371,7 @@ function BuyerDashboardContent() {
     { id: "pickups", label: "Pickups", icon: MapPin },
     { id: "messages", label: "Messages", icon: MessageSquare },
     { id: "list", label: "List Item", icon: Plus },
+    { id: "sell-with-ai", label: "Sell with AI", icon: Sparkles },
     { id: "moving-sale", label: sellerOnboardingComplete ? "My Drop" : user?.role === "BOTH" ? "Pending Approval" : "Start a Moving Sale", icon: Truck },
     { id: "history", label: "History", icon: History },
   ];
@@ -392,6 +412,47 @@ function BuyerDashboardContent() {
     { id: "sun-morning",   label: "Sunday Morning",      time: "10am – 1pm" },
     { id: "sun-afternoon", label: "Sunday Afternoon",    time: "1pm – 5pm" },
   ];
+
+  // Seller mode renders the new dashboard from /preview/seller-dashboard wholesale.
+  // Its sidebar role-switcher flips back to buyer mode here.
+  // Compare via string cast so TS doesn't narrow `mode` and break the
+  // (now-unreachable) seller branches further down the file.
+  // After a new item is created from the dashboard's List New Item form,
+  // refetch /api/items/mine so the My Items tab reflects it immediately.
+  const refreshSellerItems = async () => {
+    if (!accessToken) return;
+    try {
+      const { items } = await apiRequest<{ items: ApiItem[] }>("/api/items/mine", { token: accessToken });
+      setSellerItems(items);
+    } catch {
+      /* swallow - the user already saw the success toast from the form */
+    }
+  };
+
+  // The dashboard previews are .jsx and TS infers their prop types from the
+  // default values (null / null). Cast to any so the real `user` object,
+  // signout function, accessToken, and refresh callback flow through without
+  // TS complaining about the inferred null-only types.
+  if ((mode as string) === "seller") {
+    return (
+      <DropYardSellerDashboard
+        onSwitchRole={() => setMode("buyer")}
+        user={user as any}
+        onSignout={signout as any}
+        accessToken={accessToken as any}
+        onItemCreated={refreshSellerItems as any}
+        sellerItems={sellerItems as any}
+        onItemsChange={setSellerItems as any}
+        sellerItemsLoading={sellerItemsLoading as any}
+      />
+    );
+  }
+
+  // Buyer mode renders the new dashboard from /preview/buyer-dashboard wholesale.
+  // Its TopBar "Switch to Seller" button and Sell-with-AI CTA flip to seller mode.
+  if ((mode as string) === "buyer") {
+    return <DropYardBuyerDashboard onSwitchRole={() => setMode("seller")} user={user as any} onSignout={signout as any} accessToken={accessToken as any} />;
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
@@ -1313,137 +1374,7 @@ function BuyerDashboardContent() {
               )}
 
               {/* History Tab — Buyer */}
-              {activeBuyerTab === "history" && (
-                <div className="space-y-6">
-                  <div>
-                    <h2 className="text-2xl font-bold text-gray-900">Drop History</h2>
-                    <p className="text-gray-500 mt-1">Your activity across past weekly drops</p>
-                  </div>
-
-                  {/* Summary Stats */}
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                    {[
-                      { label: "Drops Attended", value: "5", icon: Calendar, bg: "bg-emerald-100", text: "text-emerald-600" },
-                      { label: "Items Claimed", value: "12", icon: ShoppingBag, bg: "bg-amber-100", text: "text-amber-600" },
-                      { label: "Total Spent", value: "$620", icon: DollarSign, bg: "bg-teal-100", text: "text-teal-600" },
-                      { label: "Total Saved", value: "$1,610", icon: TrendingDown, bg: "bg-purple-100", text: "text-purple-600" },
-                      { label: "vs Retail", value: "72%", icon: Sparkles, bg: "bg-pink-100", text: "text-pink-600" },
-                    ].map((stat) => (
-                      <div key={stat.label} className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm text-center">
-                        <div className={`w-10 h-10 ${stat.bg} rounded-xl flex items-center justify-center mx-auto mb-2`}>
-                          <stat.icon size={20} className={stat.text} />
-                        </div>
-                        <p className="text-xl font-bold text-gray-900">{stat.value}</p>
-                        <p className="text-xs text-gray-500 mt-0.5">{stat.label}</p>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Past Drops */}
-                  <div className="space-y-4">
-                    {[
-                      {
-                        dates: "Feb 22–23, 2025",
-                        neighborhood: "Barrhaven",
-                        available: 38,
-                        claimed: 4,
-                        spent: "$185",
-                        browsed: 12,
-                        saved: 3,
-                        savedDollars: "$390",
-                        badge: "Most Active",
-                        badgeColor: "bg-emerald-100 text-emerald-700",
-                      },
-                      {
-                        dates: "Feb 15–16, 2025",
-                        neighborhood: "Westboro",
-                        available: 42,
-                        claimed: 2,
-                        spent: "$95",
-                        browsed: 8,
-                        saved: 1,
-                        savedDollars: "$155",
-                        badge: null,
-                        badgeColor: "",
-                      },
-                      {
-                        dates: "Feb 8–9, 2025",
-                        neighborhood: "Glebe",
-                        available: 29,
-                        claimed: 3,
-                        spent: "$140",
-                        browsed: 11,
-                        saved: 2,
-                        savedDollars: "$280",
-                        badge: null,
-                        badgeColor: "",
-                      },
-                      {
-                        dates: "Feb 1–2, 2025",
-                        neighborhood: "Kanata",
-                        available: 35,
-                        claimed: 2,
-                        spent: "$110",
-                        browsed: 9,
-                        saved: 1,
-                        savedDollars: "$210",
-                        badge: null,
-                        badgeColor: "",
-                      },
-                      {
-                        dates: "Jan 25–26, 2025",
-                        neighborhood: "Orleans",
-                        available: 31,
-                        claimed: 1,
-                        spent: "$90",
-                        browsed: 6,
-                        saved: 0,
-                        savedDollars: "$575",
-                        badge: "First Drop",
-                        badgeColor: "bg-blue-100 text-blue-700",
-                      },
-                    ].map((drop) => (
-                      <div key={drop.dates} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                        <div className="p-5">
-                          <div className="flex items-start justify-between gap-3 mb-4">
-                            <div>
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <h3 className="font-semibold text-gray-900">{drop.dates}</h3>
-                                {drop.badge && (
-                                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${drop.badgeColor}`}>{drop.badge}</span>
-                                )}
-                              </div>
-                              <p className="text-sm text-gray-500 mt-0.5 flex items-center gap-1">
-                                <MapPin size={13} /> {drop.neighborhood}
-                              </p>
-                            </div>
-                            <span className="text-sm text-gray-400">{drop.available} items available</span>
-                          </div>
-
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                            <div className="bg-gray-50 rounded-xl p-3 text-center">
-                              <p className="text-lg font-bold text-gray-900">{drop.claimed}</p>
-                              <p className="text-xs text-gray-500">Claimed</p>
-                            </div>
-                            <div className="bg-gray-50 rounded-xl p-3 text-center">
-                              <p className="text-lg font-bold text-gray-900">{drop.spent}</p>
-                              <p className="text-xs text-gray-500">Spent</p>
-                            </div>
-                            <div className="bg-gray-50 rounded-xl p-3 text-center">
-                              <p className="text-lg font-bold text-gray-900">{drop.browsed}</p>
-                              <p className="text-xs text-gray-500">Browsed</p>
-                            </div>
-                            <div className="bg-emerald-50 rounded-xl p-3 text-center">
-                              <p className="text-lg font-bold text-emerald-700">{drop.savedDollars}</p>
-                              <p className="text-xs text-emerald-600">Saved vs Retail</p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+              {activeBuyerTab === "history" && <BuyerHistoryTab />}
             </>
           )}
 
@@ -2107,6 +2038,9 @@ function BuyerDashboardContent() {
                 </div>
               )}
 
+              {/* Sell with AI Tab */}
+              {activeSellerTab === "sell-with-ai" && <SellWithAITab />}
+
               {/* History Tab — Seller */}
               {activeSellerTab === "history" && (
                 <div className="space-y-6">
@@ -2310,6 +2244,731 @@ function ItemCard({
   );
 }
 
+// ── Sell With AI Tab ───────────────────────────────────────────────────────
+
+const AI_C = {
+  gLightBg: "#ECFDF5", gSoft: "#D1FAE5",
+  gPrimary: "#059669", gHover: "#047857", gDark: "#064e3b",
+  oLightBg: "#FFF7ED", oSoft: "#FED7AA",
+  oPrimary: "#f59e0b",
+  tPrimary: "#0F766E", tLight: "#CCFBF1",
+  ai: "#7C3AED", aiLight: "#F5F3FF", aiBorder: "#DDD6FE",
+  wa: "#25D366",
+};
+
+const AI_ITEMS = [
+  { id: 1, e: "🪑", t: "IKEA KALLAX Bookshelf — White",    d: "4-cube bookshelf in good condition. Minor scuff on bottom right corner. 77×77cm.", cat: "Furniture",   cond: "Good",      price: "35" },
+  { id: 2, e: "🍳", t: "Cuisinart 12-Cup Coffee Maker",    d: "Stainless steel, fully functional. Includes reusable filter and carafe.",            cat: "Kitchen",     cond: "Excellent", price: "25" },
+  { id: 3, e: "👶", t: "Graco Stroller — Blue/Grey",       d: "Compact fold stroller, suitable for 6m–3yr. Clean, no tears.",                       cat: "Kids & Baby", cond: "Good",      price: "45" },
+  { id: 4, e: "📱", t: "Samsung Galaxy Tab A7 — 32GB",     d: "10.4\" tablet with case. Light scratches on screen. Battery good.",                   cat: "Electronics", cond: "Fair",      price: "80" },
+  { id: 5, e: "🔧", t: "DeWalt 20V Drill Set",             d: "Cordless drill with 2 batteries, charger, and bit set.",                             cat: "Tools",       cond: "Excellent", price: "65" },
+];
+
+function SellWithAITab() {
+  const [view, setView] = React.useState<"setup" | "photos" | "processing" | "review" | "dashboard">("setup");
+  const [priceFloor, setPriceFloor] = React.useState(60);
+  const [autoAccept, setAutoAccept] = React.useState(true);
+  const [aiStyle, setAiStyle] = React.useState("friendly");
+  const [processIdx, setProcessIdx] = React.useState(0);
+
+  useEffect(() => {
+    if (view === "processing" && processIdx < AI_ITEMS.length) {
+      const t = setTimeout(() => setProcessIdx((p) => p + 1), 900);
+      return () => clearTimeout(t);
+    }
+    if (view === "processing" && processIdx >= AI_ITEMS.length) {
+      setTimeout(() => setView("review"), 500);
+    }
+  }, [view, processIdx]);
+
+  return (
+    <div style={{ maxWidth: 860, margin: "0 auto" }}>
+
+      {/* ── SETUP ── */}
+      {view === "setup" && (
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 24 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 14px", borderRadius: 50, backgroundColor: AI_C.aiLight, border: `1px solid ${AI_C.aiBorder}` }}>
+              <Sparkles size={14} style={{ color: AI_C.ai }} />
+              <span style={{ fontSize: 12, fontWeight: 800, color: AI_C.ai }}>AI Seller Agent — Setup</span>
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+            {/* Left */}
+            <div>
+              <div style={{ padding: 20, borderRadius: 16, marginBottom: 16, background: `linear-gradient(135deg, ${AI_C.aiLight}, #EDE9FE)`, border: `1px solid ${AI_C.aiBorder}` }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                  <div style={{ width: 40, height: 40, borderRadius: 12, background: `linear-gradient(135deg, ${AI_C.ai}, #6D28D9)`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <Sparkles size={18} style={{ color: "#fff" }} />
+                  </div>
+                  <div>
+                    <p style={{ fontSize: 15, fontWeight: 800, color: AI_C.gDark }}>Set up your AI agent</p>
+                    <p style={{ fontSize: 11, color: "#888" }}>One-time setup — change anytime in Settings</p>
+                  </div>
+                </div>
+                <p style={{ fontSize: 12, color: "#666", lineHeight: 1.7 }}>
+                  Your AI agent will create listings from photos, respond to buyers, negotiate prices within your rules, schedule pickups, and notify you via WhatsApp.
+                </p>
+              </div>
+
+              {/* Price floor */}
+              <div style={{ padding: 20, borderRadius: 16, border: "1px solid #f0f0f0", background: "#fff", marginBottom: 16 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <div>
+                    <p style={{ fontSize: 14, fontWeight: 700, color: AI_C.gDark }}>Price Floor</p>
+                    <p style={{ fontSize: 11, color: "#999" }}>Accept offers above this % of listed price</p>
+                  </div>
+                  <div style={{ textAlign: "center", padding: "6px 14px", borderRadius: 12, backgroundColor: AI_C.gLightBg }}>
+                    <span style={{ fontSize: 24, fontWeight: 900, color: AI_C.gPrimary }}>{priceFloor}%</span>
+                  </div>
+                </div>
+                <input type="range" min="40" max="100" value={priceFloor} onChange={(e) => setPriceFloor(Number(e.target.value))}
+                  style={{ width: "100%", height: 6, borderRadius: 20, appearance: "none", cursor: "pointer", background: `linear-gradient(to right, ${AI_C.gPrimary} ${(priceFloor - 40) / 60 * 100}%, #e5e7eb ${(priceFloor - 40) / 60 * 100}%)` }} />
+                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
+                  <span style={{ fontSize: 10, color: "#bbb" }}>40% (flexible)</span>
+                  <span style={{ fontSize: 10, color: "#bbb" }}>100% (firm)</span>
+                </div>
+                <div style={{ marginTop: 10, padding: 10, borderRadius: 10, backgroundColor: AI_C.oLightBg }}>
+                  <p style={{ fontSize: 11, color: "#92400e" }}>Example: You list at $40. At {priceFloor}%, AI auto-accepts any offer of <b>${Math.round(40 * priceFloor / 100)}</b> or above.</p>
+                </div>
+              </div>
+
+              {/* Auto-accept */}
+              <div style={{ display: "flex", alignItems: "center", gap: 14, padding: 16, borderRadius: 16, border: `1.5px solid ${autoAccept ? AI_C.gPrimary + "40" : "#e5e7eb"}`, backgroundColor: autoAccept ? AI_C.gLightBg : "#fff" }}>
+                <div style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: autoAccept ? AI_C.gPrimary + "20" : "#f3f4f6", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <Zap size={18} style={{ color: autoAccept ? AI_C.gPrimary : "#999" }} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <p style={{ fontSize: 13, fontWeight: 700, color: AI_C.gDark }}>Auto-Accept Full Price Claims</p>
+                  <p style={{ fontSize: 11, color: "#999" }}>Claims at listed price are accepted instantly</p>
+                </div>
+                <button onClick={() => setAutoAccept(!autoAccept)}
+                  style={{ width: 48, height: 28, borderRadius: 20, padding: 2, border: "none", cursor: "pointer", backgroundColor: autoAccept ? AI_C.gPrimary : "#D1D5DB", transition: "all 0.2s" }}>
+                  <div style={{ width: 24, height: 24, borderRadius: "50%", backgroundColor: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,0.15)", transform: autoAccept ? "translateX(20px)" : "translateX(0)", transition: "transform 0.2s" }} />
+                </button>
+              </div>
+            </div>
+
+            {/* Right */}
+            <div>
+              {/* Pickup availability */}
+              <div style={{ padding: 20, borderRadius: 16, border: "1px solid #f0f0f0", background: "#fff", marginBottom: 16 }}>
+                <p style={{ fontSize: 14, fontWeight: 700, color: AI_C.gDark, marginBottom: 12 }}>Pickup Availability</p>
+                {[
+                  { day: "Saturday", slots: ["9am–12pm", "12pm–3pm", "3pm–6pm"], active: [true, true, false] },
+                  { day: "Sunday", slots: ["10am–1pm", "1pm–4pm", "4pm–6pm"], active: [true, false, false] },
+                ].map((d) => (
+                  <div key={d.day} style={{ marginBottom: 12 }}>
+                    <p style={{ fontSize: 11, fontWeight: 600, color: "#888", marginBottom: 6 }}>{d.day}</p>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      {d.slots.map((s, i) => (
+                        <button key={i} style={{ flex: 1, padding: "8px 0", borderRadius: 10, fontSize: 11, fontWeight: 600, cursor: "pointer", backgroundColor: d.active[i] ? AI_C.gLightBg : "#fafafa", color: d.active[i] ? AI_C.gPrimary : "#bbb", border: `1.5px solid ${d.active[i] ? AI_C.gPrimary + "30" : "#e5e7eb"}` }}>
+                          {d.active[i] && "✓ "}{s}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Communication style */}
+              <div style={{ padding: 20, borderRadius: 16, border: "1px solid #f0f0f0", background: "#fff", marginBottom: 16 }}>
+                <p style={{ fontSize: 14, fontWeight: 700, color: AI_C.gDark, marginBottom: 12 }}>AI Communication Style</p>
+                {[
+                  { id: "friendly",     l: "Friendly Neighbour", d: "\"Hi! Thanks for your interest — it's in great shape!\"",           e: "😊" },
+                  { id: "professional", l: "Professional",        d: "\"Thank you for your inquiry. Available at the listed price.\"",     e: "💼" },
+                  { id: "brief",        l: "Quick & Brief",       d: "\"Yes, available. $20. Pickup Saturday 2pm?\"",                     e: "⚡" },
+                ].map((s) => (
+                  <button key={s.id} onClick={() => setAiStyle(s.id)}
+                    style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: 12, borderRadius: 12, border: `2px solid ${aiStyle === s.id ? AI_C.gPrimary : "#f0f0f0"}`, backgroundColor: aiStyle === s.id ? AI_C.gLightBg : "#fff", marginBottom: 8, textAlign: "left", cursor: "pointer" }}>
+                    <span style={{ fontSize: 20 }}>{s.e}</span>
+                    <div style={{ flex: 1 }}>
+                      <p style={{ fontSize: 12, fontWeight: 700, color: AI_C.gDark }}>{s.l}</p>
+                      <p style={{ fontSize: 10, color: "#999", fontStyle: "italic" }}>{s.d}</p>
+                    </div>
+                    <div style={{ width: 18, height: 18, borderRadius: "50%", border: `2px solid ${aiStyle === s.id ? AI_C.gPrimary : "#D1D5DB"}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      {aiStyle === s.id && <div style={{ width: 10, height: 10, borderRadius: "50%", backgroundColor: AI_C.gPrimary }} />}
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              {/* WhatsApp */}
+              <div style={{ display: "flex", alignItems: "center", gap: 12, padding: 14, borderRadius: 12, backgroundColor: "#F0FFF4", border: `1px solid ${AI_C.wa}25` }}>
+                <div style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: AI_C.wa, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <MessageCircle size={16} style={{ color: "#fff" }} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <p style={{ fontSize: 12, fontWeight: 700, color: AI_C.gDark }}>WhatsApp Notifications</p>
+                  <p style={{ fontSize: 10, color: "#777" }}>Claims, confirmations, and pickup reminders sent to your WhatsApp</p>
+                </div>
+                <button style={{ width: 44, height: 26, borderRadius: 20, padding: 2, border: "none", cursor: "pointer", backgroundColor: AI_C.wa }}>
+                  <div style={{ width: 22, height: 22, borderRadius: "50%", backgroundColor: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,0.15)", transform: "translateX(18px)" }} />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 24, display: "flex", justifyContent: "flex-end" }}>
+            <button onClick={() => { setView("photos"); }}
+              style={{ display: "flex", alignItems: "center", gap: 8, padding: "14px 32px", borderRadius: 14, border: "none", cursor: "pointer", fontSize: 14, fontWeight: 700, background: `linear-gradient(135deg, ${AI_C.ai}, #6D28D9)`, color: "#fff", boxShadow: `0 6px 24px ${AI_C.ai}30` }}>
+              Save & Start Listing with AI <ArrowRight size={16} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── PHOTO UPLOAD ── */}
+      {view === "photos" && (
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+            <button onClick={() => setView("setup")} style={{ display: "flex", alignItems: "center", gap: 4, padding: "6px 12px", borderRadius: 8, border: "1px solid #e5e7eb", backgroundColor: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 600, color: "#777" }}>
+              <ArrowLeft size={14} /> Back
+            </button>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 14px", borderRadius: 50, backgroundColor: AI_C.aiLight, border: `1px solid ${AI_C.aiBorder}` }}>
+              <Sparkles size={12} style={{ color: AI_C.ai }} />
+              <span style={{ fontSize: 11, fontWeight: 800, color: AI_C.ai }}>Upload Photos</span>
+            </div>
+            <div style={{ display: "flex", gap: 4, marginLeft: "auto" }}>
+              {["Upload", "AI Processing", "Review"].map((s, i) => (
+                <div key={i} style={{ width: 80, height: 4, borderRadius: 4, backgroundColor: i === 0 ? AI_C.ai : "#e5e7eb" }} />
+              ))}
+            </div>
+          </div>
+
+          <div onClick={() => { setProcessIdx(0); setView("processing"); }}
+            style={{ height: 180, borderRadius: 20, border: `2px dashed ${AI_C.ai}40`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, cursor: "pointer", backgroundColor: AI_C.aiLight, marginBottom: 16 }}>
+            <div style={{ width: 56, height: 56, borderRadius: 16, backgroundColor: AI_C.ai + "15", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Camera size={28} style={{ color: AI_C.ai }} />
+            </div>
+            <div style={{ textAlign: "center" }}>
+              <p style={{ fontSize: 15, fontWeight: 700, color: AI_C.gDark }}>Drop photos here or click to upload</p>
+              <p style={{ fontSize: 12, color: "#999", marginTop: 4 }}>One photo per item · JPG, PNG · Batch upload supported</p>
+            </div>
+          </div>
+
+          <p style={{ fontSize: 11, fontWeight: 700, color: "#bbb", letterSpacing: 1, marginBottom: 8 }}>SELECTED PHOTOS ({AI_ITEMS.length})</p>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 20 }}>
+            {AI_ITEMS.map((item) => (
+              <div key={item.id} style={{ width: 72, height: 72, borderRadius: 14, border: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, backgroundColor: "#fafafa", position: "relative" }}>
+                {item.e}
+                <button style={{ position: "absolute", top: -4, right: -4, width: 18, height: 18, borderRadius: "50%", backgroundColor: "#EF4444", border: "2px solid #fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+                  <X size={8} style={{ color: "#fff" }} />
+                </button>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <button onClick={() => { setProcessIdx(0); setView("processing"); }}
+              style={{ display: "flex", alignItems: "center", gap: 8, padding: "14px 32px", borderRadius: 14, border: "none", cursor: "pointer", fontSize: 14, fontWeight: 700, background: `linear-gradient(135deg, ${AI_C.ai}, #6D28D9)`, color: "#fff", boxShadow: `0 6px 20px ${AI_C.ai}30` }}>
+              <Sparkles size={16} /> Let AI Create {AI_ITEMS.length} Listings
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── PROCESSING ── */}
+      {view === "processing" && (
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 14px", borderRadius: 50, backgroundColor: AI_C.aiLight, border: `1px solid ${AI_C.aiBorder}` }}>
+              <Sparkles size={12} style={{ color: AI_C.ai }} />
+              <span style={{ fontSize: 11, fontWeight: 800, color: AI_C.ai }}>AI Processing...</span>
+            </div>
+            <div style={{ display: "flex", gap: 4, marginLeft: "auto" }}>
+              {["Upload", "AI Processing", "Review"].map((s, i) => (
+                <div key={i} style={{ width: 80, height: 4, borderRadius: 4, backgroundColor: i <= 1 ? AI_C.ai : "#e5e7eb" }} />
+              ))}
+            </div>
+          </div>
+          <div style={{ maxWidth: 600 }}>
+            {AI_ITEMS.map((item, i) => (
+              <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 14, padding: 14, borderRadius: 14, border: `1.5px solid ${i < processIdx ? AI_C.gPrimary + "30" : i === processIdx ? AI_C.ai + "40" : "#f0f0f0"}`, backgroundColor: i < processIdx ? AI_C.gLightBg : i === processIdx ? AI_C.aiLight : "#fff", marginBottom: 8, transition: "all 0.4s", opacity: i > processIdx + 1 ? 0.4 : 1 }}>
+                <div style={{ width: 48, height: 48, borderRadius: 12, border: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, backgroundColor: "#fafafa" }}>{item.e}</div>
+                <div style={{ flex: 1 }}>
+                  {i < processIdx ? (
+                    <>
+                      <p style={{ fontSize: 13, fontWeight: 700, color: AI_C.gDark }}>{item.t}</p>
+                      <p style={{ fontSize: 11, color: "#999" }}>{item.cat} · {item.cond} · ${item.price}</p>
+                    </>
+                  ) : i === processIdx ? (
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <Sparkles size={14} style={{ color: AI_C.ai }} />
+                      <span style={{ fontSize: 13, fontWeight: 600, color: AI_C.ai }}>Identifying item...</span>
+                    </div>
+                  ) : (
+                    <span style={{ fontSize: 13, color: "#ccc" }}>Waiting...</span>
+                  )}
+                </div>
+                {i < processIdx && <CheckCircle size={20} style={{ color: AI_C.gPrimary }} />}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── REVIEW ── */}
+      {view === "review" && (
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 14px", borderRadius: 50, backgroundColor: AI_C.aiLight, border: `1px solid ${AI_C.aiBorder}` }}>
+              <Sparkles size={12} style={{ color: AI_C.ai }} />
+              <span style={{ fontSize: 11, fontWeight: 800, color: AI_C.ai }}>Review & Approve</span>
+            </div>
+            <div style={{ display: "flex", gap: 4, marginLeft: "auto" }}>
+              {["Upload", "AI Processing", "Review"].map((s, i) => (
+                <div key={i} style={{ width: 80, height: 4, borderRadius: 4, backgroundColor: AI_C.ai }} />
+              ))}
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: 12, borderRadius: 12, backgroundColor: AI_C.gLightBg, marginBottom: 16 }}>
+            <Sparkles size={14} style={{ color: AI_C.gPrimary }} />
+            <p style={{ fontSize: 12, color: AI_C.gDark }}><b>{AI_ITEMS.length} listings created.</b> Review each one — click Edit to adjust, or Approve All below.</p>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
+            {AI_ITEMS.map((item) => (
+              <div key={item.id} style={{ borderRadius: 16, border: "1px solid #f0f0f0", overflow: "hidden", backgroundColor: "#fff" }}>
+                <div style={{ display: "flex", gap: 12, padding: 14 }}>
+                  <div style={{ width: 64, height: 64, borderRadius: 12, border: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, backgroundColor: "#fafafa", flexShrink: 0 }}>{item.e}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontSize: 13, fontWeight: 700, color: AI_C.gDark, lineHeight: 1.3 }}>{item.t}</p>
+                    <p style={{ fontSize: 10, color: "#999", marginTop: 4, lineHeight: 1.5, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" } as React.CSSProperties}>{item.d}</p>
+                    <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                      <span style={{ fontSize: 9, fontWeight: 600, padding: "2px 8px", borderRadius: 20, backgroundColor: AI_C.gLightBg, color: AI_C.gPrimary }}>{item.cat}</span>
+                      <span style={{ fontSize: 9, fontWeight: 600, padding: "2px 8px", borderRadius: 20, backgroundColor: "#f3f4f6", color: "#777" }}>{item.cond}</span>
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 14px", borderTop: "1px solid #f5f5f5", backgroundColor: "#fafafa" }}>
+                  <div><span style={{ fontSize: 10, color: "#999" }}>AI price: </span><span style={{ fontSize: 17, fontWeight: 900, color: AI_C.gPrimary }}>${item.price}</span></div>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button style={{ padding: "5px 12px", borderRadius: 8, border: "1px solid #e5e7eb", backgroundColor: "#fff", fontSize: 11, fontWeight: 600, cursor: "pointer", color: "#777" }}>Edit</button>
+                    <button style={{ padding: "5px 12px", borderRadius: 8, border: "none", backgroundColor: AI_C.gPrimary, fontSize: 11, fontWeight: 600, cursor: "pointer", color: "#fff" }}>✓ Approve</button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: 16, borderRadius: 14, border: "1px solid #f0f0f0", backgroundColor: "#fff" }}>
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: "#777", alignSelf: "center" }}>List to:</span>
+              {[
+                { id: "drop",  l: "Saturday's Drop", d: "Goes live Sat 8am", active: true,  c: AI_C.gPrimary, bg: AI_C.gLightBg, e: "🎯" },
+                { id: "shelf", l: "The Shelf",        d: "Available now",     active: false, c: AI_C.oPrimary, bg: AI_C.oLightBg, e: "📚" },
+              ].map((d) => (
+                <button key={d.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px", borderRadius: 10, border: `2px solid ${d.active ? d.c : "#e5e7eb"}`, backgroundColor: d.active ? d.bg : "#fff", cursor: "pointer" }}>
+                  <span style={{ fontSize: 14 }}>{d.e}</span>
+                  <div style={{ textAlign: "left" }}>
+                    <p style={{ fontSize: 12, fontWeight: 700, color: AI_C.gDark }}>{d.l}</p>
+                    <p style={{ fontSize: 9, color: "#999" }}>{d.d}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+            <button onClick={() => setView("dashboard")}
+              style={{ display: "flex", alignItems: "center", gap: 8, padding: "14px 28px", borderRadius: 14, border: "none", cursor: "pointer", fontSize: 14, fontWeight: 700, background: `linear-gradient(135deg, ${AI_C.gPrimary}, ${AI_C.gHover})`, color: "#fff", boxShadow: `0 6px 20px ${AI_C.gPrimary}30` }}>
+              Approve All & List {AI_ITEMS.length} Items <ArrowRight size={16} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── AI DASHBOARD ── */}
+      {view === "dashboard" && (
+        <div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 14px", borderRadius: 50, backgroundColor: AI_C.aiLight, border: `1px solid ${AI_C.aiBorder}` }}>
+                <Sparkles size={12} style={{ color: AI_C.ai }} />
+                <span style={{ fontSize: 11, fontWeight: 800, color: AI_C.ai }}>AI Agent Active</span>
+              </div>
+              <span style={{ fontSize: 11, color: "#999" }}>Managing 20 items across Drop & Shelf</span>
+            </div>
+            <button onClick={() => setView("photos")}
+              style={{ display: "flex", alignItems: "center", gap: 6, padding: "10px 20px", borderRadius: 12, border: "none", cursor: "pointer", fontSize: 13, fontWeight: 700, background: `linear-gradient(135deg, ${AI_C.ai}, #6D28D9)`, color: "#fff" }}>
+              <Camera size={15} /> Add More Items
+            </button>
+          </div>
+
+          {/* Stats */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
+            {[
+              { v: "15", l: "In Drop",       c: AI_C.gPrimary, bg: AI_C.gLightBg, Icon: Tag },
+              { v: "5",  l: "On Shelf",      c: AI_C.oPrimary, bg: AI_C.oLightBg, Icon: Package },
+              { v: "$285", l: "Sold (AI)",   c: AI_C.ai,       bg: AI_C.aiLight,  Icon: DollarSign },
+              { v: "3",  l: "Pickups Today", c: AI_C.tPrimary, bg: AI_C.tLight,   Icon: MapPin },
+            ].map((s, i) => (
+              <div key={i} style={{ padding: 16, borderRadius: 14, border: "1px solid #f0f0f0", background: "#fff", display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: s.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <s.Icon size={18} style={{ color: s.c }} />
+                </div>
+                <div>
+                  <p style={{ fontSize: 22, fontWeight: 900, color: s.c }}>{s.v}</p>
+                  <p style={{ fontSize: 11, color: "#999" }}>{s.l}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            {/* Activity feed */}
+            <div style={{ padding: 20, borderRadius: 16, border: "1px solid #f0f0f0", background: "#fff" }}>
+              <h3 style={{ fontSize: 14, fontWeight: 800, color: AI_C.gDark, marginBottom: 14 }}>AI Activity Feed</h3>
+              {[
+                { t: "Claim accepted",       d: "IKEA Bookshelf — Sarah M. claimed at $35. Pickup Sat 2pm.",          c: AI_C.gPrimary, bg: AI_C.gLightBg, time: "2 min ago",  e: "✅" },
+                { t: "Counter-offer sent",   d: "Coffee Maker — buyer offered $15. AI countered at $20. Waiting.",    c: AI_C.oPrimary, bg: AI_C.oLightBg, time: "18 min ago", e: "🤝" },
+                { t: "Price drop suggested", d: "Samsung Tablet on Shelf 10 days. Suggest $80 → $65?",                c: AI_C.ai,       bg: AI_C.aiLight,  time: "1 hr ago",   e: "📉" },
+                { t: "Lowball declined",     d: "Drill Set — $10 offer auto-declined. Your floor: $52.",               c: "#DC2626",     bg: "#FEF2F2",     time: "3 hrs ago",  e: "🚫" },
+              ].map((a, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: 10, borderRadius: 12, marginBottom: 6, backgroundColor: i === 0 ? a.bg : "#fff", border: `1px solid ${i === 0 ? a.c + "20" : "#f5f5f5"}` }}>
+                  <div style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: a.bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>{a.e}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: a.c }}>{a.t}</span>
+                      <span style={{ fontSize: 9, color: "#ccc" }}>{a.time}</span>
+                    </div>
+                    <p style={{ fontSize: 11, color: "#777", lineHeight: 1.5, marginTop: 2 }}>{a.d}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* WhatsApp log */}
+            <div style={{ padding: 20, borderRadius: 16, border: "1px solid #f0f0f0", background: "#fff" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+                <div style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: AI_C.wa, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <MessageCircle size={14} style={{ color: "#fff" }} />
+                </div>
+                <h3 style={{ fontSize: 14, fontWeight: 800, color: AI_C.gDark }}>Your WhatsApp Notifications</h3>
+              </div>
+              {[
+                { msg: "Your IKEA Bookshelf was claimed at $35! Pickup Saturday 2pm.",                                    time: "2 min ago" },
+                { msg: "Coffee Maker — buyer offered $15. AI countered at $20 (your floor). No action needed.",           time: "18 min ago" },
+                { msg: "Reminder: 3 pickups scheduled for tomorrow. Details below.",                                       time: "Yesterday" },
+                { msg: "Drop summary: 8 of 15 items sold! Total: $195. 7 items moved to the Shelf.",                      time: "Last Sunday" },
+              ].map((n, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: 10, borderRadius: 10, marginBottom: 4, backgroundColor: i === 0 ? "#F0FFF4" : "#fff", border: `1px solid ${i === 0 ? AI_C.wa + "20" : "#f5f5f5"}` }}>
+                  <div style={{ width: 6, height: 6, borderRadius: "50%", backgroundColor: i === 0 ? AI_C.wa : "#e5e7eb", flexShrink: 0, marginTop: 6 }} />
+                  <div style={{ flex: 1 }}>
+                    <p style={{ fontSize: 11, color: AI_C.gDark, lineHeight: 1.5 }}>{n.msg}</p>
+                    <p style={{ fontSize: 9, color: "#ccc", marginTop: 2 }}>{n.time}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Buyer History Tab ──────────────────────────────────────────────────────
+
+const HISTORY_C = {
+  gLightBg: "#ECFDF5", gSoft: "#D1FAE5", gAccent: "#6EE7B7",
+  gPrimary: "#059669", gHover: "#047857", gDark: "#064e3b",
+  oLightBg: "#FFF7ED", oSoft: "#FED7AA",
+  oPrimary: "#f59e0b",
+  tPrimary: "#0F766E", tLight: "#CCFBF1",
+  ai: "#7C3AED", aiLight: "#F5F3FF",
+};
+
+const historyTransactions = [
+  { id: "t1",  item: "Solid Oak Dining Table",       price: 350, origPrice: 900,  img: "🪵", cat: "Furniture",   seller: "Jane D.",             neighbourhood: "Bridlewood",    dist: "1.2 km", pickupDate: "Apr 13, 2026", layer: "drop",      rated: false, rating: null },
+  { id: "t2",  item: 'Kids\' Bicycle — 16"',         price: 30,  origPrice: null, img: "🚲", cat: "Sports",      seller: "Tom R.",               neighbourhood: "Barrhaven",     dist: "0.3 km", pickupDate: "Apr 13, 2026", layer: "drop",      rated: false, rating: null },
+  { id: "t3",  item: "Yoga Mat + Bands",              price: 15,  origPrice: null, img: "🧘", cat: "Sports",      seller: "Chloe D.",             neighbourhood: "Barrhaven",     dist: "0.6 km", pickupDate: "Apr 8, 2026",  layer: "shelf",     rated: true,  rating: 5 },
+  { id: "t4",  item: "Full Bedroom Set — Queen",      price: 550, origPrice: 800,  img: "🛏️", cat: "Furniture",   seller: "The Patel Family",     neighbourhood: "Barrhaven South",dist: "1.5 km",pickupDate: "Apr 6, 2026",  layer: "dedicated", dedType: "moving", rated: true, rating: 5 },
+  { id: "t5",  item: "IKEA KALLAX Shelf",             price: 35,  origPrice: null, img: "📚", cat: "Furniture",   seller: "Mike T.",              neighbourhood: "Barrhaven",     dist: "2 km",   pickupDate: "Mar 29, 2026", layer: "drop",      rated: true,  rating: 4 },
+  { id: "t6",  item: "Winter Boots — Size 10",        price: 25,  origPrice: 60,   img: "🥾", cat: "Clothing",    seller: "Raj P.",               neighbourhood: "Barrhaven",     dist: "0.9 km", pickupDate: "Mar 22, 2026", layer: "drop",      rated: true,  rating: 5 },
+  { id: "t7",  item: "Cuisinart Coffee Maker",        price: 20,  origPrice: 25,   img: "☕", cat: "Kitchen",     seller: "Sarah L.",             neighbourhood: "Barrhaven",     dist: "1.2 km", pickupDate: "Mar 15, 2026", layer: "drop",      rated: true,  rating: 4 },
+  { id: "t8",  item: "Standing Desk — Adjustable",    price: 140, origPrice: 175,  img: "🖥️", cat: "Furniture",   seller: "David N.",             neighbourhood: "Barrhaven",     dist: "2.4 km", pickupDate: "Feb 22, 2026", layer: "shelf",     rated: true,  rating: 5 },
+  { id: "t9",  item: "Box of Kitchen Utensils",       price: 10,  origPrice: null, img: "🍴", cat: "Kitchen",     seller: "Omar H.",              neighbourhood: "Barrhaven",     dist: "1.1 km", pickupDate: "Feb 15, 2026", layer: "drop",      rated: true,  rating: 3 },
+  { id: "t10", item: "Vintage Record Player",         price: 90,  origPrice: null, img: "🎵", cat: "Electronics", seller: "Estate of M. Williams",neighbourhood: "Half Moon Bay", dist: "3.2 km", pickupDate: "Feb 8, 2026",  layer: "dedicated", dedType: "estate", rated: true, rating: 5 },
+  { id: "t11", item: "Samsung Galaxy Tab A7",         price: 65,  origPrice: 80,   img: "📲", cat: "Electronics", seller: "Mike T.",              neighbourhood: "Barrhaven",     dist: "2 km",   pickupDate: "Jan 25, 2026", layer: "shelf",     rated: true,  rating: 4 },
+  { id: "t12", item: "Christmas Tree — 7ft Artificial",price: 40, origPrice: 120,  img: "🎄", cat: "Décor",       seller: "Linda M.",             neighbourhood: "Barrhaven",     dist: "0.8 km", pickupDate: "Dec 14, 2025", layer: "drop",      rated: true,  rating: 5 },
+  { id: "t13", item: "Nintendo Switch + 3 Games",     price: 180, origPrice: 300,  img: "🎮", cat: "Electronics", seller: "Kevin W.",             neighbourhood: "Stonebridge",   dist: "1.9 km", pickupDate: "Dec 7, 2025",  layer: "drop",      rated: true,  rating: 5 },
+  { id: "t14", item: "Snow Blower — Electric",        price: 95,  origPrice: 200,  img: "❄️", cat: "Tools",       seller: "Paul F.",              neighbourhood: "Half Moon Bay", dist: "3.1 km", pickupDate: "Nov 22, 2025", layer: "drop",      rated: true,  rating: 4 },
+  { id: "t15", item: "Kids\' Snowsuit — Size 4",      price: 15,  origPrice: 50,   img: "🧣", cat: "Clothing",    seller: "Anna W.",              neighbourhood: "Barrhaven",     dist: "2.1 km", pickupDate: "Nov 15, 2025", layer: "shelf",     rated: true,  rating: 5 },
+  { id: "t16", item: "Patio Chair Set (4 chairs)",    price: 60,  origPrice: 160,  img: "🪑", cat: "Furniture",   seller: "Chris B.",             neighbourhood: "Stonebridge",   dist: "0.7 km", pickupDate: "Oct 18, 2025", layer: "dedicated", dedType: "garage", rated: true, rating: 4 },
+  { id: "t17", item: "Bookshelf — 5-Tier Oak",        price: 45,  origPrice: null, img: "📖", cat: "Furniture",   seller: "Priya M.",             neighbourhood: "Barrhaven",     dist: "0.5 km", pickupDate: "Sep 27, 2025", layer: "drop",      rated: true,  rating: 5 },
+  { id: "t18", item: "Instant Pot — 6 Quart",         price: 30,  origPrice: 70,   img: "🍲", cat: "Kitchen",     seller: "Chloe D.",             neighbourhood: "Barrhaven",     dist: "0.6 km", pickupDate: "Sep 13, 2025", layer: "drop",      rated: true,  rating: 4 },
+] as const;
+
+type HistoryTx = (typeof historyTransactions)[number] & { rated: boolean; rating: number | null };
+
+function HistoryStarRating({ rating, onRate, interactive }: { rating: number | null; onRate?: (r: number) => void; interactive?: boolean }) {
+  const [hover, setHover] = React.useState(0);
+  return (
+    <div style={{ display: "flex", gap: 2 }}>
+      {[1, 2, 3, 4, 5].map((s) => (
+        <button key={s}
+          onClick={() => interactive && onRate?.(s)}
+          onMouseEnter={() => interactive && setHover(s)}
+          onMouseLeave={() => interactive && setHover(0)}
+          style={{ border: "none", background: "none", cursor: interactive ? "pointer" : "default", padding: 0 }}>
+          <Star size={interactive ? 18 : 14} fill={(hover || (rating ?? 0)) >= s ? "#FBBF24" : "none"} style={{ color: (hover || (rating ?? 0)) >= s ? "#FBBF24" : "#D1D5DB" }} />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function HistoryTransactionRow({ tx }: { tx: HistoryTx }) {
+  const [showReview, setShowReview] = React.useState(false);
+  const [reviewRating, setReviewRating] = React.useState(0);
+  const [reviewText, setReviewText] = React.useState("");
+  const [localRated, setLocalRated] = React.useState(tx.rated);
+  const [localRating, setLocalRating] = React.useState<number | null>(tx.rating);
+  const saved = tx.origPrice ? tx.origPrice - tx.price : 0;
+  const isDed = tx.layer === "dedicated";
+  const dedInfo = (tx as any).dedType === "moving" ? { l: "Moving Sale", c: HISTORY_C.tPrimary, ic: "🚚" }
+    : (tx as any).dedType === "estate" ? { l: "Estate Sale", c: "#7C3AED", ic: "🏠" }
+    : (tx as any).dedType === "garage" ? { l: "Garage Sale", c: HISTORY_C.oPrimary, ic: "🏷️" }
+    : null;
+
+  return (
+    <div style={{ padding: "14px 16px", borderRadius: 14, border: "1px solid #f0f0f0", backgroundColor: "#fff", marginBottom: 8, transition: "all 0.15s" }}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.boxShadow = "0 4px 16px rgba(0,0,0,0.04)"; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.boxShadow = "none"; }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+        <div style={{ width: 52, height: 52, borderRadius: 12, backgroundColor: dedInfo ? dedInfo.c + "08" : tx.layer === "drop" ? HISTORY_C.gLightBg : HISTORY_C.oLightBg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, flexShrink: 0, border: `1px solid ${dedInfo ? dedInfo.c + "15" : tx.layer === "drop" ? HISTORY_C.gSoft : "#f0f0f0"}` }}>
+          {tx.img}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+            <p style={{ fontSize: 14, fontWeight: 700, color: HISTORY_C.gDark }}>{tx.item}</p>
+            {dedInfo
+              ? <span style={{ fontSize: 7, fontWeight: 700, padding: "2px 6px", borderRadius: 4, backgroundColor: dedInfo.c, color: "#fff" }}>{dedInfo.ic} {dedInfo.l.toUpperCase()}</span>
+              : tx.layer === "drop"
+                ? <span style={{ fontSize: 7, fontWeight: 700, padding: "2px 6px", borderRadius: 4, backgroundColor: HISTORY_C.gDark, color: "#fff" }}>DROP</span>
+                : <span style={{ fontSize: 7, fontWeight: 700, padding: "2px 6px", borderRadius: 4, backgroundColor: HISTORY_C.oPrimary, color: "#fff" }}>SHELF</span>}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
+            <span style={{ fontSize: 11, color: "#999" }}>{tx.seller}</span>
+            <span style={{ fontSize: 11, color: "#ddd" }}>·</span>
+            <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 11, color: "#999" }}><MapPin size={10} />{tx.neighbourhood}</span>
+            <span style={{ fontSize: 11, color: "#ddd" }}>·</span>
+            <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 11, color: "#999" }}><Clock size={10} />{tx.pickupDate}</span>
+          </div>
+          {localRated && <div style={{ marginTop: 5 }}><HistoryStarRating rating={localRating} /></div>}
+        </div>
+        <div style={{ textAlign: "right", flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 4, justifyContent: "flex-end" }}>
+            <span style={{ fontSize: 20, fontWeight: 900, color: HISTORY_C.gPrimary }}>${tx.price}</span>
+            {tx.origPrice && <span style={{ fontSize: 12, color: "#ccc", textDecoration: "line-through" }}>${tx.origPrice}</span>}
+          </div>
+          {saved > 0 && (
+            <div style={{ display: "flex", alignItems: "center", gap: 3, justifyContent: "flex-end", marginTop: 3 }}>
+              <TrendingDown size={10} style={{ color: HISTORY_C.gPrimary }} />
+              <span style={{ fontSize: 10, fontWeight: 700, color: HISTORY_C.gPrimary }}>Saved ${saved}</span>
+            </div>
+          )}
+          {!localRated && !showReview && (
+            <button onClick={() => setShowReview(true)} style={{ marginTop: 6, padding: "5px 12px", borderRadius: 8, border: `1px solid ${HISTORY_C.oPrimary}30`, cursor: "pointer", fontSize: 10, fontWeight: 700, backgroundColor: HISTORY_C.oLightBg, color: HISTORY_C.oPrimary, display: "flex", alignItems: "center", gap: 4 }}>
+              <Star size={10} /> Leave a Review
+            </button>
+          )}
+        </div>
+      </div>
+      {showReview && !localRated && (
+        <div style={{ marginTop: 12, padding: 14, borderRadius: 12, backgroundColor: "#fafafa", border: "1px solid #f0f0f0" }}>
+          <p style={{ fontSize: 12, fontWeight: 700, color: HISTORY_C.gDark, marginBottom: 8 }}>How was your experience with {tx.seller}?</p>
+          <HistoryStarRating rating={reviewRating} onRate={setReviewRating} interactive />
+          {reviewRating > 0 && (
+            <>
+              <textarea value={reviewText} onChange={(e) => setReviewText(e.target.value)} placeholder="Optional — tell your neighbours about the experience..."
+                style={{ width: "100%", height: 60, padding: 10, borderRadius: 10, border: "1px solid #e5e7eb", fontSize: 12, color: HISTORY_C.gDark, resize: "none", outline: "none", marginTop: 8, backgroundColor: "#fff", boxSizing: "border-box" }} />
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
+                <button onClick={() => setShowReview(false)} style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid #e5e7eb", cursor: "pointer", fontSize: 11, fontWeight: 600, backgroundColor: "#fff", color: "#777" }}>Cancel</button>
+                <button onClick={() => { setLocalRated(true); setLocalRating(reviewRating); setShowReview(false); }}
+                  style={{ padding: "6px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 11, fontWeight: 700, backgroundColor: HISTORY_C.gPrimary, color: "#fff" }}>Submit Review</button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BuyerHistoryTab() {
+  const txs = historyTransactions as unknown as HistoryTx[];
+  const totalItems = txs.length;
+  const totalSpent = txs.reduce((a, t) => a + t.price, 0);
+  const totalSaved = txs.reduce((a, t) => a + (t.origPrice ? t.origPrice - t.price : 0), 0);
+  const catCounts: Record<string, number> = {};
+  txs.forEach((t) => { catCounts[t.cat] = (catCounts[t.cat] || 0) + 1; });
+  const topCat = Object.entries(catCounts).sort((a, b) => b[1] - a[1])[0];
+  const unratedCount = txs.filter((t) => !t.rated).length;
+
+  const getYear = (d: string) => new Date(d).getFullYear();
+  const getMonthOnly = (d: string) => new Date(d).toLocaleDateString("en-US", { month: "long" });
+
+  const yearMap: Record<number, Record<string, HistoryTx[]>> = {};
+  txs.forEach((t) => {
+    const y = getYear(t.pickupDate);
+    const m = getMonthOnly(t.pickupDate);
+    if (!yearMap[y]) yearMap[y] = {};
+    if (!yearMap[y][m]) yearMap[y][m] = [];
+    yearMap[y][m].push(t);
+  });
+  const years = Object.keys(yearMap).map(Number).sort((a, b) => b - a);
+  const currentYear = 2026;
+
+  const [collapsed, setCollapsed] = React.useState<Record<string, boolean>>(() => {
+    const init: Record<string, boolean> = {};
+    years.forEach((y) => { if (y !== currentYear) init[`year-${y}`] = true; });
+    return init;
+  });
+  const toggle = (key: string) => setCollapsed((p) => ({ ...p, [key]: !p[key] }));
+
+  return (
+    <div style={{ maxWidth: 860, margin: "0 auto", paddingBottom: 40 }}>
+      <h2 style={{ fontSize: 22, fontWeight: 900, color: HISTORY_C.gDark, marginBottom: 20 }}>Purchase History</h2>
+
+      {/* Stats strip */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 24 }}>
+        {[
+          { label: "Items Bought",  value: String(totalItems),                   Icon: ShoppingCart, color: HISTORY_C.gPrimary, bg: HISTORY_C.gLightBg },
+          { label: "Total Spent",   value: `$${totalSpent.toLocaleString()}`,     Icon: DollarSign,   color: HISTORY_C.oPrimary, bg: HISTORY_C.oLightBg },
+          { label: "Total Saved",   value: `$${totalSaved.toLocaleString()}`,     Icon: TrendingDown, color: HISTORY_C.gPrimary, bg: HISTORY_C.gLightBg, sub: "vs original prices" },
+          { label: "Top Category",  value: topCat ? topCat[0] : "—",             Icon: Award,        color: HISTORY_C.ai,       bg: HISTORY_C.aiLight,  sub: topCat ? `${topCat[1]} items` : undefined },
+        ].map((s, i) => (
+          <div key={i} style={{ padding: 16, borderRadius: 14, border: "1px solid #f0f0f0", backgroundColor: "#fff" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+              <div style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: s.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <s.Icon size={16} style={{ color: s.color }} />
+              </div>
+              {s.sub && <span style={{ fontSize: 9, color: "#ccc" }}>{s.sub}</span>}
+            </div>
+            <p style={{ fontSize: 22, fontWeight: 900, color: s.color }}>{s.value}</p>
+            <p style={{ fontSize: 11, color: "#999", marginTop: 2 }}>{s.label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Unrated prompt */}
+      {unratedCount > 0 && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 18px", borderRadius: 12, backgroundColor: HISTORY_C.oLightBg, border: `1px solid ${HISTORY_C.oSoft}`, marginBottom: 20 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Star size={16} style={{ color: HISTORY_C.oPrimary }} />
+            <p style={{ fontSize: 13, fontWeight: 700, color: HISTORY_C.gDark }}>You have {unratedCount} unrated {unratedCount === 1 ? "purchase" : "purchases"}</p>
+            <p style={{ fontSize: 11, color: "#999" }}>Reviews help your neighbours build trust.</p>
+          </div>
+          <ChevronDown size={14} style={{ color: HISTORY_C.oPrimary }} />
+        </div>
+      )}
+
+      {/* Year → Month timeline */}
+      {years.map((year) => {
+        const yearTxs = txs.filter((t) => getYear(t.pickupDate) === year);
+        const yearSpent = yearTxs.reduce((a, t) => a + t.price, 0);
+        const yearSaved = yearTxs.reduce((a, t) => a + (t.origPrice ? t.origPrice - t.price : 0), 0);
+        const yearCollapsed = collapsed[`year-${year}`];
+        const isCurrent = year === currentYear;
+        const monthsInYear = Object.keys(yearMap[year]);
+
+        return (
+          <div key={year} style={{ marginBottom: isCurrent ? 8 : 16 }}>
+            <button onClick={() => toggle(`year-${year}`)}
+              style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", padding: isCurrent ? "6px 0" : "14px 18px", borderRadius: isCurrent ? 0 : 14, border: isCurrent ? "none" : "1.5px solid #e5e7eb", cursor: "pointer", backgroundColor: isCurrent ? "transparent" : yearCollapsed ? "#fff" : "#fafafa", marginBottom: yearCollapsed ? 0 : isCurrent ? 8 : 12, transition: "all 0.15s" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                {!isCurrent && <span style={{ fontSize: 20 }}>📅</span>}
+                <div style={{ textAlign: "left" }}>
+                  <span style={{ fontSize: isCurrent ? 12 : 18, fontWeight: 900, color: isCurrent ? "#bbb" : HISTORY_C.gDark, letterSpacing: isCurrent ? 1.5 : 0, textTransform: isCurrent ? "uppercase" : "none" as const }}>{year}</span>
+                  {!isCurrent && <p style={{ fontSize: 11, color: "#999", marginTop: 2 }}>{yearTxs.length} items purchased</p>}
+                </div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                {!isCurrent && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{ textAlign: "right" }}>
+                      <span style={{ fontSize: 16, fontWeight: 900, color: HISTORY_C.gDark }}>${yearSpent}</span>
+                      <p style={{ fontSize: 10, color: "#bbb" }}>spent</p>
+                    </div>
+                    {yearSaved > 0 && (
+                      <div style={{ textAlign: "right" }}>
+                        <span style={{ fontSize: 14, fontWeight: 800, color: HISTORY_C.gPrimary }}>${yearSaved}</span>
+                        <p style={{ fontSize: 10, color: HISTORY_C.gPrimary }}>saved</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+                <ChevronDown size={16} style={{ color: isCurrent ? "#ddd" : "#bbb", transform: yearCollapsed ? "rotate(-90deg)" : "rotate(0)", transition: "transform 0.2s" }} />
+              </div>
+            </button>
+
+            {!yearCollapsed && monthsInYear.map((month) => {
+              const monthKey = `${year}-${month}`;
+              const items = yearMap[year][month];
+              const monthSpent = items.reduce((a, t) => a + t.price, 0);
+              const monthSaved = items.reduce((a, t) => a + (t.origPrice ? t.origPrice - t.price : 0), 0);
+              const mCollapsed = collapsed[monthKey];
+
+              return (
+                <div key={monthKey} style={{ marginBottom: 10 }}>
+                  <button onClick={() => toggle(monthKey)}
+                    style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", padding: "10px 14px", borderRadius: 10, border: "1px solid #f0f0f0", cursor: "pointer", backgroundColor: mCollapsed ? "#fff" : "#fafafa", marginBottom: mCollapsed ? 0 : 8, transition: "all 0.15s" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 14, fontWeight: 800, color: HISTORY_C.gDark }}>{month}</span>
+                      <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 8px", borderRadius: 6, backgroundColor: "#f3f4f6", color: "#999" }}>{items.length} {items.length === 1 ? "item" : "items"}</span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: HISTORY_C.gDark }}>${monthSpent}</span>
+                      {monthSaved > 0 && <span style={{ fontSize: 10, fontWeight: 600, color: HISTORY_C.gPrimary }}>saved ${monthSaved}</span>}
+                      <ChevronDown size={14} style={{ color: "#ccc", transform: mCollapsed ? "rotate(-90deg)" : "rotate(0)", transition: "transform 0.2s" }} />
+                    </div>
+                  </button>
+                  {!mCollapsed && <div>{items.map((tx) => <HistoryTransactionRow key={tx.id} tx={tx} />)}</div>}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+
+      {/* Community impact */}
+      <div style={{ marginTop: 20, padding: 20, borderRadius: 16, background: `linear-gradient(135deg,${HISTORY_C.gDark},${HISTORY_C.gHover ?? HISTORY_C.gPrimary})`, position: "relative", overflow: "hidden" }}>
+        <div style={{ position: "absolute", top: -30, right: -30, width: 120, height: 120, borderRadius: "50%", background: "rgba(255,255,255,0.05)" }} />
+        <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+          <div>
+            <p style={{ fontSize: 16, fontWeight: 800, color: "#fff" }}>Your Community Impact</p>
+            <p style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", marginTop: 4, lineHeight: 1.6 }}>
+              You&apos;ve kept <b style={{ color: HISTORY_C.gAccent }}>{totalItems} items</b> out of landfill and saved <b style={{ color: "#FDBA74" }}>${totalSaved}</b> by buying from your neighbours.
+            </p>
+          </div>
+          <div style={{ display: "flex", gap: 12, flexShrink: 0 }}>
+            {[
+              { v: totalItems, l: "Items rescued", e: "♻️" },
+              { v: `${Math.round(totalItems * 2.5)}kg`, l: "CO₂ avoided", e: "🌱" },
+            ].map((s, i) => (
+              <div key={i} style={{ textAlign: "center", padding: "10px 16px", borderRadius: 12, backgroundColor: "rgba(255,255,255,0.08)" }}>
+                <span style={{ fontSize: 20 }}>{s.e}</span>
+                <p style={{ fontSize: 18, fontWeight: 900, color: "#fff", marginTop: 4 }}>{s.v}</p>
+                <p style={{ fontSize: 9, color: "rgba(255,255,255,0.4)" }}>{s.l}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Item Detail Modal ──────────────────────────────────────────────────────
+const ID_C = {
+  gLightBg: "#ECFDF5", gSoft: "#D1FAE5",
+  gPrimary: "#059669", gHover: "#047857", gDark: "#064e3b",
+  oLightBg: "#FFF7ED", oSoft: "#FED7AA",
+  oPrimary: "#f59e0b", oHover: "#d97706",
+  tPrimary: "#0F766E", tLight: "#CCFBF1",
+  ai: "#7C3AED", aiLight: "#F5F3FF", aiBorder: "#DDD6FE",
+  wa: "#25D366",
+};
+
 function ItemDetailModal({
   item,
   selectedSlot,
@@ -2329,92 +2988,297 @@ function ItemDetailModal({
   onClaim: () => void;
   onClose: () => void;
 }) {
+  const [saved, setSaved] = useState(false);
+  const [showClaim, setShowClaim] = useState(false);
+  const [claimed, setClaimed] = useState(false);
+  const [claimStep, setClaimStep] = useState<"confirm" | "pickup" | "done">("confirm");
+  const [whatsapp, setWhatsapp] = useState(true);
+  const [showAsk, setShowAsk] = useState(false);
+  const [askQ, setAskQ] = useState("");
+  const [askSent, setAskSent] = useState(false);
+
+  const isDed = !!item.movingSale;
+  const accentColor = isDed ? ID_C.tPrimary : ID_C.gPrimary;
+  const discount = item.originalPrice ? Math.round((1 - item.price / item.originalPrice) * 100) : 0;
+
+  function handleConfirmClaim() {
+    onClaim();
+    setClaimed(true);
+    setClaimStep("done");
+  }
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+    <div
+      style={{ position: "fixed", inset: 0, zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.45)", backdropFilter: "blur(4px)" }}
+      onClick={onClose}
+    >
       <div
-        className="bg-white rounded-2xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto"
+        style={{ width: "100%", maxWidth: 720, maxHeight: "92vh", overflowY: "auto", borderRadius: 24, backgroundColor: "#F7F7F5", boxShadow: "0 32px 80px rgba(0,0,0,0.18)" }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="p-6">
-          <div className="flex justify-between items-start mb-4">
-            <div>
-              <h2 className="text-xl font-bold text-gray-900">{item.title}</h2>
-              {item.movingSale && (
-                <span className="inline-block mt-1 px-2 py-1 bg-amber-500 text-white text-xs font-bold rounded-lg">
-                  Moving Sale {item.saleDate && `· ${item.saleDate}`}
-                </span>
+        <div style={{ padding: "24px 24px 60px" }}>
+
+          {/* Back */}
+          <button onClick={onClose} style={{ display: "flex", alignItems: "center", gap: 4, padding: "6px 0", border: "none", cursor: "pointer", backgroundColor: "transparent", fontSize: 13, fontWeight: 600, color: "#999", marginBottom: 12 }}>
+            <ArrowLeft size={16} /> Back
+          </button>
+
+          {/* Image area */}
+          <div style={{ height: 280, borderRadius: 20, backgroundColor: isDed ? ID_C.tLight : ID_C.gLightBg, display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden", border: "1px solid #f0f0f0", marginBottom: 20 }}>
+            <span style={{ fontSize: 80 }}>{item.emoji}</span>
+            <div style={{ position: "absolute", top: 16, left: 16, display: "flex", flexDirection: "column", gap: 6 }}>
+              {discount > 0 && <span style={{ display: "inline-flex", padding: "5px 12px", borderRadius: 10, backgroundColor: "#DC2626", color: "#fff", fontSize: 12, fontWeight: 800 }}>-{discount}%</span>}
+              {isDed
+                ? <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 12px", borderRadius: 10, backgroundColor: ID_C.tPrimary, color: "#fff" }}><span style={{ fontSize: 10, fontWeight: 800 }}>🚚 MOVING SALE</span></div>
+                : <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 12px", borderRadius: 10, backgroundColor: ID_C.gDark, color: "#fff" }}><div style={{ width: 6, height: 6, borderRadius: "50%", backgroundColor: "#22C55E" }} /><span style={{ fontSize: 10, fontWeight: 800 }}>LIVE DROP</span></div>}
+            </div>
+            <div style={{ position: "absolute", top: 16, right: 16, display: "flex", alignItems: "center", gap: 5, padding: "5px 12px", borderRadius: 10, backgroundColor: "rgba(255,255,255,0.9)", border: "1px solid rgba(0,0,0,0.06)" }}>
+              <Eye size={12} style={{ color: "#999" }} /><span style={{ fontSize: 11, fontWeight: 700, color: "#666" }}>watching</span>
+            </div>
+          </div>
+
+          {/* Title + actions */}
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 8 }}>
+            <h1 style={{ fontSize: 22, fontWeight: 900, color: ID_C.gDark, lineHeight: 1.2, flex: 1 }}>{item.title}</h1>
+            <div style={{ display: "flex", gap: 8, flexShrink: 0, marginLeft: 12 }}>
+              <button onClick={() => setSaved(!saved)} style={{ width: 40, height: 40, borderRadius: 12, border: "1px solid #e5e7eb", backgroundColor: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Heart size={18} fill={saved ? "#EF4444" : "none"} style={{ color: saved ? "#EF4444" : "#ccc" }} />
+              </button>
+              <button style={{ width: 40, height: 40, borderRadius: 12, border: "1px solid #e5e7eb", backgroundColor: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Share2 size={16} style={{ color: "#ccc" }} />
+              </button>
+            </div>
+          </div>
+
+          {/* Price */}
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 16 }}>
+            <span style={{ fontSize: 30, fontWeight: 900, color: ID_C.gPrimary }}>${item.price}</span>
+            {item.originalPrice && <span style={{ fontSize: 15, color: "#ccc", textDecoration: "line-through" }}>${item.originalPrice}</span>}
+            {item.originalPrice && <span style={{ fontSize: 12, fontWeight: 700, padding: "3px 8px", borderRadius: 8, backgroundColor: "#FEE2E2", color: "#DC2626" }}>Save ${item.originalPrice - item.price}</span>}
+          </div>
+
+          {/* Seller card */}
+          <div style={{ padding: 16, borderRadius: 16, border: `1.5px solid ${accentColor}20`, backgroundColor: isDed ? ID_C.tLight + "80" : "#fff", marginBottom: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: accentColor + "15", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800, color: accentColor, flexShrink: 0 }}>
+                {item.sellerName.charAt(0)}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <p style={{ fontSize: 14, fontWeight: 700, color: ID_C.gDark }}>{item.sellerName}</p>
+                  {isDed && <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 6, backgroundColor: accentColor, color: "#fff" }}>🚚 Moving Sale</span>}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 11, color: "#999" }}><MapPin size={10} />{item.distance} away</span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 2, fontSize: 11, color: ID_C.oPrimary }}><Star size={10} fill={ID_C.oPrimary} />4.8</span>
+                </div>
+              </div>
+            </div>
+            {isDed && item.saleDate && (
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 10, padding: "8px 12px", borderRadius: 10, backgroundColor: "#fff", border: `1px solid ${accentColor}15` }}>
+                <Calendar size={13} style={{ color: accentColor }} />
+                <span style={{ fontSize: 12, fontWeight: 700, color: accentColor }}>Available {item.saleDate}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Item details grid */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8, marginBottom: 16 }}>
+            {[
+              { l: "Condition", v: item.condition, Icon: Shield },
+              { l: "Distance", v: item.distance, Icon: MapPin },
+              { l: isDed ? "Sale Date" : "Claiming Ends", v: isDed ? (item.saleDate || "TBD") : countdownLabel, Icon: isDed ? Calendar : Clock },
+            ].map((d, i) => (
+              <div key={i} style={{ padding: 14, borderRadius: 12, border: "1px solid #f0f0f0", textAlign: "center", backgroundColor: "#fff" }}>
+                <d.Icon size={16} style={{ color: accentColor, margin: "0 auto 6px", display: "block" }} />
+                <p style={{ fontSize: 10, color: "#999", marginBottom: 2 }}>{d.l}</p>
+                <p style={{ fontSize: 13, fontWeight: 800, color: ID_C.gDark }}>{d.v}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Description */}
+          <div style={{ marginBottom: 16 }}>
+            <p style={{ fontSize: 14, fontWeight: 700, color: ID_C.gDark, marginBottom: 6 }}>About This Item</p>
+            <p style={{ fontSize: 13, color: "#666", lineHeight: 1.7 }}>{item.description}</p>
+            <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+              <span style={{ fontSize: 10, fontWeight: 600, padding: "3px 10px", borderRadius: 6, backgroundColor: ID_C.gLightBg, color: ID_C.gPrimary }}>{item.category}</span>
+              <span style={{ fontSize: 10, fontWeight: 600, padding: "3px 10px", borderRadius: 6, backgroundColor: "#f3f4f6", color: "#777" }}>{item.condition}</span>
+            </div>
+          </div>
+
+          {/* Q&A */}
+          <div style={{ marginBottom: 20 }}>
+            <p style={{ fontSize: 14, fontWeight: 700, color: ID_C.gDark, marginBottom: 10 }}>Questions & Answers</p>
+            {!showAsk ? (
+              <button onClick={() => setShowAsk(true)} style={{ width: "100%", padding: "12px 0", borderRadius: 12, border: "1px solid #e5e7eb", cursor: "pointer", fontSize: 13, fontWeight: 600, backgroundColor: "#fff", color: "#666", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                <MessageCircle size={14} /> Ask a Question
+              </button>
+            ) : (
+              <div style={{ padding: 16, borderRadius: 14, border: "1px solid #f0f0f0", backgroundColor: "#fff" }}>
+                {!askSent ? (
+                  <>
+                    <textarea value={askQ} onChange={(e) => setAskQ(e.target.value)} placeholder="E.g., Any scratches? Does it come with accessories?"
+                      style={{ width: "100%", height: 80, padding: 12, borderRadius: 10, border: "1px solid #e5e7eb", fontSize: 13, color: ID_C.gDark, resize: "none", outline: "none", backgroundColor: "#fafafa", boxSizing: "border-box" }} />
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8, padding: "6px 10px", borderRadius: 8, backgroundColor: ID_C.aiLight, marginBottom: 10 }}>
+                      <Sparkles size={11} style={{ color: ID_C.ai, flexShrink: 0 }} />
+                      <p style={{ fontSize: 10, color: ID_C.ai, lineHeight: 1.4 }}>This seller uses an AI agent — your question will be answered instantly.</p>
+                    </div>
+                    <button onClick={() => setAskSent(true)} disabled={!askQ.trim()}
+                      style={{ width: "100%", padding: "10px 0", borderRadius: 10, border: "none", cursor: askQ.trim() ? "pointer" : "not-allowed", fontSize: 13, fontWeight: 700, backgroundColor: askQ.trim() ? ID_C.gPrimary : "#e5e7eb", color: askQ.trim() ? "#fff" : "#bbb", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                      <Send size={14} /> Submit Question
+                    </button>
+                  </>
+                ) : (
+                  <div style={{ textAlign: "center", padding: "12px 0" }}>
+                    <div style={{ width: 40, height: 40, borderRadius: "50%", backgroundColor: ID_C.aiLight, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 10px" }}><Sparkles size={20} style={{ color: ID_C.ai }} /></div>
+                    <p style={{ fontSize: 13, fontWeight: 700, color: ID_C.gDark, marginBottom: 4 }}>AI agent is responding...</p>
+                    <p style={{ fontSize: 11, color: "#999" }}>You&apos;ll see the answer appear shortly.</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Sticky CTA */}
+          {!claimed ? (
+            <div style={{ position: "sticky", bottom: 0, padding: "16px 0", backgroundColor: "#F7F7F5" }}>
+              {canClaim ? (
+                <button onClick={() => setShowClaim(true)} style={{ width: "100%", padding: "16px 0", borderRadius: 14, border: "none", cursor: "pointer", fontSize: 15, fontWeight: 700, backgroundColor: accentColor, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, boxShadow: `0 6px 24px ${accentColor}30` }}>
+                  {isDed ? "Claim This Item" : "Claim Now"} — ${item.price} <ChevronRight size={16} />
+                </button>
+              ) : (
+                <div style={{ padding: 16, borderRadius: 14, backgroundColor: "#FFF7ED", border: "1px solid #FED7AA", textAlign: "center" }}>
+                  <p style={{ fontSize: 13, fontWeight: 700, color: "#92400e" }}>Claiming opens when Drop goes live</p>
+                  <p style={{ fontSize: 11, color: "#d97706", marginTop: 4 }}>{nextEventLabel} · {countdownLabel}</p>
+                </div>
               )}
             </div>
-            <button
-              onClick={onClose}
-              className="p-2 rounded-lg hover:bg-gray-100"
-            >
-              <X size={24} />
-            </button>
-          </div>
-          <div className="aspect-video bg-gray-100 rounded-xl flex items-center justify-center text-6xl mb-4">
-            {item.emoji}
-          </div>
-          <p className="text-gray-600 mb-2">{item.description}</p>
-          <div className="flex gap-2 text-sm text-gray-500 mb-4">
-            <span>{item.condition}</span>
-            <span>·</span>
-            <span>{item.category}</span>
-            <span>·</span>
-            <span>{item.distance} away</span>
-          </div>
-          <p className="text-lg font-bold text-emerald-600 mb-4">
-            ${item.price}
-            {item.originalPrice && (
-              <span className="text-sm font-normal text-gray-400 line-through ml-2">
-                ${item.originalPrice}
-              </span>
-            )}
-          </p>
-          <p className="text-sm text-gray-600 mb-2">
-            Seller: <span className="font-medium">{item.sellerName}</span>
-          </p>
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Select pickup time slot
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {item.pickupSlots.map((slot) => (
-                <button
-                  key={slot}
-                  onClick={() => onSelectSlot(slot)}
-                  disabled={!canClaim}
-                  className={`px-4 py-2 rounded-xl font-medium text-sm transition-all ${
-                    selectedSlot === slot
-                      ? "bg-amber-500 text-white"
-                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                  } ${!canClaim ? "opacity-60 cursor-not-allowed" : ""}`}
-                >
-                  {slot}
-                </button>
-              ))}
-            </div>
-          </div>
-          {!canClaim ? (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-center">
-              <p className="font-medium text-amber-800">
-                Claiming opens when Drop goes live
-              </p>
-              <p className="text-sm text-amber-700 mt-1">
-                {nextEventLabel} · {countdownLabel}
-              </p>
-            </div>
           ) : (
-          <button
-            onClick={onClaim}
-            disabled={!selectedSlot}
-            className="w-full py-4 bg-amber-500 text-white rounded-xl font-semibold hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Submit Claim Request
-          </button>
+            <div style={{ position: "sticky", bottom: 0, padding: "16px 0", backgroundColor: "#F7F7F5" }}>
+              <div style={{ padding: 16, borderRadius: 14, backgroundColor: ID_C.gLightBg, border: `1px solid ${ID_C.gSoft}`, display: "flex", alignItems: "center", gap: 12 }}>
+                <CheckCircle size={24} style={{ color: ID_C.gPrimary, flexShrink: 0 }} />
+                <div>
+                  <p style={{ fontSize: 14, fontWeight: 700, color: ID_C.gDark }}>You claimed this item!</p>
+                  <p style={{ fontSize: 11, color: "#777" }}>Pickup confirmed. Check WhatsApp for address.</p>
+                </div>
+              </div>
+            </div>
           )}
         </div>
       </div>
+
+      {/* Claim Modal */}
+      {showClaim && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.4)", backdropFilter: "blur(4px)" }}>
+          <div style={{ width: 480, maxHeight: "90vh", overflowY: "auto", borderRadius: 20, backgroundColor: "#fff", boxShadow: "0 24px 80px rgba(0,0,0,0.15)" }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ padding: "16px 20px", borderBottom: "1px solid #f0f0f0", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <h3 style={{ fontSize: 16, fontWeight: 800, color: ID_C.gDark }}>
+                {claimStep === "confirm" ? "Claim This Item" : claimStep === "pickup" ? "Choose Pickup Time" : "You're All Set!"}
+              </h3>
+              <button onClick={() => setShowClaim(false)} style={{ width: 32, height: 32, borderRadius: 8, border: "none", cursor: "pointer", backgroundColor: "#f3f4f6", display: "flex", alignItems: "center", justifyContent: "center" }}><X size={16} style={{ color: "#999" }} /></button>
+            </div>
+
+            {/* Item summary */}
+            <div style={{ padding: "16px 20px", display: "flex", gap: 12, alignItems: "center", borderBottom: "1px solid #f5f5f5" }}>
+              <div style={{ width: 56, height: 56, borderRadius: 12, backgroundColor: "#fafafa", border: "1px solid #f0f0f0", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, flexShrink: 0 }}>{item.emoji}</div>
+              <div style={{ flex: 1 }}>
+                <p style={{ fontSize: 14, fontWeight: 700, color: ID_C.gDark }}>{item.title}</p>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 2 }}>
+                  <span style={{ fontSize: 18, fontWeight: 900, color: ID_C.gPrimary }}>${item.price}</span>
+                  {item.originalPrice && <span style={{ fontSize: 12, color: "#ccc", textDecoration: "line-through" }}>${item.originalPrice}</span>}
+                </div>
+              </div>
+            </div>
+
+            {/* Step 1: Confirm */}
+            {claimStep === "confirm" && (
+              <div style={{ padding: "16px 20px" }}>
+                <div style={{ padding: 14, borderRadius: 12, backgroundColor: ID_C.gLightBg, border: `1px solid ${ID_C.gSoft}`, marginBottom: 16 }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                    <Info size={16} style={{ color: ID_C.gPrimary, marginTop: 2, flexShrink: 0 }} />
+                    <div>
+                      <p style={{ fontSize: 12, fontWeight: 700, color: ID_C.gDark }}>How claiming works</p>
+                      <p style={{ fontSize: 11, color: "#777", lineHeight: 1.6, marginTop: 4 }}>Claiming reserves this item for you. You&apos;ll choose a pickup time and receive the seller&apos;s location. Cancel at least 2 hours before if needed.</p>
+                    </div>
+                  </div>
+                </div>
+                <div style={{ padding: 14, borderRadius: 12, border: "1px solid #f0f0f0", marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div>
+                    <p style={{ fontSize: 13, fontWeight: 700, color: ID_C.gDark }}>Claim at listed price</p>
+                    <p style={{ fontSize: 11, color: "#999" }}>Instant confirmation</p>
+                  </div>
+                  <span style={{ fontSize: 20, fontWeight: 900, color: ID_C.gPrimary }}>${item.price}</span>
+                </div>
+                <button onClick={() => setClaimStep("pickup")} style={{ width: "100%", padding: "14px 0", borderRadius: 12, border: "none", cursor: "pointer", fontSize: 14, fontWeight: 700, backgroundColor: ID_C.gPrimary, color: "#fff", boxShadow: `0 4px 16px ${ID_C.gPrimary}30`, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                  Continue to Pickup Time <ChevronRight size={14} />
+                </button>
+              </div>
+            )}
+
+            {/* Step 2: Pickup */}
+            {claimStep === "pickup" && (
+              <div style={{ padding: "16px 20px" }}>
+                <p style={{ fontSize: 13, fontWeight: 700, color: ID_C.gDark, marginBottom: 12 }}>When can you pick up?</p>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+                  {item.pickupSlots.map((slot) => (
+                    <button key={slot} onClick={() => onSelectSlot(slot)}
+                      style={{ padding: "10px 16px", borderRadius: 10, cursor: "pointer", fontSize: 12, fontWeight: 600, backgroundColor: selectedSlot === slot ? ID_C.gPrimary : "#fff", color: selectedSlot === slot ? "#fff" : "#666", border: `1.5px solid ${selectedSlot === slot ? ID_C.gPrimary : "#e5e7eb"}` }}>
+                      {selectedSlot === slot && <Check size={11} style={{ marginRight: 4, verticalAlign: "middle" }} />}{slot}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: 12, borderRadius: 12, backgroundColor: "#F0FFF4", border: `1px solid ${ID_C.wa}20`, marginBottom: 16 }}>
+                  <div style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: ID_C.wa, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><MessageCircle size={14} style={{ color: "#fff" }} /></div>
+                  <div style={{ flex: 1 }}>
+                    <p style={{ fontSize: 12, fontWeight: 700, color: ID_C.gDark }}>WhatsApp reminders</p>
+                    <p style={{ fontSize: 10, color: "#777" }}>Get pickup time and address on WhatsApp</p>
+                  </div>
+                  <button onClick={() => setWhatsapp(!whatsapp)} style={{ width: 44, height: 26, borderRadius: 20, padding: 2, border: "none", cursor: "pointer", backgroundColor: whatsapp ? ID_C.wa : "#D1D5DB", transition: "all 0.2s" }}>
+                    <div style={{ width: 22, height: 22, borderRadius: "50%", backgroundColor: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,0.15)", transform: whatsapp ? "translateX(18px)" : "translateX(0)", transition: "transform 0.2s" }} />
+                  </button>
+                </div>
+                <button onClick={handleConfirmClaim} disabled={!selectedSlot}
+                  style={{ width: "100%", padding: "14px 0", borderRadius: 12, border: "none", cursor: selectedSlot ? "pointer" : "not-allowed", fontSize: 14, fontWeight: 700, backgroundColor: selectedSlot ? ID_C.gPrimary : "#e5e7eb", color: selectedSlot ? "#fff" : "#bbb", boxShadow: selectedSlot ? `0 4px 16px ${ID_C.gPrimary}30` : "none" }}>
+                  Confirm Pickup Time
+                </button>
+              </div>
+            )}
+
+            {/* Step 3: Done */}
+            {claimStep === "done" && (
+              <div style={{ padding: "24px 20px", textAlign: "center" }}>
+                <div style={{ width: 64, height: 64, borderRadius: "50%", backgroundColor: ID_C.gLightBg, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
+                  <CheckCircle size={32} style={{ color: ID_C.gPrimary }} />
+                </div>
+                <h3 style={{ fontSize: 18, fontWeight: 900, color: ID_C.gDark, marginBottom: 6 }}>Item Claimed!</h3>
+                <p style={{ fontSize: 13, color: "#777", lineHeight: 1.6, marginBottom: 20 }}>
+                  <b>{item.title}</b> is reserved for you at <b>${item.price}</b>.<br />
+                  Pickup: <b>{selectedSlot}</b>
+                </p>
+                <div style={{ padding: 14, borderRadius: 12, backgroundColor: "#F0FFF4", border: `1px solid ${ID_C.wa}20`, marginBottom: 16, textAlign: "left" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: ID_C.wa, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><MessageCircle size={14} style={{ color: "#fff" }} /></div>
+                    <div>
+                      <p style={{ fontSize: 12, fontWeight: 700, color: ID_C.gDark }}>WhatsApp confirmation sent</p>
+                      <p style={{ fontSize: 10, color: "#777" }}>Pickup address and details are in your WhatsApp</p>
+                    </div>
+                  </div>
+                </div>
+                <div style={{ padding: 14, borderRadius: 12, backgroundColor: ID_C.aiLight, border: `1px solid ${ID_C.aiBorder}`, marginBottom: 20, textAlign: "left" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <Sparkles size={14} style={{ color: ID_C.ai }} />
+                    <p style={{ fontSize: 11, color: ID_C.ai }}>The seller&apos;s AI agent confirmed your claim and will send a reminder 1 hour before pickup.</p>
+                  </div>
+                </div>
+                <button onClick={() => { setShowClaim(false); onClose(); }} style={{ width: "100%", padding: "12px 0", borderRadius: 12, border: "none", cursor: "pointer", fontSize: 14, fontWeight: 700, backgroundColor: ID_C.gPrimary, color: "#fff" }}>
+                  Done
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
