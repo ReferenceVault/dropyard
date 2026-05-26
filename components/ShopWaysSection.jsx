@@ -1,0 +1,144 @@
+"use client";
+
+// Faithful copy of /preview/feedback/two-ways-to-shop.jsx — do not modify in
+// isolation. If the preview changes, mirror the change here.
+
+import React from "react";
+
+function CheckIcon({ className = "" }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M5 12l4 4 10-10" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+const dropFeatures = [
+  "New items every weekend",
+  "48-hour claiming window",
+  "Preview items Thu–Fri",
+  "Pickup same weekend",
+];
+
+const shelfFeatures = [
+  "Browse anytime, claim anytime",
+  "More items available between Drops",
+  "Discounted prices",
+  "No weekend window required",
+];
+
+export default function ShopWaysSection() {
+  return (
+    <section className="relative bg-gradient-to-b from-white to-[#f7faf8] px-4 py-12 sm:px-6 lg:px-8 overflow-hidden">
+
+      {/* background glow */}
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute top-0 left-1/4 w-[400px] h-[400px] bg-[#2f8a22]/5 blur-3xl rounded-full" />
+        <div className="absolute bottom-0 right-1/4 w-[400px] h-[400px] bg-[#ff9412]/5 blur-3xl rounded-full" />
+      </div>
+
+      <div className="relative mx-auto max-w-6xl">
+
+        {/* HEADER */}
+        <div className="text-center">
+          <p className="text-xs font-bold uppercase tracking-[0.35em] text-[#ff9412]">
+            Two ways to shop
+          </p>
+
+          <h2 className="mt-4 text-4xl font-black tracking-[-0.04em] text-[#0b2f20] sm:text-5xl">
+            There&rsquo;s always something for you
+          </h2>
+
+          <p className="mx-auto mt-4 max-w-2xl text-lg text-slate-600">
+            Whether it&apos;s Drop day or a quiet Tuesday, your community has items waiting.
+          </p>
+        </div>
+
+        {/* GRID */}
+        <div className="mt-24 grid grid-cols-1 gap-12 lg:grid-cols-2">
+
+          {/* DROP CARD */}
+          <div className="group relative rounded-3xl bg-white p-[1.5px] shadow-[0_20px_70px_rgba(0,0,0,0.08)] transition duration-500 hover:-translate-y-3">
+
+            {/* gradient border */}
+            <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-[#2f8a22]/30 via-[#22c55e]/40 to-transparent opacity-60 group-hover:opacity-100 transition" />
+
+            <div className="relative rounded-3xl bg-white/95 backdrop-blur p-8">
+
+              {/* TOP */}
+              <div className="flex items-center justify-between">
+                <span className="text-xs tracking-[0.3em] uppercase text-[#0b2f20]/60">Every Saturday</span>
+                <span className="text-xs bg-[#2f8a22]/10 text-[#2f8a22] px-3 py-1 rounded-full">Live weekly</span>
+              </div>
+
+              <h3 className="mt-6 text-2xl font-bold text-[#0b2f20]">The Drop</h3>
+
+              <p className="mt-3 text-[#0b2f20]/70 text-sm max-w-md">
+                Fresh items go live Saturday 8am. Browse, claim, and pick up — all within 48 hours.
+              </p>
+
+              {/* FEATURES */}
+              <ul className="mt-8 space-y-4">
+                {dropFeatures.map((f, i) => (
+                  <li key={i} className="flex items-center gap-3 text-sm text-[#0b2f20]/80">
+                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#2f8a22]/10 text-[#2f8a22]">
+                      <CheckIcon className="h-3 w-3" />
+                    </div>
+                    {f}
+                  </li>
+                ))}
+              </ul>
+
+              {/* CTA */}
+              <button className="mt-10 w-full rounded-xl bg-[#0f6a44] text-white py-3 text-sm font-semibold transition hover:bg-[#0b5638] hover:shadow-lg">
+                Browse Drops &rarr;
+              </button>
+
+            </div>
+          </div>
+
+          {/* SHELF CARD */}
+          <div className="group relative rounded-3xl bg-white p-[1.5px] shadow-[0_20px_70px_rgba(0,0,0,0.08)] transition duration-500 hover:-translate-y-3">
+
+            {/* gradient border */}
+            <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-[#ff9412]/30 via-[#ff7a00]/40 to-transparent opacity-60 group-hover:opacity-100 transition" />
+
+            <div className="relative rounded-3xl bg-white/95 backdrop-blur p-8">
+
+              {/* TOP */}
+              <div className="flex items-center justify-between">
+                <span className="text-xs tracking-[0.3em] uppercase text-[#0b2f20]/60">Always open</span>
+                <span className="text-xs bg-[#ff9412]/10 text-[#ff9412] px-3 py-1 rounded-full">Open now</span>
+              </div>
+
+              <h3 className="mt-6 text-2xl font-bold text-[#0b2f20]">The Shelf</h3>
+
+              <p className="mt-3 text-[#0b2f20]/70 text-sm max-w-md">
+                Items available right now, anytime. No countdown, no rush — browse and claim when you&apos;re ready.
+              </p>
+
+              {/* FEATURES */}
+              <ul className="mt-8 space-y-4">
+                {shelfFeatures.map((f, i) => (
+                  <li key={i} className="flex items-center gap-3 text-sm text-[#ff9412]/80">
+                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#ff9412]/10 text-[#ff9412]">
+                      <CheckIcon className="h-3 w-3" />
+                    </div>
+                    {f}
+                  </li>
+                ))}
+              </ul>
+
+              {/* CTA */}
+              <button className="mt-10 w-full rounded-xl bg-[#ff6a00] text-white py-3 text-sm font-semibold transition hover:bg-[#e85f00] hover:shadow-lg">
+                Explore Shelf &rarr;
+              </button>
+
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+  );
+}
