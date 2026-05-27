@@ -1,13 +1,18 @@
 import Link from "next/link";
 
 const components: { slug: string; label: string; file: string; tag: string }[] = [
-  { slug: "buyer-dashboard",  label: "Buyer Dashboard",  file: "DropYard_BuyerDashboard.jsx",  tag: "Dashboard" },
-  { slug: "seller-dashboard", label: "Seller Dashboard", file: "DropYard_SellerDashboard.jsx", tag: "Dashboard" },
+  { slug: "buyer-dashboard",                label: "Buyer Dashboard",            file: "DropYard_BuyerDashboard.jsx",     tag: "Dashboard" },
+  { slug: "seller-dashboard",               label: "Seller Dashboard",           file: "DropYard_SellerDashboard.jsx",    tag: "Dashboard" },
+  { slug: "buyer-dashboard-v2",             label: "Buyer Dashboard (v2)",       file: "DropYard_BuyerDashboard_v2.jsx",  tag: "Preview" },
+  { slug: "seller-dashboard-v2",            label: "Seller Dashboard (v2)",      file: "DropYard_SellerDashboard_v2.jsx", tag: "Preview" },
+  // Feedback batch — landing-page sections from "Feedback on Updates" folder.
 ];
 
 const tagColors: Record<string, string> = {
   Dashboard: "bg-emerald-100 text-emerald-700",
-  Landing: "bg-amber-100 text-amber-700",
+  Preview:   "bg-violet-100 text-violet-700",
+  Feedback:  "bg-sky-100 text-sky-700",
+  Landing:   "bg-amber-100 text-amber-700",
 };
 
 export default function PreviewIndex() {

@@ -2,7 +2,9 @@
 
 import React, { useEffect, useState, useRef, useMemo } from "react";
 import DynamicDropCard from "@/components/previews/DynamicDropCard";
-import SearchHeroRedesign from "@/components/previews/SearchHeroRedesign";
+import DifferentMarketplaceSection from "@/components/DifferentMarketplaceSection";
+import EarlyAccessSection from "@/components/EarlyAccessSection";
+import SellingWaysSection from "@/components/SellingWaysSection";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -18,36 +20,10 @@ import {
   Check,
   ArrowRight,
   Truck,
-  Mail,
-  Lock,
-  Eye,
-  EyeOff,
   User,
   CheckCircle,
   ChevronLeft,
   Sparkles,
-  CalendarDays,
-  MapPinned,
-  BadgeDollarSign,
-  TimerReset,
-  MessageCircleQuestion,
-  CheckCircle2,
-  Zap,
-  Clock3,
-  AlertTriangle,
-  Ban,
-  Grid2x2,
-  LampFloor,
-  Smartphone,
-  CookingPot,
-  Baby,
-  Shirt,
-  Dumbbell,
-  Wrench,
-  HelpCircle,
-  FileText,
-  ShieldCheck,
-  X,
   Bell,
   Heart,
   Search,
@@ -219,17 +195,6 @@ const NEIGHBORHOODS = [
   { id: "stittsville", name: "Stittsville", drops: 2, items: 87 },
 ];
 
-const CATEGORIES = [
-  { name: "All Items",   items: 156, icon: Grid2x2,    href: "#", image: "https://images.unsplash.com/photo-1517142089942-ba376ce32a2e?auto=format&fit=crop&w=900&q=80", gradient: "from-emerald-50/95 via-white to-green-100/95",  iconWrap: "bg-emerald-500/10 text-emerald-700 ring-emerald-200", border: "border-emerald-200/80", title: "text-emerald-900", badge: "Popular", featured: true  },
-  { name: "Furniture",   items: 34,  icon: LampFloor,  href: "#", image: "https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?auto=format&fit=crop&w=900&q=80", gradient: "from-orange-50/95 via-white to-amber-100/95",   iconWrap: "bg-orange-500/10 text-orange-700 ring-orange-200",   border: "border-orange-200/80", title: "text-orange-900"  },
-  { name: "Electronics", items: 28,  icon: Smartphone, href: "#", image: "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=900&q=80", gradient: "from-blue-50/95 via-white to-indigo-100/95",    iconWrap: "bg-blue-500/10 text-blue-700 ring-blue-200",         border: "border-blue-200/80",   title: "text-blue-900"   },
-  { name: "Kitchen",     items: 22,  icon: CookingPot, href: "#", image: "https://images.unsplash.com/photo-1556911220-bff31c812dba?auto=format&fit=crop&w=900&q=80", gradient: "from-amber-50/95 via-white to-yellow-100/95",  iconWrap: "bg-amber-500/10 text-amber-700 ring-amber-200",       border: "border-amber-200/80",  title: "text-amber-900"  },
-  { name: "Kids & Baby", items: 31,  icon: Baby,       href: "#", image: "https://images.unsplash.com/photo-1515488042361-ee00e0ddd4e4?auto=format&fit=crop&w=900&q=80", gradient: "from-pink-50/95 via-white to-rose-100/95",     iconWrap: "bg-pink-500/10 text-pink-700 ring-pink-200",          border: "border-pink-200/80",   title: "text-pink-900"   },
-  { name: "Clothing",    items: 18,  icon: Shirt,      href: "#", image: "https://images.unsplash.com/photo-1483985988355-763728e1935b?auto=format&fit=crop&w=900&q=80", gradient: "from-violet-50/95 via-white to-purple-100/95", iconWrap: "bg-violet-500/10 text-violet-700 ring-violet-200",    border: "border-violet-200/80", title: "text-violet-900" },
-  { name: "Sports",      items: 12,  icon: Dumbbell,   href: "#", image: "https://images.unsplash.com/photo-1517649763962-0c623066013b?auto=format&fit=crop&w=900&q=80", gradient: "from-lime-50/95 via-white to-green-100/95",    iconWrap: "bg-lime-500/10 text-green-700 ring-green-200",        border: "border-green-200/80",  title: "text-green-900"  },
-  { name: "Tools",       items: 11,  icon: Wrench,     href: "#", image: "https://images.unsplash.com/photo-1504148455328-c376907d081c?auto=format&fit=crop&w=900&q=80", gradient: "from-slate-50/95 via-white to-gray-100/95",    iconWrap: "bg-slate-500/10 text-slate-700 ring-slate-200",       border: "border-slate-200/80",  title: "text-slate-900"  },
-];
-
 const FEATURED_ITEMS = [
   { id: 1, title: "IKEA Kallax Shelf Unit", price: 45, originalPrice: 120, image: "📦", category: "Furniture", seller: "Patel Family", neighborhood: "Kanata North", distance: "2.3 km", saves: 12, condition: "Like New" },
   { id: 2, title: "Dyson V8 Cordless Vacuum", price: 180, originalPrice: 450, image: "🔌", category: "Electronics", seller: "Chen Family", neighborhood: "Barrhaven", distance: "4.1 km", saves: 28, condition: "Good" },
@@ -337,113 +302,6 @@ function SearchBar() {
 }
 
 // ============================================================================
-// CATEGORY CARD + SECTION
-// ============================================================================
-function CategoryCard({ category, onNavigate }: { category: typeof CATEGORIES[0]; onNavigate: () => void }) {
-  const Icon = category.icon;
-  return (
-    <motion.button
-      variants={{ hidden: { opacity: 0, y: 24, scale: 0.97 }, show: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.45, ease: [0.22, 1, 0.36, 1] } } }}
-      whileHover={{ y: -8 }}
-      whileTap={{ scale: 0.985 }}
-      onClick={onNavigate}
-      className={`group relative overflow-hidden rounded-[30px] border ${category.border} bg-gradient-to-br ${category.gradient} shadow-[0_10px_30px_rgba(15,23,42,0.06)] transition-all duration-300 hover:shadow-[0_22px_55px_rgba(15,23,42,0.14)] text-left ${category.featured ? "ring-2 ring-emerald-200/70" : ""}`}
-    >
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -right-10 -top-10 h-28 w-28 rounded-full bg-white/40 blur-2xl opacity-0 transition duration-500 group-hover:opacity-100" />
-      </div>
-      <div className="relative p-3 pb-0">
-        <div className="relative h-40 overflow-hidden rounded-[24px] sm:h-44">
-          <motion.img
-            src={category.image}
-            alt={category.name}
-            className="h-full w-full object-cover"
-            whileHover={{ scale: 1.06 }}
-            transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-slate-900/35 via-slate-900/5 to-white/0" />
-          {category.featured && (
-            <div className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700 shadow-sm backdrop-blur">
-              <Sparkles className="h-3.5 w-3.5" />
-              {category.badge}
-            </div>
-          )}
-          <motion.div
-            whileHover={{ scale: 1.08, rotate: -4 }}
-            transition={{ type: "spring", stiffness: 260, damping: 18 }}
-            className={`absolute bottom-3 left-3 flex h-12 w-12 items-center justify-center rounded-2xl ring-1 backdrop-blur-md ${category.iconWrap} shadow-lg sm:h-14 sm:w-14`}
-          >
-            <Icon className="h-6 w-6 sm:h-7 sm:w-7" strokeWidth={2.1} />
-          </motion.div>
-        </div>
-      </div>
-      <div className="relative p-5 pt-4 sm:p-6 sm:pt-5">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h3 className={`text-lg font-bold tracking-tight sm:text-xl ${category.title}`}>{category.name}</h3>
-            <p className="mt-2 text-sm font-medium text-slate-500 sm:text-[15px]">{category.items} items available</p>
-          </div>
-          <div className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/85 text-slate-500 shadow-sm ring-1 ring-black/5 transition group-hover:text-slate-800">
-            <ArrowRight className="h-4 w-4" />
-          </div>
-        </div>
-      </div>
-    </motion.button>
-  );
-}
-
-function CategorySection({ onNavigate }: { onNavigate: () => void }) {
-  return (
-    <section className="relative overflow-hidden bg-[#f7faf8] py-8 md:py-12">
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute left-[-120px] top-8 h-72 w-72 rounded-full bg-emerald-100/40 blur-3xl" />
-        <div className="absolute right-[-120px] top-12 h-72 w-72 rounded-full bg-orange-100/30 blur-3xl" />
-        <div className="absolute bottom-0 left-1/3 h-56 w-56 rounded-full bg-lime-100/30 blur-3xl" />
-      </div>
-      <div className="relative mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.35 }}
-          transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
-          className="mb-10 flex flex-col gap-5 sm:mb-12 sm:flex-row sm:items-end sm:justify-between"
-        >
-          <div className="max-w-2xl">
-            <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-white/85 px-3.5 py-1.5 text-sm font-medium text-emerald-700 shadow-sm ring-1 ring-emerald-100 backdrop-blur">
-              <Sparkles className="h-4 w-4" />
-              Shop by category
-            </div>
-            <h2 className="text-3xl font-bold tracking-[-0.03em] text-slate-900 sm:text-4xl">Browse by Category</h2>
-            <p className="mt-3 max-w-xl text-base leading-7 text-slate-600 sm:text-lg">
-              Explore curated categories and discover great local finds faster on DropYard.
-            </p>
-          </div>
-          <motion.button
-            whileHover={{ y: -2 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={onNavigate}
-            className="inline-flex items-center gap-2 self-start rounded-full border border-emerald-200 bg-white px-5 py-3 text-sm font-semibold text-emerald-700 shadow-sm transition hover:border-emerald-300 hover:bg-emerald-50"
-          >
-            View All <ArrowRight className="h-4 w-4" />
-          </motion.button>
-        </motion.div>
-        <motion.div
-          variants={{ hidden: {}, show: { transition: { staggerChildren: 0.08, delayChildren: 0.1 } } }}
-          initial="hidden"
-          whileInView="show"
-          viewport={{ once: true, amount: 0.2 }}
-          className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 lg:gap-5"
-        >
-          {CATEGORIES.map((cat) => (
-            <CategoryCard key={cat.name} category={cat} onNavigate={onNavigate} />
-          ))}
-        </motion.div>
-      </div>
-    </section>
-  );
-}
-
-// ============================================================================
 // DROP COUNTDOWN
 // ============================================================================
 function DropCountdown() {
@@ -498,7 +356,7 @@ function WaitlistCard({ area, isSelected, onSelect }: {
       whileHover={{ y: -6 }}
       whileTap={{ scale: 0.985 }}
       onClick={() => onSelect(area.name)}
-      className={`group relative overflow-hidden rounded-[28px] border p-5 text-left transition-all duration-300 sm:p-6 ${
+      className={`group relative h-full overflow-hidden rounded-[24px] border p-5 text-left transition-all duration-300 sm:p-6 ${
         isSelected
           ? "border-amber-300 bg-gradient-to-br from-amber-50 via-white to-orange-50 shadow-[0_18px_45px_rgba(245,158,11,0.16)]"
           : "border-slate-200/80 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.06)] hover:border-amber-200 hover:shadow-[0_18px_38px_rgba(15,23,42,0.10)]"
@@ -507,11 +365,11 @@ function WaitlistCard({ area, isSelected, onSelect }: {
       <div className="pointer-events-none absolute inset-0">
         <div className={`absolute -right-8 -top-8 h-24 w-24 rounded-full blur-2xl transition-opacity duration-300 ${isSelected ? "bg-amber-200/45 opacity-100" : "bg-slate-100 opacity-0 group-hover:opacity-100"}`} />
       </div>
-      <div className="relative flex h-full flex-col">
+      <div className="relative flex h-full flex-col justify-between gap-4">
         <div className="flex items-start justify-between gap-3">
           <div>
             <h3 className="text-2xl font-bold tracking-[-0.03em] text-slate-950">{area.name}</h3>
-            <p className="mt-1 text-base text-slate-500">{area.interested} people interested</p>
+            <p className="mt-1 text-sm text-slate-500">{area.interested} people interested</p>
           </div>
           <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ring-1 transition-all ${
             isSelected
@@ -521,10 +379,10 @@ function WaitlistCard({ area, isSelected, onSelect }: {
             {isSelected ? <Check className="h-5 w-5" /> : <MapPin className="h-5 w-5" />}
           </div>
         </div>
-        <div className="mt-5">
+        <div>
           <div className="mb-2 flex items-center justify-between gap-3 text-sm">
             <span className="font-medium text-slate-500">Demand level</span>
-            <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 font-semibold text-amber-700">
+            <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
               <TrendingUp className="h-3.5 w-3.5" />
               {area.trend}
             </span>
@@ -551,7 +409,7 @@ function NeighbourhoodWaitlistSection() {
   const selected = COMING_SOON_HOODS.find((n) => n.name === selectedArea);
 
   return (
-    <section className="relative overflow-hidden bg-[#f8faf8] py-8 md:py-12">
+    <section className="relative overflow-hidden bg-[#f8faf8] py-6 md:py-8">
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute left-[-8%] top-14 h-72 w-72 rounded-full bg-amber-100/40 blur-3xl" />
         <div className="absolute right-[-8%] bottom-10 h-72 w-72 rounded-full bg-emerald-100/35 blur-3xl" />
@@ -564,25 +422,25 @@ function NeighbourhoodWaitlistSection() {
           transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
           className="mx-auto max-w-4xl text-center"
         >
-          <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-700 shadow-sm">
-            <MapPin className="h-4 w-4" />
+          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 shadow-sm">
+            <MapPin className="h-3.5 w-3.5" />
             Expanding across Ottawa
           </div>
-          <h2 className="text-balance text-4xl font-bold tracking-[-0.045em] text-slate-950 sm:text-5xl">
+          <h2 className="text-balance text-2xl font-bold tracking-[-0.03em] text-slate-950 sm:text-3xl">
             Not in Barrhaven? <span className="text-amber-600">We&apos;re coming to you.</span>
           </h2>
-          <p className="mx-auto mt-5 max-w-3xl text-lg leading-8 text-slate-600">
+          <p className="mx-auto mt-3 max-w-3xl text-sm leading-6 text-slate-600 sm:text-base">
             Join the waitlist for your neighbourhood and be first to know when a local Drop goes live near you.
           </p>
         </motion.div>
 
-        <div className="mt-12 grid gap-8 xl:grid-cols-[1.45fr_0.9fr] xl:items-start">
+        <div className="mt-8 grid gap-6 xl:grid-cols-[1.45fr_0.9fr] xl:items-stretch">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, amount: 0.15 }}
             transition={{ duration: 0.5 }}
-            className="relative overflow-hidden rounded-[34px] border border-slate-200/80 bg-white/80 p-4 shadow-[0_18px_45px_rgba(15,23,42,0.06)] backdrop-blur-sm sm:p-5 lg:p-6"
+            className="relative overflow-hidden rounded-[28px] border border-slate-200/80 bg-white/80 p-3 shadow-[0_18px_45px_rgba(15,23,42,0.06)] backdrop-blur-sm sm:p-4 xl:flex xl:flex-col xl:h-full"
           >
             <div className="pointer-events-none absolute inset-0">
               <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-emerald-50/70 to-transparent" />
@@ -594,7 +452,7 @@ function NeighbourhoodWaitlistSection() {
               whileInView="show"
               viewport={{ once: true, amount: 0.1 }}
               variants={{ hidden: {}, show: { transition: { staggerChildren: 0.07, delayChildren: 0.08 } } }}
-              className="relative grid grid-cols-1 gap-5 md:grid-cols-2 2xl:grid-cols-3"
+              className="relative grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-3 xl:flex-1 xl:auto-rows-fr"
             >
               {COMING_SOON_HOODS.map((area) => (
                 <WaitlistCard
@@ -612,27 +470,27 @@ function NeighbourhoodWaitlistSection() {
             whileInView={{ opacity: 1, x: 0 }}
             viewport={{ once: true, amount: 0.2 }}
             transition={{ duration: 0.5, delay: 0.05 }}
-            className="sticky top-8 overflow-hidden rounded-[34px] border border-amber-200/70 bg-gradient-to-br from-amber-50 via-white to-orange-50 p-6 shadow-[0_18px_50px_rgba(245,158,11,0.14)] sm:p-7"
+            className="sticky top-8 overflow-hidden rounded-[28px] border border-amber-200/70 bg-gradient-to-br from-amber-50 via-white to-orange-50 p-5 shadow-[0_18px_50px_rgba(245,158,11,0.14)] sm:p-6"
           >
             <div className="absolute right-0 top-0 h-36 w-36 rounded-full bg-amber-200/35 blur-3xl" />
             <div className="relative">
-              <div className="mb-5 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-amber-600 shadow-sm ring-1 ring-amber-200">
-                <Bell className="h-6 w-6" />
+              <div className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-white text-amber-600 shadow-sm ring-1 ring-amber-200">
+                <Bell className="h-5 w-5" />
               </div>
-              <h3 className="text-3xl font-bold tracking-[-0.03em] text-slate-950">
+              <h3 className="text-xl font-bold tracking-[-0.03em] text-slate-950">
                 Notify me for {selected?.name}
               </h3>
-              <p className="mt-3 text-base leading-7 text-slate-600">
+              <p className="mt-2 text-sm leading-6 text-slate-600">
                 Join the waitlist and be first to know when DropYard launches in your neighbourhood.
               </p>
-              <div className="mt-6 rounded-2xl border border-amber-200 bg-white/85 p-4">
+              <div className="mt-5 rounded-2xl border border-amber-200 bg-white/85 p-3.5">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-sm font-medium text-slate-500">Current interest</p>
-                    <p className="mt-1 text-2xl font-bold text-slate-950">{selected?.interested} people</p>
+                    <p className="text-xs font-medium text-slate-500">Current interest</p>
+                    <p className="mt-0.5 text-lg font-bold text-slate-950">{selected?.interested} people</p>
                   </div>
-                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-sm font-semibold text-amber-700">
-                    <TrendingUp className="h-4 w-4" />
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
+                    <TrendingUp className="h-3.5 w-3.5" />
                     {selected?.trend}
                   </span>
                 </div>
@@ -678,242 +536,6 @@ function NeighbourhoodWaitlistSection() {
 // ============================================================================
 // HOW IT WORKS ILLUSTRATIONS
 // ============================================================================
-// SPLIT NARRATIVE SECTION
-// ============================================================================
-const OLD_WAY = [
-  { title: "Ghosted again and again",               description: "Too many conversations go nowhere after the first message.", icon: Ban },
-  { title: '"Is this still available?" on repeat',  description: "Endless low-intent messages slow everything down.",          icon: MessageCircleQuestion },
-  { title: "Scam risk and uncertainty",             description: "Buyers and sellers often deal with strangers and mixed signals.", icon: AlertTriangle },
-  { title: "Stale listings that never expire",      description: "What looks available is often already gone.",                icon: Clock3 },
-];
-const DROPYARD_WAY = [
-  { title: "Claim during live Drops",           description: "Real-time intent replaces empty promises and endless back-and-forth.", icon: Zap },
-  { title: "If it's listed, it's available",    description: "Live Drop structure removes the guesswork and the DM chase.",          icon: CheckCircle2 },
-  { title: "Neighbourhood-verified sellers",    description: "Built for local trust, accountability, and safer exchanges.",           icon: ShieldCheck },
-  { title: "Auto-expiring listings",            description: "Fresh inventory only. No clutter. No dead listings hanging around.",    icon: TimerReset },
-];
-
-function NarrativeItem({ entry, tone }: { entry: typeof OLD_WAY[0]; tone: "old" | "new" }) {
-  const Icon = entry.icon;
-  const styles = tone === "old"
-    ? { wrap: "border-white/70 bg-white/70", icon: "bg-rose-50 text-rose-500 ring-rose-100", desc: "text-slate-500" }
-    : { wrap: "border-emerald-100/80 bg-white/78", icon: "bg-emerald-50 text-emerald-600 ring-emerald-100", desc: "text-slate-600" };
-  return (
-    <div className={`group flex h-full gap-4 rounded-2xl border p-4 shadow-[0_8px_24px_rgba(15,23,42,0.05)] backdrop-blur-sm transition duration-300 hover:-translate-y-1 hover:shadow-[0_18px_38px_rgba(15,23,42,0.09)] sm:p-5 ${styles.wrap}`}>
-      <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ring-1 ${styles.icon}`}>
-        <Icon className="h-5 w-5" strokeWidth={2.1} />
-      </div>
-      <div>
-        <h4 className="text-base font-semibold leading-6 text-slate-900">{entry.title}</h4>
-        <p className={`mt-1 text-sm leading-6 ${styles.desc}`}>{entry.description}</p>
-      </div>
-    </div>
-  );
-}
-
-function SplitNarrativeSection() {
-  return (
-    <section className="relative overflow-hidden bg-[#f8faf8] py-8 md:py-12">
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute left-[-8%] top-24 h-80 w-80 rounded-full bg-rose-100/50 blur-3xl" />
-        <div className="absolute right-[-6%] top-16 h-96 w-96 rounded-full bg-emerald-100/55 blur-3xl" />
-        <div className="absolute left-1/2 top-0 h-px w-[70%] -translate-x-1/2 bg-gradient-to-r from-transparent via-slate-200 to-transparent" />
-      </div>
-
-      <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.35 }}
-          transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
-          className="mx-auto mb-12 max-w-3xl text-center"
-        >
-          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-emerald-100 bg-white/85 px-4 py-2 text-sm font-medium text-emerald-700 shadow-sm backdrop-blur">
-            <Sparkles className="h-4 w-4" />
-            A better local marketplace
-          </div>
-          <h2 className="text-balance text-4xl font-bold tracking-[-0.04em] text-slate-950 sm:text-5xl">
-            Buying and selling locally shouldn&apos;t feel like a gamble.
-          </h2>
-          <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-slate-600">
-            DropYard replaces chaos with structure — real intent, cleaner listings,
-            and a neighbourhood-first marketplace experience.
-          </p>
-        </motion.div>
-
-        <div className="relative overflow-hidden rounded-[36px] border border-slate-200/70 bg-white/65 p-4 shadow-[0_24px_60px_rgba(15,23,42,0.07)] backdrop-blur-sm sm:p-6 lg:p-8">
-          <div className="pointer-events-none absolute inset-0">
-            <div className="absolute left-0 top-0 h-full w-1/2 bg-gradient-to-br from-rose-50/75 via-white/20 to-transparent" />
-            <div className="absolute right-0 top-0 h-full w-1/2 bg-gradient-to-bl from-emerald-50/80 via-white/20 to-transparent" />
-            <div className="absolute left-1/2 top-0 hidden h-full w-px -translate-x-1/2 bg-gradient-to-b from-transparent via-slate-200 to-transparent lg:block" />
-            <div className="absolute -left-10 top-10 h-32 w-32 rounded-full bg-rose-100/45 blur-3xl" />
-            <div className="absolute -right-10 top-10 h-36 w-36 rounded-full bg-emerald-100/45 blur-3xl" />
-          </div>
-
-          {/* Column headers */}
-          <div className="relative mb-6 grid gap-4 lg:grid-cols-[1fr_auto_1fr] lg:items-center lg:gap-5">
-            <div className="rounded-[28px] border border-rose-100/80 bg-gradient-to-br from-rose-50 via-white to-orange-50 p-5 shadow-[0_16px_40px_rgba(15,23,42,0.05)] sm:p-6">
-              <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-rose-500 shadow-sm ring-1 ring-rose-100">
-                  <Users className="h-5 w-5" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold uppercase tracking-[0.18em] text-rose-500">The old way</p>
-                  <p className="mt-1 text-sm text-slate-500">Friction, uncertainty, and too much wasted time.</p>
-                </div>
-              </div>
-            </div>
-            <div className="hidden items-center justify-center lg:flex">
-              <div className="flex h-16 w-16 items-center justify-center rounded-full border border-slate-200 bg-white shadow-[0_16px_40px_rgba(15,23,42,0.08)]">
-                <ArrowRight className="h-6 w-6 text-emerald-600" />
-              </div>
-            </div>
-            <div className="rounded-[28px] border border-emerald-200/80 bg-gradient-to-br from-emerald-50 via-white to-lime-50 p-5 shadow-[0_16px_40px_rgba(16,185,129,0.08)] sm:p-6">
-              <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-emerald-600 shadow-sm ring-1 ring-emerald-100">
-                  <ShieldCheck className="h-5 w-5" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold uppercase tracking-[0.18em] text-emerald-600">The DropYard way</p>
-                  <p className="mt-1 text-sm text-slate-600">Structured, trust-first, and designed for real local exchange.</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Comparison rows */}
-          <motion.div
-            variants={{ hidden: {}, show: { transition: { staggerChildren: 0.1, delayChildren: 0.1 } } }}
-            initial="hidden"
-            whileInView="show"
-            viewport={{ once: true, amount: 0.12 }}
-            className="relative space-y-4"
-          >
-            {OLD_WAY.map((entry, index) => (
-              <motion.div
-                key={entry.title}
-                variants={{ hidden: { opacity: 0, y: 18 }, show: { opacity: 1, y: 0, transition: { duration: 0.45, ease: [0.22, 1, 0.36, 1] } } }}
-                className="relative grid gap-4 lg:grid-cols-[1fr_auto_1fr] lg:gap-5"
-              >
-                <NarrativeItem entry={entry} tone="old" />
-                <div className="hidden items-center justify-center lg:flex">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full border border-slate-200 bg-white shadow-[0_10px_24px_rgba(15,23,42,0.08)]">
-                    <ArrowRight className="h-4 w-4 text-emerald-600" />
-                  </div>
-                </div>
-                <NarrativeItem entry={DROPYARD_WAY[index]} tone="new" />
-                {index < OLD_WAY.length - 1 && (
-                  <div className="pointer-events-none absolute left-1/2 top-full hidden h-5 w-px -translate-x-1/2 bg-gradient-to-b from-slate-200 to-transparent lg:block" />
-                )}
-              </motion.div>
-            ))}
-          </motion.div>
-        </div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 18 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.5 }}
-          transition={{ duration: 0.5, delay: 0.15 }}
-          className="mx-auto mt-10 max-w-4xl text-center"
-        >
-          <p className="text-xl font-medium italic tracking-[-0.02em] text-slate-700 sm:text-2xl">
-            &quot;DropYard isn&apos;t trying to be a better version of the old model. It&apos;s built to work differently from the start.&quot;
-          </p>
-        </motion.div>
-      </div>
-    </section>
-  );
-}
-
-// ============================================================================
-// COMMUNITY METRICS SECTION
-// ============================================================================
-const COMMUNITY_STATS = [
-  { value: "Fresh", label: "Every weekend", icon: CalendarDays, accent: "text-emerald-700", iconBg: "bg-emerald-50", border: "border-emerald-100", glow: "from-emerald-100/80 to-green-50/40" },
-  { value: "0%",    label: "Strangers",     icon: ShieldCheck,     accent: "text-amber-600",  iconBg: "bg-amber-50",   border: "border-amber-100",   glow: "from-amber-100/80 to-orange-50/40" },
-  { value: "100%",  label: "Local",         icon: MapPinned,       accent: "text-emerald-700", iconBg: "bg-lime-50",    border: "border-lime-100",    glow: "from-lime-100/80 to-green-50/40" },
-  { value: "$0",    label: "To list",       icon: BadgeDollarSign, accent: "text-emerald-700", iconBg: "bg-emerald-50", border: "border-emerald-100", glow: "from-emerald-100/80 to-yellow-50/40" },
-];
-
-function CommunityMetricsSection() {
-  return (
-    <section className="relative overflow-hidden bg-[#f8faf8] py-8 md:py-12">
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute left-[-8%] top-14 h-72 w-72 rounded-full bg-emerald-100/40 blur-3xl" />
-        <div className="absolute right-[-8%] bottom-8 h-72 w-72 rounded-full bg-amber-100/35 blur-3xl" />
-      </div>
-      <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <motion.div
-          initial={{ opacity: 0, y: 18 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.35 }}
-          transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-          className="mx-auto max-w-4xl text-center"
-        >
-          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-emerald-100 bg-white/90 px-4 py-2 text-sm font-medium text-emerald-700 shadow-sm backdrop-blur">
-            <Sparkles className="h-4 w-4" />
-            Community-first marketplace
-          </div>
-          <h2 className="text-balance text-4xl font-bold tracking-[-0.045em] text-slate-950 sm:text-5xl">
-            Built for communities, <span className="text-emerald-700">not crowds.</span>
-          </h2>
-          <p className="mx-auto mt-5 max-w-3xl text-lg leading-8 text-slate-600">
-            DropYard brings back the simplicity of yard sales without the hassle —
-            no ghosting, fewer risks, and a cleaner local buying experience.
-          </p>
-        </motion.div>
-
-        <motion.div
-          variants={{ hidden: {}, show: { transition: { staggerChildren: 0.08, delayChildren: 0.08 } } }}
-          initial="hidden"
-          whileInView="show"
-          viewport={{ once: true, amount: 0.2 }}
-          className="mt-12 grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4"
-        >
-          {COMMUNITY_STATS.map((stat) => {
-            const Icon = stat.icon;
-            return (
-              <motion.div
-                key={stat.label}
-                variants={{ hidden: { opacity: 0, y: 24 }, show: { opacity: 1, y: 0, transition: { duration: 0.45, ease: [0.22, 1, 0.36, 1] } } }}
-                whileHover={{ y: -6 }}
-                className={`group relative overflow-hidden rounded-[28px] border ${stat.border} bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.06)] transition-all duration-300 hover:shadow-[0_18px_40px_rgba(15,23,42,0.10)] sm:p-7`}
-              >
-                <div className={`absolute inset-x-0 top-0 h-24 bg-gradient-to-br ${stat.glow} opacity-70`} />
-                <div className="relative flex h-full flex-col">
-                  <div className={`mb-6 flex h-14 w-14 items-center justify-center rounded-2xl ${stat.iconBg} ring-1 ring-black/5`}>
-                    <Icon className={`h-7 w-7 ${stat.accent}`} strokeWidth={2.1} />
-                  </div>
-                  <div className="space-y-2">
-                    <h3 className={`text-4xl font-bold tracking-[-0.04em] ${stat.accent}`}>{stat.value}</h3>
-                    <p className="text-lg font-medium text-slate-700">{stat.label}</p>
-                  </div>
-                </div>
-              </motion.div>
-            );
-          })}
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 14 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.5 }}
-          transition={{ duration: 0.45, delay: 0.15 }}
-          className="mt-10 flex justify-center"
-        >
-          <a
-            href="/how-it-works"
-            className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white px-5 py-3 text-sm font-semibold text-emerald-700 shadow-sm transition hover:border-emerald-300 hover:bg-emerald-50"
-          >
-            Explore how DropYard works
-            <ArrowRight className="h-4 w-4" />
-          </a>
-        </motion.div>
-      </div>
-    </section>
-  );
-}
 
 // ============================================================================
 // HOW IT WORKS SECTION (animated)
@@ -979,8 +601,8 @@ function HowItWorksSection() {
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 h-80 rounded-full bg-amber-300 blur-3xl"></div>
         </div>
 
-        <div className="max-w-4xl mx-auto px-4 w-full relative z-10">
-          <div className="text-center mb-14">
+        <div className="max-w-6xl mx-auto px-4 w-full relative z-10">
+          <div className="text-center mb-10">
             <h2 className={`text-3xl md:text-4xl font-bold text-white mb-3 header-anim ${visible ? "animate" : ""}`}>
               How DropYard Works
             </h2>
@@ -992,36 +614,36 @@ function HowItWorksSection() {
             </p>
           </div>
 
-          <div className="hidden lg:block relative max-w-3xl lg:max-w-4xl mx-auto">
-            <div className="absolute top-[100px] left-[8%] right-[8%] h-0.5 overflow-hidden z-0">
+          <div className="hidden lg:block relative max-w-5xl lg:max-w-6xl mx-auto">
+            <div className="absolute top-[130px] left-[8%] right-[8%] h-0.5 overflow-hidden z-0">
               <div className={`h-full bg-amber-400/50 step-line ${visible ? "animate" : ""}`}></div>
             </div>
             {[0, 1, 2].map((i) => (
               <div
                 key={i}
-                className={`absolute top-[97px] w-3 h-3 rounded-full bg-amber-400 shadow-sm shadow-amber-400/50 step-dot ${visible ? "animate" : ""}`}
+                className={`absolute top-[127px] w-3 h-3 rounded-full bg-amber-400 shadow-sm shadow-amber-400/50 step-dot ${visible ? "animate" : ""}`}
                 style={{ left: `${14 + i * 25}%`, animationDelay: `${0.6 + i * 0.25}s` }}
               ></div>
             ))}
           </div>
 
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 max-w-3xl lg:max-w-4xl mx-auto">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 md:gap-8 max-w-5xl lg:max-w-6xl mx-auto">
             {steps.map((step) => (
               <div
                 key={step.num}
                 className={`group step-card ${visible ? "animate" : ""}`}
                 style={{ animationDelay: `${(step.num - 1) * 0.2}s` }}
               >
-                <div className="bg-white rounded-xl overflow-hidden shadow-lg hover:shadow-xl transition-all hover:-translate-y-1 relative">
-                  <div className="absolute top-2 left-2 z-10 bg-amber-500 text-white w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs shadow-md">
+                <div className="bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-xl transition-all hover:-translate-y-1 relative">
+                  <div className="absolute top-3 left-3 z-10 bg-amber-500 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shadow-md">
                     {step.num}
                   </div>
-                  <div className="flex items-center justify-center p-1">
+                  <div className="flex items-center justify-center p-4 sm:p-6">
                     <img src={step.img} alt={step.alt} className="w-full h-full object-contain" />
                   </div>
                 </div>
                 {step.num === 3 && (
-                  <div className="flex items-center justify-center gap-1.5 mt-2 py-1.5 px-3 rounded-lg mx-auto w-fit" style={{ backgroundColor: "rgba(251,191,36,0.15)", border: "1px solid rgba(251,191,36,0.25)" }}>
+                  <div className="flex items-center justify-center gap-1.5 mt-3 py-1.5 px-3 rounded-lg mx-auto w-fit" style={{ backgroundColor: "rgba(251,191,36,0.15)", border: "1px solid rgba(251,191,36,0.25)" }}>
                     <span className="text-amber-300 text-xs font-semibold">The Shelf is always open</span>
                   </div>
                 )}
@@ -1030,7 +652,7 @@ function HowItWorksSection() {
           </div>
 
           <div
-            className={`mt-8 py-4 px-5 rounded-2xl flex items-center justify-center gap-3 flex-wrap max-w-3xl lg:max-w-4xl mx-auto header-anim ${visible ? "animate" : ""}`}
+            className={`mt-10 py-4 px-5 rounded-2xl flex items-center justify-center gap-3 flex-wrap max-w-5xl lg:max-w-6xl mx-auto header-anim ${visible ? "animate" : ""}`}
             style={{ backgroundColor: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.1)", animationDelay: "1s" }}
           >
             <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: "rgba(245,158,11,0.15)", border: "1px solid rgba(245,158,11,0.2)" }}>
@@ -1094,54 +716,54 @@ function HeroChevronDownIcon({ className = "h-4 w-4" }) {
 
 function HeroSection({ goBuyerAuth }: { goBuyerAuth: (mode?: "signup" | "login") => void }) {
   return (
-    <section className="relative min-h-[85vh] flex items-center overflow-hidden">
+    <section className="relative min-h-[65vh] flex items-center overflow-hidden">
       {/* Background */}
       <div className="absolute inset-0">
         <img src="/images/hero-bg.jpg" alt="Neighbourhood yard sale" className="w-full h-full object-cover" />
         <div className="absolute inset-0 bg-gradient-to-r from-white/95 via-white/75 to-white/20" />
       </div>
 
-      <div className="relative w-full mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 md:py-12">
+      <div className="relative w-full mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10 md:py-14">
         <div className="grid lg:grid-cols-2 gap-12 items-center">
 
           {/* LEFT — Text */}
           <div>
             {/* Live badge */}
-            <div className="mb-6 inline-flex items-center gap-2 rounded-full bg-emerald-700 px-4 py-2 text-sm font-semibold text-white shadow-md">
-              <span className="relative flex h-2.5 w-2.5">
+            <div className="mb-5 inline-flex items-center gap-2 rounded-full bg-emerald-700 px-3 py-1.5 text-xs font-semibold text-white shadow-md">
+              <span className="relative flex h-2 w-2">
                 <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-300 animate-ping opacity-75" />
-                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-white" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-white" />
               </span>
               Now live in Barrhaven
             </div>
 
-            <h1 className="text-5xl font-extrabold tracking-tight text-gray-900 leading-[1.08] sm:text-6xl lg:text-7xl">
+            <h1 className="text-4xl font-extrabold tracking-tight text-gray-900 leading-[1.1] sm:text-5xl lg:text-6xl">
               Barrhaven<br />
               neighbourhood<br />
-              <span className="text-emerald-700 whitespace-nowrap">yardsale — Online.</span>
+              <span className="text-emerald-700">yardsale — Online.</span>
             </h1>
 
-            <p className="mt-5 text-xl text-gray-600 max-w-md leading-relaxed whitespace-nowrap">
+            <p className="mt-4 text-base text-gray-600 max-w-md leading-relaxed sm:text-lg">
               Buy and sell locally through curated weekend Drops.
             </p>
-            <p className="mt-1 text-emerald-700 font-semibold text-lg">From one home to another.™</p>
+            <p className="mt-1 text-emerald-700 font-semibold text-sm sm:text-base">From one home to another.™</p>
 
-            <div className="mt-8 flex flex-wrap gap-3">
+            <div className="mt-6 flex flex-wrap gap-3">
               <button
                 onClick={() => goBuyerAuth("signup")}
-                className="inline-flex items-center gap-2 rounded-full bg-emerald-700 px-7 py-4 text-base font-bold text-white shadow-lg hover:bg-emerald-800 transition-all hover:-translate-y-0.5"
+                className="inline-flex items-center gap-2 rounded-full bg-emerald-700 px-5 py-3 text-sm font-bold text-white shadow-lg hover:bg-emerald-800 transition-all hover:-translate-y-0.5 sm:px-6 sm:text-base"
               >
-                Browse the Barrhaven Drop <ArrowRight size={18} />
+                Browse the Barrhaven Drop <ArrowRight size={16} />
               </button>
               <button
                 onClick={() => goBuyerAuth("signup")}
-                className="inline-flex items-center gap-2 rounded-full bg-amber-500 px-7 py-4 text-base font-bold text-white shadow-lg hover:bg-amber-600 transition-all hover:-translate-y-0.5"
+                className="inline-flex items-center gap-2 rounded-full bg-amber-500 px-5 py-3 text-sm font-bold text-white shadow-lg hover:bg-amber-600 transition-all hover:-translate-y-0.5 sm:px-6 sm:text-base"
               >
-                Sell with DropYard <ArrowRight size={18} />
+                Sell with DropYard <ArrowRight size={16} />
               </button>
             </div>
 
-            <p className="mt-4 text-sm text-gray-500">
+            <p className="mt-3 text-xs text-gray-500 sm:text-sm">
               Already have an account?{" "}
               <button onClick={() => goBuyerAuth("login")} className="text-emerald-700 font-semibold hover:underline">
                 Log in
@@ -1150,7 +772,7 @@ function HeroSection({ goBuyerAuth }: { goBuyerAuth: (mode?: "signup" | "login")
           </div>
 
           {/* RIGHT — Dynamic Drop card */}
-          <div className="hidden lg:block scale-[1.21] origin-top-right -translate-y-10 translate-x-6">
+          <div className="hidden lg:block">
             <DynamicDropCard />
           </div>
 
@@ -1178,7 +800,7 @@ function HomePage({
     {
       id: 1,
       name: "Sarah M.",
-      location: "Kanata",
+      location: "Chapman Mills",
       image: "https://i.pravatar.cc/150?img=44",
       rating: 5,
       text: "Sold my old furniture in one weekend! So much easier than posting on Facebook.",
@@ -1186,7 +808,7 @@ function HomePage({
     {
       id: 2,
       name: "Mike T.",
-      location: "Barrhaven",
+      location: "Longfields",
       image: "https://i.pravatar.cc/150?img=12",
       rating: 5,
       text: "Found amazing deals on kids' stuff. Love that it's all local pickup.",
@@ -1194,7 +816,7 @@ function HomePage({
     {
       id: 3,
       name: "The Patel Family",
-      location: "Stittsville",
+      location: "Half Moon Bay",
       image: "https://i.pravatar.cc/150?img=5",
       rating: 5,
       text: "Our moving sale was a huge success. Sold almost everything!",
@@ -1244,7 +866,7 @@ function HomePage({
       </div>
 
       {/* Featured This Week */}
-      <section className="py-16 bg-gray-50">
+      <section className="py-8 md:py-10 bg-gray-50">
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex items-center justify-between mb-8">
             <div>
@@ -1272,205 +894,80 @@ function HomePage({
         </div>
       </section>
 
-      {/* Search Items Section */}
-      <SearchHeroRedesign />
-
-      {/* Browse by Category */}
-      <CategorySection onNavigate={() => goBuyerAuth("signup")} />
+      {/* A Different Kind of Marketplace — design from /preview/feedback/a-different-marketplace */}
+      <DifferentMarketplaceSection />
 
       {/* Coming Soon — Neighbourhood Waitlist */}
       <NeighbourhoodWaitlistSection />
 
 
-      {/* Community Metrics Section */}
-      <CommunityMetricsSection />
-
-      {/* Split Narrative Section */}
-      <SplitNarrativeSection />
 
 
 
-      <section className="-mt-4 pt-4 pb-8 sm:-mt-6 sm:pt-6 sm:pb-10 md:-mt-6 md:pt-8 md:pb-12 lg:pt-10 lg:pb-16 bg-gradient-to-br from-emerald-50 via-amber-50/70 to-emerald-50">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-8 sm:mb-10 md:mb-12">
-            <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-gray-900 mb-3 sm:mb-4">Two ways to Drop</h2>
-            <p className="text-base sm:text-lg text-emerald-700 max-w-2xl mx-auto px-2">
-              Choose the Drop that fits your needs—from weekly neighborhood sales to dedicated moving events
-            </p>
-          </div>
-
-          <div className="grid sm:grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 md:gap-8">
-            <div className="bg-white rounded-xl sm:rounded-2xl overflow-hidden shadow-lg hover:shadow-xl hover:shadow-emerald-200/40 border border-emerald-100 hover:-translate-y-1 transition-all duration-300">
-              <div className="bg-gradient-to-br from-emerald-600 to-emerald-700 p-4 sm:p-5 relative">
-                <div className="absolute inset-0 opacity-10">
-                  <div className="grid grid-cols-4 sm:grid-cols-6 h-full">
-                    {[...Array(6)].map((_, i) => (
-                      <div key={i} className="border-r border-white/20"></div>
-                    ))}
-                  </div>
-                  <div className="absolute inset-0 grid grid-rows-3 sm:grid-rows-4">
-                    {[...Array(4)].map((_, i) => (
-                      <div key={i} className="border-b border-white/20"></div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2">
-                  <span className="bg-emerald-800/80 text-white text-[10px] sm:text-xs font-medium px-2 sm:px-2.5 py-0.5 rounded-full">
-                    Most Popular
-                  </span>
-                </div>
-
-                <div className="text-center relative z-10 flex items-center justify-center gap-2 sm:gap-3">
-                  <div className="w-8 h-8 sm:w-9 sm:h-9 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <Calendar size={16} className="sm:w-5 sm:h-5 text-white" />
-                  </div>
-                  <div className="text-2xl sm:text-3xl md:text-4xl font-bold text-white leading-tight">Every <span className="text-emerald-200 text-lg sm:text-xl md:text-2xl font-semibold">Weekend</span></div>
-                </div>
-              </div>
-
-              <div className="p-4 sm:p-5 md:p-6 bg-gradient-to-b from-white to-emerald-50/30">
-                <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-2 sm:mb-3">Weekly Neighborhood Drop</h3>
-                <p className="text-emerald-800/90 text-xs sm:text-sm mb-4 sm:mb-6 leading-relaxed">
-                  The heart of DropYard. Your community&apos;s recurring yard sale, online. New items every weekend
-                  from neighbors you trust.
-                </p>
-
-                <ul className="space-y-2 sm:space-y-3 mb-4 sm:mb-6">
-                  {[
-                    { icon: Clock, text: "48-hour sale window (Sat-Sun)" },
-                    { icon: MapPin, text: "Items from your neighborhood" },
-                    { icon: Users, text: "5-50+ sellers per Drop" },
-                    { icon: Package, text: "New inventory every week" },
-                  ].map((feature, i) => (
-                    <li key={i} className="flex items-center gap-2 sm:gap-3 text-xs sm:text-sm text-gray-600">
-                      <feature.icon size={14} className="sm:w-4 sm:h-4 text-emerald-600 flex-shrink-0" />
-                      <span className="break-words">{feature.text}</span>
-                    </li>
-                  ))}
-                </ul>
-
-                <div className="bg-emerald-50 rounded-lg sm:rounded-xl p-3 sm:p-4 mb-4 sm:mb-6">
-                  <div className="text-center">
-                    <div className="text-[10px] sm:text-xs text-emerald-600 font-medium uppercase tracking-wide">For Sellers</div>
-                    <div className="text-base sm:text-lg font-bold text-gray-900">Free to list</div>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => goSellerAuth("signup")}
-                  className="w-full bg-emerald-700 text-white py-3 sm:py-4 rounded-full text-sm sm:text-base font-semibold hover:bg-emerald-800 transition-colors flex items-center justify-center gap-2"
-                >
-                  Join This Week&apos;s Drop
-                  <ArrowRight size={16} className="sm:w-[18px] sm:h-[18px]" />
-                </button>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-xl sm:rounded-2xl overflow-hidden shadow-lg hover:shadow-xl hover:shadow-amber-200/40 border border-amber-100 hover:-translate-y-1 transition-all duration-300">
-              <div className="bg-gradient-to-br from-amber-400 to-orange-500 p-4 sm:p-5 relative">
-                <div className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2">
-                  <span className="bg-orange-600/80 text-white text-[10px] sm:text-xs font-medium px-2 sm:px-2.5 py-0.5 rounded-full">
-                    Premium
-                  </span>
-                </div>
-
-                <div className="text-center relative z-10 flex items-center justify-center gap-2 sm:gap-3">
-                  <div className="w-8 h-8 sm:w-9 sm:h-9 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <Truck size={16} className="sm:w-5 sm:h-5 text-white" />
-                  </div>
-                  <div className="text-2xl sm:text-3xl md:text-4xl font-bold text-white leading-tight">Moving? <span className="text-orange-100 text-lg sm:text-xl md:text-2xl font-semibold">We&apos;ve got you</span></div>
-                </div>
-              </div>
-
-              <div className="p-4 sm:p-5 md:p-6 bg-gradient-to-b from-white to-amber-50/30">
-                <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-2 sm:mb-3">Moving Sale Drop</h3>
-                <p className="text-amber-900/90 text-xs sm:text-sm mb-4 sm:mb-6 leading-relaxed">
-                  Relocating? Host your own dedicated Drop. Get featured placement, promotional support, and sell
-                  everything before you go.
-                </p>
-
-                <ul className="space-y-2 sm:space-y-3 mb-4 sm:mb-6">
-                  {[
-                    { icon: Sparkles, text: "Your own featured Drop event" },
-                    { icon: Calendar, text: "You pick the weekend" },
-                    { icon: Mail, text: "Promotional email to local buyers" },
-                    { icon: Package, text: "Unlimited items, one flat fee" },
-                  ].map((feature, i) => (
-                    <li key={i} className="flex items-center gap-2 sm:gap-3 text-xs sm:text-sm text-gray-600">
-                      <feature.icon size={14} className="sm:w-4 sm:h-4 text-amber-500 flex-shrink-0" />
-                      <span className="break-words">{feature.text}</span>
-                    </li>
-                  ))}
-                </ul>
-
-                <div className="bg-amber-50 rounded-lg sm:rounded-xl p-3 sm:p-4 mb-4 sm:mb-6">
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
-                    <div>
-                      <div className="text-[10px] sm:text-xs text-amber-600 font-medium uppercase tracking-wide">Package</div>
-                      <div className="text-base sm:text-lg font-bold text-gray-900">Flat fee</div>
-                    </div>
-                    <div className="text-left sm:text-right">
-                      <div className="text-[10px] sm:text-xs text-amber-600 font-medium uppercase tracking-wide">Starting at</div>
-                      <div className="text-base sm:text-lg font-bold text-gray-900">$49</div>
-                    </div>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => goMovingAuth("signup")}
-                  className="w-full bg-amber-500 text-white py-3 sm:py-4 rounded-full text-sm sm:text-base font-semibold hover:bg-amber-600 transition-colors flex items-center justify-center gap-2"
-                >
-                  Plan Your Moving Sale
-                  <ArrowRight size={16} className="sm:w-[18px] sm:h-[18px]" />
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
+      {/* Two ways to buy & sell — same component used on /for-sellers */}
+      <SellingWaysSection />
 
       <HowItWorksSection />
 
 
-      <section className="font-sans overflow-hidden">
-        <div className="relative" style={{ height: 'clamp(220px, 30vw, 380px)' }}>
-          <img src="/images/moving-sale-banner.jpg" alt="Moving Sale" className="absolute inset-0 w-full h-full object-cover object-left" />
-          <div className="absolute top-0 bottom-0 flex items-center" style={{ left: '42%', right: '0' }}>
-            <div className="px-4 sm:px-6 md:px-8 lg:px-12 max-w-full overflow-hidden">
-              <div className="w-9 h-9 sm:w-10 sm:h-10 md:w-12 md:h-12 bg-white/20 rounded-lg flex items-center justify-center mb-2 md:mb-3">
-                <Truck className="text-white w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" />
-              </div>
-              <h3 className="text-base sm:text-xl md:text-3xl lg:text-4xl font-bold text-white mb-1 sm:mb-2 md:mb-3 leading-tight">
-                Planning a Moving Sale?
-              </h3>
-              <p className="text-white/90 text-xs sm:text-sm md:text-base lg:text-lg mb-2 sm:mb-3 md:mb-5 leading-snug">
-                Sell everything at once with our<br className="hidden sm:inline" /> dedicated Moving Sale Drop.
-              </p>
-              <button
-                onClick={() => goMovingAuth("signup")}
-                className="bg-white/95 text-amber-600 px-3 sm:px-5 md:px-7 py-1.5 sm:py-2.5 md:py-3 rounded-full font-semibold hover:bg-white transition-colors inline-flex items-center gap-1.5 sm:gap-2 shadow-lg text-xs sm:text-sm md:text-base lg:text-lg whitespace-nowrap"
-              >
-                Plan Your Moving Sale
-                <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5" />
-              </button>
+      {/* Early Access email signup — design from /preview/feedback/early-access-banner */}
+      <EarlyAccessSection />
+
+      <section
+        className="relative overflow-hidden pt-10 pb-8 md:pt-14 md:pb-10"
+        style={{
+          background: "linear-gradient(135deg, #FDF6E3 0%, #F9E8C4 45%, #FFE8C0 100%)",
+        }}
+      >
+        <style>{`
+          @keyframes lbn-pulse-dot {
+            0%, 100% { transform: scale(1); opacity: 0.85; }
+            50% { transform: scale(2.4); opacity: 0; }
+          }
+        `}</style>
+
+        {/* Warm paper texture — radial dot grid in amber */}
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{
+            backgroundImage: "radial-gradient(circle, rgba(180,120,30,0.18) 1px, transparent 1px)",
+            backgroundSize: "26px 26px",
+            opacity: 0.35,
+          }}
+        />
+
+        {/* Giant decorative quote marks */}
+        <span
+          aria-hidden
+          className="pointer-events-none absolute -top-8 left-[6%] select-none font-black leading-none text-amber-700/15"
+          style={{ fontSize: "clamp(180px, 22vw, 320px)", fontFamily: "Georgia, serif" }}
+        >
+          &ldquo;
+        </span>
+        <span
+          aria-hidden
+          className="pointer-events-none absolute -bottom-32 right-[6%] select-none font-black leading-none text-emerald-700/12"
+          style={{ fontSize: "clamp(180px, 22vw, 320px)", fontFamily: "Georgia, serif" }}
+        >
+          &rdquo;
+        </span>
+
+{/* Glow blobs */}
+        <div className="pointer-events-none absolute -left-20 top-1/2 h-72 w-72 rounded-full bg-amber-300/25 blur-3xl" />
+        <div className="pointer-events-none absolute -right-20 bottom-0 h-80 w-80 rounded-full bg-emerald-300/15 blur-3xl" />
+
+        <div className="relative z-10 max-w-5xl mx-auto px-4">
+          {/* Pulsing eyebrow */}
+          <div className="text-center mb-5">
+            <div className="inline-flex items-center gap-2 rounded-full border border-amber-300/40 bg-white/70 px-3.5 py-1.5 backdrop-blur-md shadow-sm">
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full rounded-full bg-rose-500" style={{ animation: "lbn-pulse-dot 2.2s ease-out infinite" }} />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-rose-500" />
+              </span>
+              <span className="text-[10px] font-black uppercase tracking-[0.22em] text-amber-800">Voices from the neighbourhood</span>
             </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="py-6 md:py-10 bg-gradient-to-br from-emerald-50 via-amber-50/40 to-emerald-50 relative overflow-hidden">
-        <div className="absolute top-8 left-8 text-emerald-300/80 text-xl">✦</div>
-        <div className="absolute top-12 right-16 text-amber-400/80 text-lg">✦</div>
-        <div className="absolute bottom-16 left-1/4 text-emerald-400/70 text-base">✦</div>
-        <div className="absolute top-1/3 right-1/3 text-amber-300/70 text-sm">✦</div>
-        <div className="absolute bottom-8 right-1/4 text-emerald-300/60 text-lg">✦</div>
-        <div className="absolute top-1/2 left-12 text-amber-400/50 text-sm">✦</div>
-
-        <div className="max-w-5xl mx-auto px-4 relative z-10">
-          <div className="text-center mb-4">
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900">Loved by neighbors</h2>
-            <p className="text-gray-600 text-sm md:text-base mt-1">Real stories from real communities</p>
+            <h2 className="mt-4 text-3xl md:text-4xl font-black tracking-[-0.02em] text-amber-950">Loved by neighbors</h2>
+            <p className="text-amber-800/70 text-sm md:text-base mt-1 italic">Real stories from real communities</p>
           </div>
 
           <div className="relative min-h-[320px] flex items-center justify-center">
@@ -1504,7 +1001,7 @@ function HomePage({
             </div>
 
             <div className="relative z-30 max-w-lg mx-auto mt-4">
-              <div className="bg-white rounded-2xl shadow-2xl shadow-emerald-100/50 px-6 pt-8 pb-5 text-center">
+              <div className="bg-white rounded-2xl shadow-2xl shadow-amber-300/30 ring-1 ring-amber-200/50 px-6 pt-8 pb-5 text-center">
                 <p className="text-sm lg:text-base text-gray-700 leading-relaxed mb-3.5 italic">
                   &ldquo;{testimonials[activeTestimonialIndex].text}&rdquo;
                 </p>
@@ -1542,28 +1039,50 @@ function HomePage({
         </div>
       </section>
 
-      <section className="py-10 md:py-14 bg-emerald-800">
-        <div className="max-w-4xl mx-auto px-4 text-center">
-          <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
-            Ready to join your neighborhood&apos;s next Drop?
+      {/* Final CTA — design from /preview/feedback/ready-to-join-banner.
+          The buttons keep their original wired handlers (goBuyerAuth / goSellerAuth);
+          the visual treatment (dark green, amber-accented headline, glow blobs,
+          hover arrow) comes from the new design. */}
+      <section className="relative w-full bg-[#0f5c3b] py-8 md:py-10 px-4 sm:px-6 lg:px-8 overflow-hidden">
+        {/* Background glow */}
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute left-0 top-0 w-[400px] h-[400px] bg-[#2f8a22]/20 rounded-full blur-3xl" />
+          <div className="absolute right-0 bottom-0 w-[400px] h-[400px] bg-[#ff9412]/20 rounded-full blur-3xl" />
+        </div>
+
+        <div className="relative max-w-6xl mx-auto text-center">
+          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-[-0.03em] text-white leading-tight">
+            Ready to join your neighbourhood&rsquo;s next
+            <span className="text-[#ff9412]"> Drop?</span>
           </h2>
-          <p className="text-emerald-200 text-lg mb-6">Sign up now and start buying or selling this weekend</p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+
+          <p className="mt-4 text-base sm:text-lg text-white/80 max-w-xl mx-auto">
+            Sign up now and start buying or selling this weekend
+          </p>
+
+          <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
             <button
               onClick={() => goBuyerAuth("signup")}
-              className="bg-white text-emerald-700 px-8 py-4 rounded-full font-semibold hover:bg-emerald-50 transition-colors flex items-center justify-center gap-2"
+              className="group inline-flex items-center gap-3 rounded-full bg-white px-8 py-3 text-sm font-bold text-[#0f5c3b] shadow-[0_10px_25px_rgba(0,0,0,0.25)] transition duration-300 hover:-translate-y-1"
             >
+              <ShoppingBag className="h-5 w-5" />
               Join as a Buyer
-              <ShoppingBag size={18} />
+              <ArrowRight className="h-4 w-4 opacity-0 group-hover:opacity-100 transition" />
             </button>
+
             <button
               onClick={() => goSellerAuth("signup")}
-              className="bg-amber-500 text-white px-8 py-4 rounded-full font-semibold hover:bg-amber-600 transition-colors flex items-center justify-center gap-2"
+              className="group inline-flex items-center gap-3 rounded-full bg-[#ff9412] px-8 py-3 text-sm font-bold text-white shadow-[0_10px_25px_rgba(255,148,18,0.35)] transition duration-300 hover:-translate-y-1 hover:bg-[#e8830f]"
             >
+              <Package className="h-5 w-5" />
               Start Selling
-              <Package size={18} />
+              <ArrowRight className="h-4 w-4 opacity-0 group-hover:opacity-100 transition" />
             </button>
           </div>
+
+          <p className="mt-6 text-[11px] text-white/60 tracking-wide">
+            No fees &middot; Takes 60 seconds &middot; No spam
+          </p>
         </div>
       </section>
     </div>
@@ -1901,14 +1420,9 @@ export function Footer({
       <div className="max-w-7xl mx-auto px-4 relative z-10">
         <div className="grid grid-cols-2 md:grid-cols-5 gap-8 md:gap-10 mb-10">
           <div className="col-span-2 md:col-span-1">
-            <div className="flex items-center gap-3 mb-5">
-              <DropYardLogo size="default" />
-              <span className="text-xl font-bold">
-                <span className="text-emerald-400">Drop</span>
-                <span className="text-amber-400">Yard</span>
-              </span>
+            <div className="flex items-center gap-3 mb-1">
+              <DropYardLogo size="large" />
             </div>
-            <p className="text-emerald-300 font-semibold mb-2 text-sm uppercase tracking-wider">From one home to another.</p>
             <p className="text-slate-300 text-sm leading-relaxed max-w-xs">
               DropYard brings back the simplicity of yard sales—without the hassle of setting up in your driveway.
             </p>
@@ -1923,7 +1437,7 @@ export function Footer({
                 <button
                   key={label}
                   aria-label={label}
-                  className={`w-9 h-9 rounded-full bg-slate-700 flex items-center justify-center text-slate-300 hover:text-white transition-all duration-200 ${hover}`}
+                  className={`w-9 h-9 rounded-full bg-slate-700 flex items-center justify-center text-slate-300 hover:text-white transition-all duration-300 ease-out hover:-translate-y-1 hover:scale-110 hover:shadow-lg ${hover}`}
                 >
                   <Icon size={16} />
                 </button>
@@ -1933,47 +1447,46 @@ export function Footer({
           <div>
             <h4 className="font-bold mb-4 text-emerald-400 text-sm uppercase tracking-wider">Discover</h4>
             <div className="flex flex-col gap-3">
-              <button onClick={() => setPage("howitworks")} className="text-slate-300 hover:text-emerald-300 text-sm text-left transition-colors">How it Works</button>
-              <button onClick={() => setPage("buyers")} className="text-slate-300 hover:text-emerald-300 text-sm text-left transition-colors">Browse Items</button>
-              <button onClick={() => setPage("buyers")} className="text-slate-300 hover:text-emerald-300 text-sm text-left transition-colors">For Buyers</button>
-              <button onClick={() => setPage("sellers")} className="text-slate-300 hover:text-emerald-300 text-sm text-left transition-colors">For Sellers</button>
-              <button onClick={() => setPage("howitworks")} className="text-slate-300 hover:text-emerald-300 text-sm text-left transition-colors">Active Drops</button>
+              <button onClick={() => setPage("howitworks")} className="inline-block w-fit cursor-pointer text-left text-sm font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-emerald-300 hover:font-bold">How it Works</button>
+              <button onClick={() => setPage("buyers")} className="inline-block w-fit cursor-pointer text-left text-sm font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-emerald-300 hover:font-bold">Browse Items</button>
+              <button onClick={() => setPage("buyers")} className="inline-block w-fit cursor-pointer text-left text-sm font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-emerald-300 hover:font-bold">For Buyers</button>
+              <button onClick={() => setPage("sellers")} className="inline-block w-fit cursor-pointer text-left text-sm font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-emerald-300 hover:font-bold">For Sellers</button>
             </div>
           </div>
           <div>
             <h4 className="font-bold mb-4 text-amber-400 text-sm uppercase tracking-wider">For Sellers</h4>
             <div className="flex flex-col gap-3">
-              <button onClick={() => goSellerAuth("signup")} className="text-slate-300 hover:text-amber-300 text-sm text-left transition-colors">Weekly Drop</button>
-              <button onClick={() => goMovingAuth("signup")} className="text-slate-300 hover:text-amber-300 text-sm text-left transition-colors">Moving Sale</button>
-              <button className="text-slate-300 hover:text-amber-300 text-sm text-left transition-colors">Seller FAQ</button>
+              <button onClick={() => goSellerAuth("signup")} className="inline-block w-fit cursor-pointer text-left text-sm font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-amber-300 hover:font-bold">Weekly Drop</button>
+              <button onClick={() => goSellerAuth("signup")} className="inline-block w-fit cursor-pointer text-left text-sm font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-amber-300 hover:font-bold">The Shelf</button>
+              <button className="inline-block w-fit cursor-pointer text-left text-sm font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-amber-300 hover:font-bold">Seller FAQ</button>
             </div>
           </div>
           <div>
             <h4 className="font-bold mb-4 text-emerald-400 text-sm uppercase tracking-wider">Company</h4>
             <div className="flex flex-col gap-3">
-              <button onClick={() => setPage("about")} className="text-slate-300 hover:text-emerald-300 text-sm text-left transition-colors">About Us</button>
-              <button onClick={() => setPage("contact")} className="text-slate-300 hover:text-emerald-300 text-sm text-left transition-colors">Contact Us</button>
-              <button className="text-slate-300 hover:text-emerald-300 text-sm text-left transition-colors">FAQ</button>
-              <button className="text-slate-300 hover:text-emerald-300 text-sm text-left transition-colors">Guidelines</button>
-              <button className="text-slate-300 hover:text-emerald-300 text-sm text-left transition-colors">Privacy Policy</button>
+              <button onClick={() => setPage("about")} className="inline-block w-fit cursor-pointer text-left text-sm font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-emerald-300 hover:font-bold">About Us</button>
+              <button onClick={() => setPage("contact")} className="inline-block w-fit cursor-pointer text-left text-sm font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-emerald-300 hover:font-bold">Contact Us</button>
+              <button className="inline-block w-fit cursor-pointer text-left text-sm font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-emerald-300 hover:font-bold">FAQ</button>
+              <button className="inline-block w-fit cursor-pointer text-left text-sm font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-emerald-300 hover:font-bold">Community Guidelines</button>
+              <button className="inline-block w-fit cursor-pointer text-left text-sm font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-emerald-300 hover:font-bold">Privacy Policy</button>
             </div>
           </div>
           <div>
             <h4 className="font-bold mb-4 text-emerald-400 text-sm uppercase tracking-wider">Join Free</h4>
             <div className="flex flex-col gap-3">
-              <button onClick={() => goBuyerAuth("signup")} className="text-slate-300 hover:text-white text-sm text-left transition-colors">Sign up</button>
-              <button onClick={() => goBuyerAuth("login")} className="text-slate-300 hover:text-white text-sm text-left transition-colors">Log in</button>
-              <button className="text-slate-300 hover:text-white text-sm text-left transition-colors">Help Center</button>
+              <button onClick={() => goBuyerAuth("signup")} className="inline-block w-fit cursor-pointer text-left text-sm font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-white hover:font-bold">Sign up</button>
+              <button onClick={() => goBuyerAuth("login")} className="inline-block w-fit cursor-pointer text-left text-sm font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-white hover:font-bold">Log in</button>
+              <button className="inline-block w-fit cursor-pointer text-left text-sm font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-white hover:font-bold">Help Center</button>
             </div>
           </div>
         </div>
 
         <div className="border-t border-slate-700/80 pt-6 flex flex-col md:flex-row items-center justify-between gap-4">
-          <p className="text-slate-400 text-sm">© 2025 DropYard. All rights reserved.</p>
+          <p className="text-slate-400 text-sm">© 2026 DropYard. All rights reserved.</p>
           <div className="flex items-center gap-6 text-sm">
-            <span className="text-slate-400 hover:text-emerald-300 cursor-pointer transition-colors">Privacy Policy</span>
-            <span className="text-slate-400 hover:text-amber-300 cursor-pointer transition-colors">Terms of Service</span>
-            <span className="text-slate-400 hover:text-emerald-300 cursor-pointer transition-colors">Contact</span>
+            <span className="inline-block cursor-pointer text-slate-400 underline-offset-4 decoration-2 decoration-emerald-400 transition-all duration-300 ease-out hover:text-white hover:underline">Privacy Policy</span>
+            <span className="inline-block cursor-pointer text-slate-400 underline-offset-4 decoration-2 decoration-amber-400 transition-all duration-300 ease-out hover:text-white hover:underline">Terms of Service</span>
+            <span className="inline-block cursor-pointer text-slate-400 underline-offset-4 decoration-2 decoration-emerald-400 transition-all duration-300 ease-out hover:text-white hover:underline">Contact</span>
           </div>
         </div>
       </div>
