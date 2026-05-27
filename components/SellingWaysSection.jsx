@@ -64,26 +64,26 @@ export default function SellingWaysSection() {
         <div className="max-w-3xl">
           <div className="flex items-center gap-3">
             <PulseDot />
-            <p className="text-xs font-bold tracking-[0.25em] text-[#ff9412] uppercase">
+            <p className="text-[11px] font-bold tracking-[0.18em] text-[#ff9412] uppercase">
               Two ways to buy &amp; sell
             </p>
           </div>
 
-          <h2 className="mt-5 text-4xl sm:text-5xl lg:text-6xl font-black tracking-[-0.04em] text-[#0b2f20] leading-tight">
+          <h2 className="mt-2 text-[23px] sm:text-[35px] lg:text-[47px] font-semibold tracking-tighter text-[#0b2f20] leading-[1.05]">
             The Drop is the <span className="text-[#ff9412]">heartbeat</span>.
             <br /> The Shelf is always-on.
           </h2>
 
-          <p className="mt-6 text-lg text-slate-600 leading-relaxed">
+          <p className="mt-3 text-[17px] text-slate-600 leading-relaxed">
             One creates urgency and energy. The other gives you flexibility and control.
           </p>
         </div>
 
         {/* TOGGLE */}
-        <div className="mt-10 inline-flex bg-white rounded-full p-1 shadow-md border">
+        <div className="mt-6 inline-flex bg-white rounded-full p-1 shadow-md border">
           <button
             onClick={() => setActive("drop")}
-            className={`px-6 py-2 rounded-full text-sm font-bold transition ${
+            className={`px-6 py-2 rounded-full text-[13px] font-bold transition ${
               active === "drop" ? "bg-[#2f8a22] text-white" : "text-slate-600"
             }`}
           >
@@ -91,7 +91,7 @@ export default function SellingWaysSection() {
           </button>
           <button
             onClick={() => setActive("shelf")}
-            className={`px-6 py-2 rounded-full text-sm font-bold transition ${
+            className={`px-6 py-2 rounded-full text-[13px] font-bold transition ${
               active === "shelf" ? "bg-[#ff9412] text-white" : "text-slate-600"
             }`}
           >
@@ -117,12 +117,12 @@ export default function SellingWaysSection() {
             )}
 
             {active === "drop" && (
-              <div className="absolute top-6 right-6 flex items-center gap-2 text-xs text-[#2f8a22]">
+              <div className="absolute top-6 right-6 flex items-center gap-2 text-[11px] text-[#2f8a22]">
                 <span className="animate-pulse">●</span> Live Drop
               </div>
             )}
 
-            <h3 className="text-3xl font-black text-[#0b2f20]">Weekly Drop</h3>
+            <h3 className="text-[29px] font-black text-[#0b2f20]">Weekly Drop</h3>
 
             <p className="mt-2 text-[#2f8a22] font-semibold">
               Saturday 8 AM. Everyone shows up.
@@ -136,7 +136,7 @@ export default function SellingWaysSection() {
               {dropFeatures.map((item) => (
                 <div key={item} className="flex items-start gap-3">
                   <CheckIcon className="h-5 w-5 text-[#2f8a22] mt-1" />
-                  <p className="text-sm text-slate-700">{item}</p>
+                  <p className="text-[13px] text-slate-700">{item}</p>
                 </div>
               ))}
             </div>
@@ -156,12 +156,12 @@ export default function SellingWaysSection() {
             )}
 
             {active === "shelf" && (
-              <div className="absolute top-6 right-6 text-xs text-[#ff9412] animate-pulse">
+              <div className="absolute top-6 right-6 text-[11px] text-[#ff9412] animate-pulse">
                 Always Available
               </div>
             )}
 
-            <h3 className="text-3xl font-black text-[#0b2f20]">The Shelf</h3>
+            <h3 className="text-[29px] font-black text-[#0b2f20]">The Shelf</h3>
 
             <p className="mt-2 text-[#ff9412] font-semibold">
               Sell anytime. No pressure.
@@ -175,7 +175,7 @@ export default function SellingWaysSection() {
               {shelfFeatures.map((item) => (
                 <div key={item} className="flex items-start gap-3">
                   <CheckIcon className="h-5 w-5 text-[#ff9412] mt-1" />
-                  <p className="text-sm text-slate-700">{item}</p>
+                  <p className="text-[13px] text-slate-700">{item}</p>
                 </div>
               ))}
             </div>

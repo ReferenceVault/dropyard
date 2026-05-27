@@ -45,16 +45,16 @@ export default function SellerCTASection(props) {
       </div>
 
       <div className="relative mx-auto max-w-5xl text-center">
-        <div className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/15 px-4 py-2 text-xs font-black uppercase tracking-[0.2em] text-white/90 backdrop-blur-md">
+        <div className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/15 px-4 py-2 text-[11px] font-black uppercase tracking-[0.2em] text-white/90 backdrop-blur-md">
           <SellerIcon className="h-4 w-4" />
           Start selling locally
         </div>
 
-        <h2 className="mx-auto mt-3 max-w-4xl text-4xl font-black tracking-[-0.06em] text-white sm:text-5xl lg:text-6xl">
+        <h2 className="mx-auto mt-3 max-w-4xl text-[27px] font-semibold tracking-tighter leading-[1.05] text-white sm:text-[39px] lg:text-[51px]">
           Ready to start selling?
         </h2>
 
-        <p className="mx-auto mt-4 max-w-3xl text-base leading-6 text-white/88 sm:text-lg">
+        <p className="mx-auto mt-3 text-[15px] leading-6 text-white/88 sm:whitespace-nowrap">
           Join DropYard and turn your unused items into cash. List items yourself now &mdash; with AI-assisted listing coming soon.
         </p>
 
@@ -70,7 +70,7 @@ export default function SellerCTASection(props) {
           </button>
         </div>
 
-        <p className="mt-5 text-sm font-medium text-white/75">
+        <p className="mt-5 text-[13px] font-medium text-white/75">
           Free to list &middot; Local buyers &middot; Simple pickup flow
         </p>
       </div>

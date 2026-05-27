@@ -71,11 +71,11 @@ export default function ForSellersPage() {
                 <span style={{ position: "absolute", inset: 0, borderRadius: "50%", backgroundColor: C.oPrimary, animation: "dys-pulse-ring 2s ease-out infinite" }} />
                 <span style={{ position: "relative", display: "inline-flex", width: 8, height: 8, borderRadius: "50%", backgroundColor: C.oPrimary }} />
               </span>
-              <span style={{ fontSize: 11, fontWeight: 800, color: C.oDark, letterSpacing: "0.18em", textTransform: "uppercase" }}>Turn clutter into cash</span>
+              <span style={{ fontSize: 10, fontWeight: 600, color: C.oDark, letterSpacing: "0.18em", textTransform: "uppercase" }}>Turn clutter into cash</span>
             </div>
 
-            <h1 style={{ fontSize: "clamp(40px,7vw,64px)", fontWeight: 900, color: C.gDark, lineHeight: 1.05, marginBottom: 16, letterSpacing: "-0.035em" }}>
-              Sell easily to your<br />
+            <h1 style={{ fontSize: "clamp(33px,5vw,57px)", fontWeight: 600, color: C.gDark, lineHeight: 1.05, marginBottom: 16, letterSpacing: "-0.05em" }}>
+              Sell easily to your{" "}
               <span style={{ position: "relative", display: "inline-block", color: C.oPrimary }}>
                 neighbours.
                 <span
@@ -93,7 +93,7 @@ export default function ForSellersPage() {
               </span>
             </h1>
 
-            <p style={{ fontSize: 16, color: "#64748b", maxWidth: 560, margin: "0 auto 24px", lineHeight: 1.7 }}>
+            <p style={{ fontSize: 14, color: "#64748b", maxWidth: 880, margin: "0 auto 24px", lineHeight: 1.7 }}>
               Turn unused items into cash through simple, time-limited community Drops. List items yourself or let AI do it for you — create listings, talk to buyers, and schedule pickups. No meetups with strangers — just neighbours helping neighbours.
             </p>
 
@@ -110,7 +110,7 @@ export default function ForSellersPage() {
                     display: "inline-flex",
                     alignItems: "center",
                     gap: 6,
-                    fontSize: 12,
+                    fontSize: 11,
                     fontWeight: 700,
                     color: C.gDark,
                     backgroundColor: "rgba(255,255,255,0.85)",
@@ -122,18 +122,18 @@ export default function ForSellersPage() {
                     animation: `dys-chip-in 0.5s ${0.15 * i}s ease-out backwards`,
                   }}
                 >
-                  <span style={{ fontSize: 14 }}>{c.e}</span> {c.t}
+                  <span style={{ fontSize: 13 }}>{c.e}</span> {c.t}
                 </span>
               ))}
             </div>
 
             <div style={{ display: "flex", gap: 12, justifyContent: "center", marginBottom: 20, flexWrap: "wrap" }}>
-              <button onClick={goJoin} style={{ display: "flex", alignItems: "center", gap: 8, padding: "16px 32px", borderRadius: 50, border: "none", cursor: "pointer", fontSize: 16, fontWeight: 700, backgroundColor: C.oPrimary, color: "#fff", boxShadow: "0 8px 28px rgba(245,158,11,0.35)", transition: "all 0.2s" }}
+              <button onClick={goJoin} style={{ display: "flex", alignItems: "center", gap: 8, padding: "16px 32px", borderRadius: 50, border: "none", cursor: "pointer", fontSize: 15, fontWeight: 700, backgroundColor: C.oPrimary, color: "#fff", boxShadow: "0 8px 28px rgba(245,158,11,0.35)", transition: "all 0.2s" }}
                 onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = C.oHover; (e.currentTarget as HTMLButtonElement).style.transform = "translateY(-2px)"; }}
                 onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = C.oPrimary; (e.currentTarget as HTMLButtonElement).style.transform = "translateY(0)"; }}>
                 Become a Seller <ArrowRight size={18} />
               </button>
-              <button onClick={() => router.push("/join?mode=signin")} style={{ display: "flex", alignItems: "center", gap: 8, padding: "16px 32px", borderRadius: 50, border: `2px solid ${C.oPrimary}`, cursor: "pointer", fontSize: 16, fontWeight: 700, backgroundColor: "transparent", color: C.oPrimary, transition: "all 0.2s" }}
+              <button onClick={() => router.push("/join?mode=signin")} style={{ display: "flex", alignItems: "center", gap: 8, padding: "16px 32px", borderRadius: 50, border: `2px solid ${C.oPrimary}`, cursor: "pointer", fontSize: 15, fontWeight: 700, backgroundColor: "transparent", color: C.oPrimary, transition: "all 0.2s" }}
                 onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = "rgba(245,158,11,0.08)"; (e.currentTarget as HTMLButtonElement).style.transform = "translateY(-2px)"; }}
                 onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = "transparent"; (e.currentTarget as HTMLButtonElement).style.transform = "translateY(0)"; }}>
                 I Have an Account
@@ -155,9 +155,9 @@ export default function ForSellersPage() {
               <div>
                 <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 14px", borderRadius: 50, backgroundColor: C.aiLight, border: `1px solid ${C.aiBorder}`, marginBottom: 16 }}>
                   <Sparkles size={14} style={{ color: C.ai }} />
-                  <span style={{ fontSize: 12, fontWeight: 700, color: C.ai }}>Coming Soon — AI Seller Agent</span>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: C.ai }}>Coming Soon — AI Seller Agent</span>
                 </div>
-                <h2 style={{ fontSize: "clamp(26px,3.5vw,36px)", fontWeight: 900, color: "#0f172a", lineHeight: 1.15, marginBottom: 12 }}>Want to go hands-free?<br /><span style={{ color: C.oPrimary }}>Let AI handle it.</span></h2>
+                <h2 style={{ fontSize: "clamp(25px,3.3vw,34px)", fontWeight: 600, color: "#0f172a", lineHeight: 1.05, letterSpacing: "-0.05em", marginBottom: 12 }}>Want to go hands-free?<br /><span style={{ color: C.oPrimary }}>Let AI handle it.</span></h2>
                 <p style={{ fontSize: 15, color: "#64748b", lineHeight: 1.7, marginBottom: 28 }}>You can manage everything yourself — or turn on the AI Seller Agent and let it handle the rest. Set your price floor once. The AI responds to buyers, negotiates offers, and schedules pickups. You just get a WhatsApp when something sells.</p>
                 <div style={{ display: "flex", flexDirection: "column" as const, gap: 10, marginBottom: 28 }}>
                   {[

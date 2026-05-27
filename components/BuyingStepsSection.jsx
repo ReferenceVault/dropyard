@@ -85,19 +85,19 @@ export default function BuyingStepsSection() {
       </div>
 
       <div className="relative mx-auto max-w-6xl text-center">
-        <p className="text-xs font-bold uppercase tracking-[0.35em] text-[#2f8a22]">
+        <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#2f8a22]">
           Simple steps
         </p>
 
-        <h2 className="mt-4 text-4xl font-black tracking-[-0.04em] text-[#0b2f20] sm:text-5xl">
+        <h2 className="mt-2 text-[29px] font-semibold tracking-tighter leading-[1.05] text-[#0b2f20] sm:text-[35px]">
           How buying works
         </h2>
 
-        <p className="mx-auto mt-4 max-w-2xl text-lg text-slate-600">
+        <p className="mx-auto mt-3 max-w-2xl text-[17px] text-slate-600">
           From discovery to pickup, DropYard keeps buying local simple, fast, and frictionless.
         </p>
 
-        <div className="mt-20 grid grid-cols-1 gap-10 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-10 grid grid-cols-1 gap-10 sm:grid-cols-2 lg:grid-cols-4">
           {steps.map((step, i) => {
             const Icon = step.Icon;
             return (
@@ -126,11 +126,11 @@ export default function BuyingStepsSection() {
                       <Icon className={`h-5 w-5 text-[#0b2f20] transition duration-500 ${ACCENT_HOVER_ICON[step.accent]}`} />
                     </div>
 
-                    <h3 className="text-lg font-semibold tracking-tight text-[#0b2f20]">
+                    <h3 className="text-[17px] font-semibold tracking-tight text-[#0b2f20]">
                       {step.title}
                     </h3>
 
-                    <p className="mt-3 text-sm leading-relaxed text-slate-600">
+                    <p className="mt-3 text-[13px] leading-relaxed text-slate-600">
                       {step.description}
                     </p>
                   </div>
@@ -142,11 +142,11 @@ export default function BuyingStepsSection() {
 
         <div className="mt-8 flex items-center justify-center">
           <div className="flex items-center gap-5 rounded-2xl border border-slate-200 bg-white/90 px-6 py-5 shadow-[0_10px_30px_rgba(0,0,0,0.05)] backdrop-blur">
-            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#25D366] text-sm font-bold text-white shadow">
+            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#25D366] text-[13px] font-bold text-white shadow">
               W
             </div>
 
-            <p className="max-w-md text-left text-sm text-slate-700">
+            <p className="max-w-md text-left text-[13px] text-slate-700">
               Pickup details, reminders, and confirmations — all delivered to your
               <span className="font-semibold text-[#25D366]"> WhatsApp</span>
             </p>

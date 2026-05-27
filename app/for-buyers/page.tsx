@@ -96,12 +96,12 @@ export default function ForBuyersPage() {
               <span style={{ position: "absolute", inset: 0, borderRadius: "50%", backgroundColor: "#22C55E", animation: "dy-pulse-ring 2s ease-out infinite" }} />
               <span style={{ position: "relative", display: "inline-flex", width: 8, height: 8, borderRadius: "50%", backgroundColor: "#22C55E" }} />
             </span>
-            <span style={{ fontSize: 11, fontWeight: 800, color: "rgba(255,255,255,0.92)", letterSpacing: "0.14em", textTransform: "uppercase" }}>
+            <span style={{ fontSize: 9, fontWeight: 800, color: "rgba(255,255,255,0.92)", letterSpacing: "0.14em", textTransform: "uppercase" }}>
               This week&apos;s Drop is live · 40+ items
             </span>
           </div>
 
-          <h1 style={{ fontSize: "clamp(40px,6.5vw,64px)", fontWeight: 900, color: "#fff", lineHeight: 1.05, marginBottom: 14, letterSpacing: "-0.035em" }}>
+          <h1 style={{ fontSize: "clamp(31px,5vw,55px)", fontWeight: 600, color: "#fff", lineHeight: 1.05, marginBottom: 14, letterSpacing: "-0.05em" }}>
             For{" "}
             <span style={{ position: "relative", display: "inline-block", color: C.oAccent }}>
               Buyers
@@ -120,9 +120,10 @@ export default function ForBuyersPage() {
             </span>
           </h1>
 
-          <p style={{ fontSize: 20, fontWeight: 700, color: "rgba(255,255,255,0.96)", marginBottom: 10 }}>Shop locally. Simply.</p>
-          <p style={{ fontSize: 14, color: "rgba(255,255,255,0.62)", maxWidth: 560, margin: "0 auto 22px", lineHeight: 1.7 }}>
-            Discover amazing deals from your neighbours through curated weekend Drops, always-on Shelf listings. Quality items at great prices, just around the corner.
+          <p style={{ fontSize: 18, fontWeight: 700, color: "rgba(255,255,255,0.96)", marginBottom: 10 }}>Shop locally. Simply.</p>
+          <p style={{ fontSize: 13, color: "rgba(255,255,255,0.62)", maxWidth: "none", margin: "0 auto 22px", lineHeight: 1.7, whiteSpace: "nowrap" }}>
+            Discover amazing deals from your neighbours through curated weekend Drops, always-on Shelf listings.<br />
+            Quality items at great prices, just around the corner.
           </p>
 
           {/* Benefit chips */}
@@ -155,10 +156,10 @@ export default function ForBuyersPage() {
           </div>
 
           <div style={{ display: "flex", gap: 12, justifyContent: "center", marginBottom: 26, flexWrap: "wrap" }}>
-            <button onClick={go} style={{ display: "flex", alignItems: "center", gap: 8, padding: "14px 28px", borderRadius: 14, border: "none", cursor: "pointer", fontSize: 15, fontWeight: 700, backgroundColor: C.oPrimary, color: "#fff", boxShadow: "0 8px 28px rgba(245,158,11,0.35)" }}>
+            <button onClick={go} style={{ display: "flex", alignItems: "center", gap: 8, padding: "14px 28px", borderRadius: 14, border: "none", cursor: "pointer", fontSize: 14, fontWeight: 700, backgroundColor: C.oPrimary, color: "#fff", boxShadow: "0 8px 28px rgba(245,158,11,0.35)" }}>
               Join This Week&apos;s Drop <ChevronRight size={18} />
             </button>
-            <button onClick={() => router.push("/join?mode=signin")} style={{ display: "flex", alignItems: "center", gap: 8, padding: "14px 28px", borderRadius: 14, border: "1px solid rgba(255,255,255,0.2)", cursor: "pointer", fontSize: 15, fontWeight: 700, backgroundColor: "rgba(255,255,255,0.06)", color: "#fff" }}>
+            <button onClick={() => router.push("/join?mode=signin")} style={{ display: "flex", alignItems: "center", gap: 8, padding: "14px 28px", borderRadius: 14, border: "1px solid rgba(255,255,255,0.2)", cursor: "pointer", fontSize: 14, fontWeight: 700, backgroundColor: "rgba(255,255,255,0.06)", color: "#fff" }}>
               I Have an Account
             </button>
           </div>
@@ -166,7 +167,7 @@ export default function ForBuyersPage() {
           {/* Live countdown — now with unit labels */}
           <div style={{ display: "inline-flex", alignItems: "center", gap: 12, padding: "8px 18px", borderRadius: 14, backgroundColor: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", backdropFilter: "blur(8px)" }}>
             <Clock size={14} style={{ color: C.gAccent }} />
-            <span style={{ fontSize: 10, fontWeight: 800, color: "rgba(255,255,255,0.65)", textTransform: "uppercase", letterSpacing: "0.15em" }}>Drop ends in</span>
+            <span style={{ fontSize: 9, fontWeight: 800, color: "rgba(255,255,255,0.65)", textTransform: "uppercase", letterSpacing: "0.15em" }}>Drop ends in</span>
             <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
               {[
                 { v: pad(cd.h), label: "Hrs" },
@@ -174,8 +175,8 @@ export default function ForBuyersPage() {
                 { v: pad(cd.s), label: "Sec" },
               ].map((u, i) => (
                 <div key={i} style={{ display: "flex", alignItems: "baseline", gap: 3 }}>
-                  <span style={{ fontSize: 16, fontWeight: 900, color: "#fff", backgroundColor: "rgba(255,255,255,0.15)", padding: "3px 8px", borderRadius: 6, letterSpacing: 1, minWidth: 36, textAlign: "center", fontVariantNumeric: "tabular-nums" as const }}>{u.v}</span>
-                  <span style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.45)", textTransform: "uppercase", letterSpacing: "0.1em" }}>{u.label}</span>
+                  <span style={{ fontSize: 15, fontWeight: 900, color: "#fff", backgroundColor: "rgba(255,255,255,0.15)", padding: "3px 8px", borderRadius: 6, letterSpacing: 1, minWidth: 36, textAlign: "center", fontVariantNumeric: "tabular-nums" as const }}>{u.v}</span>
+                  <span style={{ fontSize: 8, fontWeight: 700, color: "rgba(255,255,255,0.45)", textTransform: "uppercase", letterSpacing: "0.1em" }}>{u.label}</span>
                 </div>
               ))}
             </div>
@@ -188,7 +189,7 @@ export default function ForBuyersPage() {
         <div style={{ maxWidth: 1000, margin: "0 auto" }}>
           <div style={{ textAlign: "center", marginBottom: 28 }}>
             <span style={{ fontSize: 11, fontWeight: 800, color: C.gPrimary, textTransform: "uppercase", letterSpacing: 2 }}>This Week</span>
-            <h2 style={{ fontSize: 28, fontWeight: 900, color: C.gDark, marginTop: 4 }}>This Week&apos;s Picks</h2>
+            <h2 style={{ fontSize: 27, fontWeight: 600, color: C.gDark, marginTop: 4, letterSpacing: "-0.025em" }}>This Week&apos;s Picks</h2>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14 }}>
             {dropItems.map((item, i) => {
@@ -235,7 +236,7 @@ export default function ForBuyersPage() {
           <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 24 }}>
             <div>
               <span style={{ fontSize: 11, fontWeight: 800, color: C.oPrimary, textTransform: "uppercase", letterSpacing: 2 }}>No Countdown Needed</span>
-              <h2 style={{ fontSize: 28, fontWeight: 900, color: C.gDark, marginTop: 4 }}>On the Shelf Right Now</h2>
+              <h2 style={{ fontSize: 27, fontWeight: 600, color: C.gDark, marginTop: 4, letterSpacing: "-0.025em" }}>On the Shelf Right Now</h2>
               <p style={{ fontSize: 13, color: "#999", marginTop: 4 }}>Available right now — no waiting for Saturday.</p>
             </div>
             <button onClick={go} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 13, fontWeight: 700, color: C.oPrimary, background: "none", border: "none", cursor: "pointer" }}>Browse the Shelf <ChevronRight size={14} /></button>
@@ -285,7 +286,7 @@ export default function ForBuyersPage() {
       <section style={{ padding: "56px 24px", background: `linear-gradient(165deg,${C.gDark},${C.gHover})`, position: "relative", overflow: "hidden" }}>
         <div style={{ position: "absolute", top: -40, right: "20%", width: 200, height: 200, borderRadius: "50%", background: C.gAccent, opacity: 0.05 }} />
         <div style={{ maxWidth: 700, margin: "0 auto", textAlign: "center", position: "relative", zIndex: 1 }}>
-          <h2 style={{ fontSize: "clamp(24px,4vw,36px)", fontWeight: 900, color: "#fff", marginBottom: 8 }}>Ready to find your next deal?</h2>
+          <h2 style={{ fontSize: "clamp(23px,4vw,35px)", fontWeight: 600, color: "#fff", marginBottom: 8, letterSpacing: "-0.025em" }}>Ready to find your next deal?</h2>
           <p style={{ fontSize: 14, color: "rgba(255,255,255,0.5)", marginBottom: 24, lineHeight: 1.6 }}>
             Join your neighbourhood&apos;s next Drop and discover amazing local finds. Or browse the Shelf right now — no waiting required.
           </p>

@@ -102,21 +102,21 @@ function WeeklyTimelineExperience({ onStartSelling, onBrowseDrop }) {
 
       <div className="relative mx-auto max-w-7xl">
         <div className="max-w-3xl">
-          <span className="inline-flex rounded-full border border-[#D1FAE5] bg-white px-4 py-2 text-[11px] font-extrabold uppercase tracking-[0.22em] text-[#1F7A4D] shadow-sm">
+          <span className="inline-flex rounded-full border border-[#D1FAE5] bg-white px-4 py-2 text-[10px] font-extrabold uppercase tracking-[0.22em] text-[#1F7A4D] shadow-sm">
             The DropYard Flow
           </span>
 
-          <h2 className="mt-6 text-5xl font-black leading-[0.95] tracking-[-0.07em] text-slate-900 sm:text-6xl lg:text-7xl">
+          <h2 className="mt-6 text-[26px] font-semibold leading-[1.05] tracking-tighter text-slate-900 sm:text-[38px] lg:text-[48px]">
             Designed around a
             <span className="block text-[#F08A00]">weekly buying cycle.</span>
           </h2>
 
-          <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-500">
+          <p className="mt-6 max-w-2xl text-[17px] leading-8 text-slate-500">
             Sellers can list throughout the week, buyers preview upcoming items early, and any unsold Shelf items automatically roll into the Saturday live Drop.
           </p>
         </div>
 
-        <div className="relative mt-24">
+        <div className="relative mt-10">
           <div className="absolute left-0 right-0 top-[5rem] hidden h-[2px] bg-gradient-to-r from-[#1F7A4D]/20 via-[#F08A00]/30 to-[#0F766E]/20 lg:block" />
 
           <div className="grid gap-7 lg:grid-cols-4">
@@ -134,19 +134,19 @@ function WeeklyTimelineExperience({ onStartSelling, onBrowseDrop }) {
 
                 <div className="flex items-start justify-between gap-4">
                   <div
-                    className="relative flex h-[72px] w-[72px] items-center justify-center rounded-[1.7rem] text-3xl transition-all duration-700 group-hover:-translate-y-1 group-hover:scale-110"
+                    className="relative flex h-[72px] w-[72px] items-center justify-center rounded-[1.7rem] text-[29px] transition-all duration-700 group-hover:-translate-y-1 group-hover:scale-110"
                     style={{ background: `linear-gradient(180deg, ${item.bg}, white)` }}
                   >
                     {item.icon}
                   </div>
 
-                  <span className="text-5xl font-black tracking-[-0.08em] opacity-10" style={{ color: item.color }}>
+                  <span className="text-[47px] font-black tracking-[-0.08em] opacity-10" style={{ color: item.color }}>
                     {item.step}
                   </span>
                 </div>
 
                 <div className="relative mt-8">
-                  <p className="text-[11px] font-extrabold uppercase tracking-[0.18em]" style={{ color: item.color }}>
+                  <p className="text-[10px] font-extrabold uppercase tracking-[0.18em]" style={{ color: item.color }}>
                     {item.time}
                   </p>
 
@@ -156,7 +156,7 @@ function WeeklyTimelineExperience({ onStartSelling, onBrowseDrop }) {
                     </h3>
 
                     {item.featured && (
-                      <span className="mt-1 rounded-full bg-[#FFF7ED] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#F08A00]">
+                      <span className="mt-1 rounded-full bg-[#FFF7ED] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-[#F08A00]">
                         Peak Traffic
                       </span>
                     )}
@@ -165,7 +165,7 @@ function WeeklyTimelineExperience({ onStartSelling, onBrowseDrop }) {
                   <p className="mt-5 text-[15px] leading-7 text-slate-500">{item.text}</p>
                 </div>
 
-                <div className="mt-8 flex items-center gap-2 border-t border-slate-100 pt-5 text-sm font-bold text-slate-400">
+                <div className="mt-8 flex items-center gap-2 border-t border-slate-100 pt-5 text-[13px] font-bold text-slate-400">
                   <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.color }} />
                   {item.note}
                 </div>
@@ -175,12 +175,12 @@ function WeeklyTimelineExperience({ onStartSelling, onBrowseDrop }) {
         </div>
 
         <div className="mt-14 flex flex-wrap items-center justify-center gap-4">
-          <button onClick={onStartSelling} className="inline-flex items-center gap-2 rounded-full bg-[#1F7A4D] px-8 py-4 text-sm font-black text-white shadow-[0_12px_30px_rgba(31,122,77,0.22)] transition hover:-translate-y-1">
+          <button onClick={onStartSelling} className="inline-flex items-center gap-2 rounded-full bg-[#1F7A4D] px-8 py-4 text-[13px] font-black text-white shadow-[0_12px_30px_rgba(31,122,77,0.22)] transition hover:-translate-y-1">
             Start Selling
             <Icon name="arrow" size={16} />
           </button>
 
-          <button onClick={onBrowseDrop} className="inline-flex items-center gap-2 rounded-full border-2 border-[#F08A00] bg-white px-8 py-4 text-sm font-black text-[#F08A00] transition hover:-translate-y-1 hover:bg-[#FFF7ED]">
+          <button onClick={onBrowseDrop} className="inline-flex items-center gap-2 rounded-full border-2 border-[#F08A00] bg-white px-8 py-4 text-[13px] font-black text-[#F08A00] transition hover:-translate-y-1 hover:bg-[#FFF7ED]">
             Browse Upcoming Drop
             <Icon name="arrow" size={16} />
           </button>
@@ -214,23 +214,23 @@ function InfoSection({ onListShelf }) {
       <div className="relative z-[1] mx-auto max-w-[1240px] px-8">
         <div className="grid items-center gap-20 lg:grid-cols-[1.05fr_0.95fr]">
           <div>
-            <div className="mb-5 inline-flex items-center gap-3 text-xs font-bold uppercase tracking-[0.22em] text-[#FDBA74] before:h-0.5 before:w-8 before:bg-[#FDBA74]">
+            <div className="mb-5 inline-flex items-center gap-3 text-[11px] font-bold uppercase tracking-[0.22em] text-[#FDBA74] before:h-0.5 before:w-8 before:bg-[#FDBA74]">
               The Shelf
             </div>
 
-            <h2 className="m-0 mb-6 text-[clamp(40px,4.8vw,60px)] font-black leading-[1.04] tracking-[-0.025em] text-white">
+            <h2 className="m-0 mb-6 text-[clamp(27px,4vw,45px)] font-semibold leading-[1.05] tracking-tighter text-white">
               Don&apos;t want to wait for
               <span className="block text-[#F08A00]">Saturday?</span>
             </h2>
 
-            <p className="mb-9 max-w-[540px] text-lg leading-[1.6] text-white/80">
+            <p className="mb-9 max-w-[540px] text-[17px] leading-[1.6] text-white/80">
               The Shelf is DropYard&apos;s always-on layer. List something today and it goes live the same day. Browse calmly without a countdown. Whether you missed last weekend&apos;s Drop or just need to clear something now, The Shelf has you.
             </p>
 
             <ul className="mb-9 list-none border-t border-white/15 p-0">
               {bullets.map(([title, text], index) => (
                 <li key={title} className="flex items-start gap-5 border-b border-white/15 py-[18px]">
-                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#F08A00] text-sm font-extrabold text-white shadow-[0_4px_10px_-4px_rgba(240,138,0,0.6)]">
+                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#F08A00] text-[13px] font-extrabold text-white shadow-[0_4px_10px_-4px_rgba(240,138,0,0.6)]">
                     {index + 1}
                   </span>
                   <div>
@@ -258,13 +258,13 @@ function InfoSection({ onListShelf }) {
                   <span className="text-[#005A3F]">Drop</span>
                   <span className="text-[#F08A00]">Yard</span>
                 </div>
-                <div className="text-[11px] font-bold tracking-[0.18em] text-[#6B7280]">SELLER · BARRHAVEN · THE SHELF</div>
+                <div className="text-[10px] font-bold tracking-[0.18em] text-[#6B7280]">SELLER · BARRHAVEN · THE SHELF</div>
               </div>
 
               {receiptItems.map((item) => (
                 <div key={item.name} className="flex items-baseline justify-between gap-4 py-[7px] text-[13px] font-medium">
                   <div className="flex flex-1 items-baseline gap-2">
-                    {item.name} <span className="shrink-0 text-[10px] font-bold tracking-[0.1em] text-[#F08A00]">{item.day}</span>
+                    {item.name} <span className="shrink-0 text-[9px] font-bold tracking-[0.1em] text-[#F08A00]">{item.day}</span>
                   </div>
                   <div className="font-semibold tabular-nums">{item.amt}</div>
                 </div>
@@ -272,14 +272,14 @@ function InfoSection({ onListShelf }) {
 
               <div className="mt-3 flex items-baseline justify-between gap-4 border-t border-dashed border-[#1F2937] pt-4 text-[15px] font-extrabold tracking-[0.01em]">
                 <div className="font-extrabold tracking-[0.06em]">SHELF TOTAL</div>
-                <div className="text-lg font-extrabold">$233.00</div>
+                <div className="text-[17px] font-extrabold">$233.00</div>
               </div>
 
-              <div className="mt-6 border-t border-dashed border-[#1F2937] pt-4 text-center text-[11px] font-bold leading-[1.7] tracking-[0.16em] text-[#6B7280]">
+              <div className="mt-6 border-t border-dashed border-[#1F2937] pt-4 text-center text-[10px] font-bold leading-[1.7] tracking-[0.16em] text-[#6B7280]">
                 6 ITEMS · 6 DIFFERENT DAYS
                 <br />
                 NO DROP NEEDED
-                <div className="mt-2 text-sm tracking-[0.2em] text-[#F08A00]">★ ★ ★ ★ ★</div>
+                <div className="mt-2 text-[13px] tracking-[0.2em] text-[#F08A00]">★ ★ ★ ★ ★</div>
               </div>
             </div>
           </div>
@@ -300,7 +300,7 @@ function FAQSection() {
   return (
     <section className="bg-white px-6 py-8">
       <div className="mx-auto max-w-3xl">
-        <h2 className="mb-8 text-center text-3xl font-black tracking-[-0.04em] text-slate-900">Common questions</h2>
+        <h2 className="mb-8 text-center text-[29px] font-semibold tracking-tighter text-slate-900">Common questions</h2>
         {faqs.map((item, index) => (
           <div key={item[0]} className="border-b">
             <button onClick={() => setFaqOpen(faqOpen === index ? null : index)} className="flex w-full items-center justify-between py-5 text-left">
@@ -308,7 +308,7 @@ function FAQSection() {
               <Icon name="down" size={18} color="#94a3b8" />
             </button>
             <div className="overflow-hidden transition-all" style={{ maxHeight: faqOpen === index ? 220 : 0 }}>
-              <p className="pb-5 text-sm leading-7 text-slate-500">{item[1]}</p>
+              <p className="pb-5 text-[13px] leading-7 text-slate-500">{item[1]}</p>
             </div>
           </div>
         ))}
@@ -345,20 +345,20 @@ export default function HowItWorksLanding(props) {
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#F08A00] opacity-75" />
                 <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-[#F08A00]" />
               </span>
-              <span className="text-[11px] font-black uppercase tracking-[0.25em] text-amber-100">
+              <span className="text-[10px] font-black uppercase tracking-[0.25em] text-amber-100">
                 Live weekly rhythm
               </span>
             </div>
 
-            <h1 className="text-5xl font-black tracking-[-0.05em] text-white sm:text-6xl lg:text-7xl">
+            <h1 className="text-[25px] font-semibold tracking-tighter leading-[1.05] text-white sm:text-[37px] lg:text-[49px]">
               <span className="text-[#F08A00]">How</span> It Works
             </h1>
 
-            <p className="mt-5 text-base font-semibold text-[#FED7AA] sm:text-lg">
+            <p className="mt-5 text-[15px] font-semibold text-[#FED7AA] sm:text-[17px]">
               A simple weekly buying cycle designed for local discovery
             </p>
 
-            <p className="mx-auto mt-6 max-w-4xl text-base leading-7 text-white/90 sm:text-[17px] sm:leading-8">
+            <p className="mx-auto mt-6 max-w-4xl text-[15px] leading-7 text-white/90 sm:text-[17px] sm:leading-8">
               <span className="font-semibold text-white">DropYard runs on a weekly rhythm.</span> Sellers list items throughout the week, buyers preview and save before claiming opens, then the marketplace comes alive during the Saturday Drop — <span className="whitespace-nowrap">where unsold Shelf items automatically roll into the live buying rush.</span>
             </p>
 
@@ -382,10 +382,10 @@ export default function HowItWorksLanding(props) {
                         : "bg-white/10 backdrop-blur-sm hover:-translate-y-0.5 hover:bg-white/20"
                     }`}
                   >
-                    <span className={`text-sm font-black sm:text-base ${d.featured ? "text-white" : "text-white/80"}`}>
+                    <span className={`text-[13px] font-black sm:text-[15px] ${d.featured ? "text-white" : "text-white/80"}`}>
                       {d.day}
                     </span>
-                    <span className={`mt-1 text-[9px] font-black uppercase tracking-[0.1em] sm:text-[10px] ${d.featured ? "text-white" : "text-white/60"}`}>
+                    <span className={`mt-1 text-[9px] font-black uppercase tracking-[0.1em] sm:text-[9px] ${d.featured ? "text-white" : "text-white/60"}`}>
                       {d.label}
                     </span>
                   </div>
@@ -393,7 +393,7 @@ export default function HowItWorksLanding(props) {
               </div>
               <div className="mt-4 flex items-center justify-center gap-2">
                 <span className="h-px w-8 bg-white/30" />
-                <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/55">
+                <p className="text-[9px] font-black uppercase tracking-[0.18em] text-white/55">
                   7-day buying cycle
                 </p>
                 <span className="h-px w-8 bg-white/30" />
@@ -407,13 +407,13 @@ export default function HowItWorksLanding(props) {
         <FAQSection />
 
         <section className="px-6 py-14 text-center" style={{ background: `linear-gradient(165deg,${C.gDark},${C.gHover})` }}>
-          <h2 className="text-4xl font-black text-white">Ready to join the next Drop?</h2>
-          <p className="mx-auto mt-3 max-w-xl text-sm leading-7 text-white/50">Whether you&apos;re buying or selling, it only takes a minute to get started.</p>
+          <h2 className="text-[33px] font-semibold tracking-tighter text-white">Ready to join the next Drop?</h2>
+          <p className="mx-auto mt-3 max-w-xl text-[13px] leading-7 text-white/50">Whether you&apos;re buying or selling, it only takes a minute to get started.</p>
           <div className="mt-7 flex flex-wrap justify-center gap-3">
-            <button onClick={onBuyerCta} className="inline-flex items-center gap-2 rounded-full bg-[#1F7A4D] px-7 py-3.5 text-sm font-bold text-white">
+            <button onClick={onBuyerCta} className="inline-flex items-center gap-2 rounded-full bg-[#1F7A4D] px-7 py-3.5 text-[13px] font-bold text-white">
               Browse as Buyer <Icon name="arrow" size={16} />
             </button>
-            <button onClick={onSellerCta} className="inline-flex items-center gap-2 rounded-full bg-[#F08A00] px-7 py-3.5 text-sm font-bold text-white">
+            <button onClick={onSellerCta} className="inline-flex items-center gap-2 rounded-full bg-[#F08A00] px-7 py-3.5 text-[13px] font-bold text-white">
               Become a Seller <Icon name="arrow" size={16} />
             </button>
           </div>

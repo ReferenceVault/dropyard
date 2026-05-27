@@ -51,6 +51,7 @@ import {
   Tag,
   MessageCircle,
   Send,
+  Bell,
   Star,
   ShoppingCart,
   Award,
@@ -117,6 +118,14 @@ type BuyerTab =
   | "history";
 
 function BuyerDashboardContent() {
+  // Guard against SSR hydration mismatch: the v1 preview dashboards render
+  // user-dependent content (name, initials) inside UserMenu. On SSR, user is null
+  // so it shows "?" / "Account"; on client, auth context populates and shows
+  // "NS" / "Narveer Singh", which trips the hydration check. We defer rendering
+  // the preview until after mount so the markup matches.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
   const {
     phase,
     canSellersList,
@@ -180,6 +189,11 @@ function BuyerDashboardContent() {
   const [notifyClaims, setNotifyClaims] = useState(true);
   const [notifyNewItems, setNotifyNewItems] = useState(true);
 
+  // ── Discover filters (search / category / sort) ──────────────
+  const [searchQuery, setSearchQuery] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [sortOrder, setSortOrder] = useState<"newest" | "price-asc" | "price-desc">("newest");
+
   // ── Moving Sale application status ───────────────────────────
   const [movingSaleApp, setMovingSaleApp] = useState<{ status: string; preferredWeekend: string; approvedWeekend?: string; createdAt: string } | null>(null);
   const [checkStatusLoading, setCheckStatusLoading] = useState(false);
@@ -217,6 +231,7 @@ function BuyerDashboardContent() {
     seller: { id: string; name: string; neighborhood: string | null };
   };
   const [myBuyerClaims, setMyBuyerClaims] = useState<BuyerClaim[]>([]);
+  const [cancelClaimTarget, setCancelClaimTarget] = useState<BuyerClaim | null>(null);
 
   useEffect(() => {
     if (mode !== "buyer" || !accessToken) return;
@@ -434,6 +449,7 @@ function BuyerDashboardContent() {
   // signout function, accessToken, and refresh callback flow through without
   // TS complaining about the inferred null-only types.
   if ((mode as string) === "seller") {
+    if (!mounted) return <div className="min-h-screen bg-slate-50" />;
     return (
       <DropYardSellerDashboard
         onSwitchRole={() => setMode("buyer")}
@@ -451,6 +467,7 @@ function BuyerDashboardContent() {
   // Buyer mode renders the new dashboard from /preview/buyer-dashboard wholesale.
   // Its TopBar "Switch to Seller" button and Sell-with-AI CTA flip to seller mode.
   if ((mode as string) === "buyer") {
+    if (!mounted) return <div className="min-h-screen bg-slate-50" />;
     return <DropYardBuyerDashboard onSwitchRole={() => setMode("seller")} user={user as any} onSignout={signout as any} accessToken={accessToken as any} />;
   }
 
@@ -912,32 +929,6 @@ function BuyerDashboardContent() {
             })}
           </nav>
 
-          {/* Dev: phase simulator */}
-          <div className="px-4 pb-4 border-t border-gray-100 pt-3">
-            <p className="text-[9px] font-semibold text-gray-300 uppercase tracking-widest mb-1.5">Dev: Simulate Phase</p>
-            <select
-              value={simulatedDate ? phase : "__live__"}
-              onChange={(e) => {
-                const v = e.target.value;
-                if (v === "__live__") { setSimulatedDate(null); return; }
-                const dates: Record<string, string> = {
-                  SUBMISSION: "2026-02-16T12:00:00",
-                  PREVIEW: "2026-02-20T12:00:00",
-                  LIVE: "2026-02-21T10:00:00",
-                  CLOSED: "2026-02-22T21:00:00",
-                };
-                setSimulatedDate(new Date(dates[v] ?? dates.SUBMISSION));
-              }}
-              className="w-full text-xs px-2 py-1.5 rounded-lg border border-gray-200 bg-gray-50 text-gray-500 focus:outline-none"
-            >
-              <option value="__live__">Real time</option>
-              <option value="SUBMISSION">Submission</option>
-              <option value="PREVIEW">Preview</option>
-              <option value="LIVE">Live</option>
-              <option value="CLOSED">Closed</option>
-            </select>
-          </div>
-
         </aside>
 
         {/* Main content */}
@@ -1080,54 +1071,59 @@ function BuyerDashboardContent() {
                   )}
                   {canBuyersBrowse && (
                   <>
-                  <section>
-                    <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
-                      Within Walking Distance
-                    </h3>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {MOCK_ITEMS.filter((i) => i.walkingDistance).map((item) => (
-                        <ItemCard
-                          key={item.id}
-                          item={item}
-                          isSaved={watchlist.includes(item.id)}
-                          onSave={() => toggleWatchlist(item.id)}
-                          onView={() => setSelectedItem(item)}
-                        />
-                      ))}
-                    </div>
-                  </section>
-                  <section>
-                    <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
-                      Just Added
-                    </h3>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {MOCK_ITEMS.slice(0, 4).map((item) => (
-                        <ItemCard
-                          key={item.id}
-                          item={item}
-                          isSaved={watchlist.includes(item.id)}
-                          onSave={() => toggleWatchlist(item.id)}
-                          onView={() => setSelectedItem(item)}
-                        />
-                      ))}
-                    </div>
-                  </section>
-                  <section>
-                    <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
-                      Trending
-                    </h3>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {MOCK_ITEMS.filter((i) => i.trending).map((item) => (
-                        <ItemCard
-                          key={item.id}
-                          item={item}
-                          isSaved={watchlist.includes(item.id)}
-                          onSave={() => toggleWatchlist(item.id)}
-                          onView={() => setSelectedItem(item)}
-                        />
-                      ))}
-                    </div>
-                  </section>
+                    <FilterRail
+                      searchQuery={searchQuery}
+                      setSearchQuery={setSearchQuery}
+                      categoryFilter={categoryFilter}
+                      setCategoryFilter={setCategoryFilter}
+                      sortOrder={sortOrder}
+                      setSortOrder={setSortOrder}
+                    />
+
+                    {(() => {
+                      const q = searchQuery.trim().toLowerCase();
+                      let filtered = MOCK_ITEMS.filter((item) => {
+                        const matchesSearch =
+                          !q ||
+                          item.title.toLowerCase().includes(q) ||
+                          item.sellerName.toLowerCase().includes(q) ||
+                          item.category.toLowerCase().includes(q);
+                        const matchesCategory = categoryFilter === "all" || item.category === categoryFilter;
+                        return matchesSearch && matchesCategory;
+                      });
+                      if (sortOrder === "price-asc") filtered = [...filtered].sort((a, b) => a.price - b.price);
+                      if (sortOrder === "price-desc") filtered = [...filtered].sort((a, b) => b.price - a.price);
+
+                      if (filtered.length === 0) {
+                        return (
+                          <div className="rounded-2xl bg-gray-50 border border-gray-200 p-12 text-center">
+                            <Search size={32} className="mx-auto text-gray-300 mb-3" />
+                            <p className="font-semibold text-gray-700">Nothing matched your search</p>
+                            <p className="text-sm text-gray-500 mt-1">Try different keywords or clear your filters.</p>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {filtered.map((item) => (
+                            <ItemCard
+                              key={item.id}
+                              item={item}
+                              isSaved={watchlist.includes(item.id)}
+                              onSave={() => toggleWatchlist(item.id)}
+                              onView={() => setSelectedItem(item)}
+                              onClaim={() => { setClaimModalItem({ id: item.id, title: item.title, price: item.price }); setClaimPickupSlot(""); setClaimError(""); }}
+                              myClaim={myBuyerClaims.find((c) => c.item.id === item.id) ?? null}
+                              canClaim={canBuyersClaim}
+                            />
+                          ))}
+                        </div>
+                      );
+                    })()}
+
+                    <SellWithAICta />
+                    {phase !== "LIVE" && <QuietReminder countdownLabel={countdownLabel} nextEventLabel={nextEventLabel} />}
                   </>
                   )}
                 </div>
@@ -1227,151 +1223,380 @@ function BuyerDashboardContent() {
 
               {activeBuyerTab === "saved" && (
                 <div className="space-y-6">
-                  <h2 className="text-xl font-bold text-gray-900">Saved Items</h2>
+                  {/* Header with icon + item count */}
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-50 text-rose-600 ring-1 ring-rose-200">
+                      <Heart size={18} className="fill-rose-500" />
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-bold text-gray-900">Saved items</h2>
+                      <p className="text-xs text-gray-500">
+                        {savedItems.length === 0
+                          ? "Nothing here yet"
+                          : `${savedItems.length} ${savedItems.length === 1 ? "item" : "items"} you're watching`}
+                      </p>
+                    </div>
+                  </div>
+
                   {savedItems.length === 0 ? (
                     <div className="bg-white rounded-2xl border border-gray-100 p-16 text-center">
-                      <Heart size={40} className="mx-auto mb-3 text-gray-200" />
-                      <p className="text-gray-500 font-medium">No saved items yet</p>
-                      <p className="text-gray-400 text-sm mt-1">Tap the heart on any item to save it</p>
-                      <button onClick={() => setActiveBuyerTab("browse")} className="mt-4 px-5 py-2 bg-amber-500 text-white rounded-xl text-sm font-semibold hover:bg-amber-600">
-                        Browse Items
+                      <svg viewBox="0 0 100 100" className="mx-auto mb-4 w-20 h-20 text-rose-300" fill="none">
+                        {/* price tag shape */}
+                        <path d="M52 8 L88 8 L88 44 L48 84 L8 44 L8 8 Z" stroke="currentColor" strokeWidth="2.5" strokeLinejoin="round" />
+                        {/* tag hole */}
+                        <circle cx="22" cy="22" r="4" stroke="currentColor" strokeWidth="2.5" />
+                        {/* heart inside */}
+                        <path d="M48 38 C 45 33, 38 33, 38 41 C 38 49, 48 56, 48 56 C 48 56, 58 49, 58 41 C 58 33, 51 33, 48 38 Z" fill="currentColor" />
+                      </svg>
+                      <p className="text-gray-800 font-semibold">Nothing saved yet</p>
+                      <p className="text-gray-500 text-sm mt-1">Tap the heart on items you&rsquo;re interested in.</p>
+                      <button onClick={() => setActiveBuyerTab("discover")} className="mt-5 px-5 py-2 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700">
+                        Browse Discover
                       </button>
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {savedItems.map((item) => (
-                        <div key={item.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
-                          <div className="aspect-video bg-gray-50 flex items-center justify-center relative">
-                            {item.photos[0]
-                              ? <img src={item.photos[0]} alt={item.title} className="w-full h-full object-cover" />
-                              : <Package size={36} className="text-gray-300" />
-                            }
-                            <button
-                              onClick={() => toggleWatchlistReal(item)}
-                              className="absolute top-2 right-2 w-8 h-8 rounded-full bg-red-500 text-white flex items-center justify-center shadow hover:bg-red-600 transition-colors"
-                            >
-                              <Heart size={14} fill="currentColor" />
-                            </button>
-                            <span className={`absolute bottom-2 left-2 px-2 py-0.5 rounded-full text-[10px] font-bold ${item.status === "LIVE" ? "bg-emerald-500 text-white" : "bg-gray-200 text-gray-600"}`}>
-                              {item.status}
-                            </span>
-                          </div>
-                          <div className="p-4">
-                            <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">{item.category}</p>
-                            <h3 className="font-semibold text-gray-900 truncate">{item.title}</h3>
-                            <div className="flex items-center justify-between mt-2">
-                              <span className="text-emerald-600 font-bold">${item.price}</span>
-                              {canBuyersClaim && item.status === "LIVE" && !claimedItemIds.has(item.id) && (
-                                <button
-                                  onClick={() => { setClaimModalItem({ id: item.id, title: item.title, price: item.price }); setClaimPickupSlot(""); setClaimError(""); }}
-                                  className="px-3 py-1 bg-emerald-600 text-white text-xs font-semibold rounded-lg hover:bg-emerald-700"
-                                >
-                                  Claim
-                                </button>
+                      {savedItems.map((item) => {
+                        const myClaim = myBuyerClaims.find((c) => c.item.id === item.id);
+                        const pickedUp = myClaim?.status === "PICKED_UP";
+                        const claimedByMe = !!myClaim && !pickedUp;
+                        // Future flags (not yet in API) — UI is ready when the data arrives:
+                        const claimedByOther = Boolean((item as { claimedByOther?: boolean }).claimedByOther);
+                        const fromPeek = Boolean((item as { fromPeek?: boolean }).fromPeek);
+                        const isClaimed = claimedByMe || pickedUp;
+                        const discount = item.originalPrice ? Math.round((1 - item.price / item.originalPrice) * 100) : 0;
+                        const priceDrop = item.originalPrice && item.originalPrice > item.price;
+                        const sellerName = item.seller?.name || "";
+                        const initials = sellerName ? sellerName.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase() : "?";
+
+                        return (
+                          <div
+                            key={item.id}
+                            onClick={() => setItemPanel(item)}
+                            className={`bg-white rounded-2xl border shadow-sm overflow-hidden hover:shadow-md transition-shadow cursor-pointer group flex flex-col ${
+                              fromPeek ? "border-amber-200 border-l-4 border-l-amber-400" : "border-gray-100"
+                            }`}
+                          >
+                            <div className="relative">
+                              <div className={`aspect-square bg-gray-100 flex items-center justify-center transition-transform overflow-hidden ${isClaimed || claimedByOther ? "opacity-40" : "group-hover:scale-105"}`}>
+                                {item.photos[0] ? (
+                                  <img src={item.photos[0]} alt={item.title} className="w-full h-full object-cover" />
+                                ) : (
+                                  <Package size={48} className="text-gray-300" />
+                                )}
+                              </div>
+
+                              {/* Top-left: Moving Sale or discount badge */}
+                              {item.isMovingSale ? (
+                                <span className="absolute top-2 left-2 px-2 py-1 bg-amber-500 text-white text-[11px] font-bold rounded-lg shadow-sm">
+                                  Moving Sale
+                                </span>
+                              ) : discount > 0 ? (
+                                <span className="absolute top-2 left-2 px-2 py-1 bg-emerald-600 text-white text-[11px] font-bold rounded-lg shadow-sm">
+                                  Save {discount}%
+                                </span>
+                              ) : null}
+
+                              {/* Price-drop chip (bottom-left, only if no discount badge already) */}
+                              {priceDrop && discount === 0 && (
+                                <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-bold rounded-full shadow-sm">
+                                  <TrendingDown size={10} /> Price dropped
+                                </span>
+                              )}
+
+                              {/* Heart save button (always shown as saved on this tab) */}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleWatchlistReal(item);
+                                }}
+                                aria-label="Remove from saved"
+                                className="absolute top-2 right-2 flex items-center justify-center w-9 h-9 rounded-full bg-white/95 backdrop-blur shadow-sm hover:scale-110 active:scale-95 transition-transform"
+                              >
+                                <Heart size={16} className="fill-rose-500 text-rose-500" />
+                              </button>
+
+                              {/* Claimed overlays */}
+                              {claimedByMe && (
+                                <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-emerald-50/90 backdrop-blur-sm">
+                                  <span className="px-3 py-1.5 bg-emerald-600 text-white text-[11px] font-bold uppercase tracking-wider rounded-lg shadow-md">
+                                    ✓ You Claimed This
+                                  </span>
+                                  <span className="text-[10px] text-emerald-700 font-medium">Track in Claims tab</span>
+                                </div>
+                              )}
+                              {pickedUp && (
+                                <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-gray-100/90 backdrop-blur-sm">
+                                  <span className="px-3 py-1.5 bg-gray-600 text-white text-[11px] font-bold uppercase tracking-wider rounded-lg shadow-md">
+                                    Picked Up
+                                  </span>
+                                  <span className="text-[10px] text-gray-600 font-medium">Find in History</span>
+                                </div>
+                              )}
+                              {claimedByOther && !claimedByMe && !pickedUp && (
+                                <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-amber-50/90 backdrop-blur-sm">
+                                  <span className="px-3 py-1.5 bg-amber-500 text-white text-[11px] font-bold uppercase tracking-wider rounded-lg shadow-md">
+                                    Pickup Pending
+                                  </span>
+                                  <span className="text-[10px] text-amber-800 font-medium">Another buyer claimed it</span>
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="p-4 flex flex-col gap-3 flex-1">
+                              <div>
+                                {fromPeek && (
+                                  <p className="text-[10px] text-amber-700 font-bold uppercase tracking-wider mb-1 inline-flex items-center gap-1">
+                                    <Sparkles size={10} /> Saved from your Sneak Peek
+                                  </p>
+                                )}
+                                <p className="text-[10px] text-gray-400 uppercase tracking-wide font-semibold">{item.category}</p>
+                                <h3 className="font-semibold text-gray-900 truncate mt-0.5">{item.title}</h3>
+                                <div className="flex items-baseline gap-2 mt-0.5">
+                                  <span className="text-emerald-600 font-bold text-lg">${item.price}</span>
+                                  {item.originalPrice && item.originalPrice > item.price && (
+                                    <span className="text-gray-400 text-xs line-through">${item.originalPrice}</span>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Seller row with avatar */}
+                              {item.seller && (
+                                <div className="flex items-center gap-2 text-xs text-gray-600">
+                                  <div className="w-6 h-6 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0">
+                                    {initials}
+                                  </div>
+                                  <span className="truncate">{sellerName}</span>
+                                  {item.seller.neighborhood && (
+                                    <>
+                                      <span className="text-gray-400">·</span>
+                                      <span className="whitespace-nowrap">{item.seller.neighborhood}</span>
+                                    </>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* CTA: Claim Now / Notify Me / Disabled */}
+                              {!isClaimed && (
+                                claimedByOther ? (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); /* TODO: wire to backend notify-me-if-available endpoint */ }}
+                                    className="mt-auto w-full px-4 py-2 bg-amber-100 text-amber-800 text-sm font-semibold rounded-xl hover:bg-amber-200 transition border border-amber-200"
+                                  >
+                                    Notify Me If Available
+                                  </button>
+                                ) : canBuyersClaim && item.status === "LIVE" && !claimedItemIds.has(item.id) ? (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setClaimModalItem({ id: item.id, title: item.title, price: item.price });
+                                      setClaimPickupSlot("");
+                                      setClaimError("");
+                                    }}
+                                    className="mt-auto w-full px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-xl hover:bg-emerald-700 active:scale-[0.98] transition shadow-sm"
+                                  >
+                                    Claim Now
+                                  </button>
+                                ) : (
+                                  <button
+                                    disabled
+                                    className="mt-auto w-full px-4 py-2 bg-gray-100 text-gray-400 text-sm font-medium rounded-xl cursor-not-allowed"
+                                  >
+                                    {item.status === "LIVE" ? "Already claimed" : "Drops Saturday 8am"}
+                                  </button>
+                                )
                               )}
                             </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
               )}
 
               {activeBuyerTab === "claims" && (
-                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                  <div className="p-6 border-b border-gray-100">
-                    <h2 className="text-xl font-bold text-gray-900">Your Claims</h2>
-                    <p className="text-gray-500 text-sm">Items you've claimed and their pickup status</p>
+                <div className="space-y-5">
+                  {/* Header with icon + count */}
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200">
+                      <ShoppingBag size={18} />
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-bold text-gray-900">Pickups &amp; offers</h2>
+                      <p className="text-xs text-gray-500">
+                        {myBuyerClaims.length === 0
+                          ? "Nothing here yet"
+                          : `${myBuyerClaims.filter((c) => c.status !== "PICKED_UP" && c.status !== "REJECTED").length} active`}
+                      </p>
+                    </div>
                   </div>
+
+                  {/* Stats bar */}
+                  {myBuyerClaims.length > 0 && (
+                    <div className="grid grid-cols-3 gap-3">
+                      <ClaimStatCard
+                        label="Confirmed"
+                        count={myBuyerClaims.filter((c) => c.status === "CONFIRMED").length}
+                        tone="green"
+                        icon={<CheckCircle size={11} />}
+                      />
+                      <ClaimStatCard
+                        label="Awaiting seller"
+                        count={myBuyerClaims.filter((c) => c.status === "PENDING").length}
+                        tone="amber"
+                        icon={<Clock size={11} />}
+                      />
+                      <ClaimStatCard
+                        label="Picked up"
+                        count={myBuyerClaims.filter((c) => c.status === "PICKED_UP").length}
+                        tone="gray"
+                        icon={<Check size={11} />}
+                      />
+                    </div>
+                  )}
+
                   {myBuyerClaims.length === 0 ? (
-                    <div className="py-16 text-center">
-                      <ShoppingBag size={36} className="text-gray-200 mx-auto mb-3" />
-                      <p className="text-gray-500 font-medium">No claims yet</p>
-                      <p className="text-gray-400 text-sm mt-1">Browse items and claim what you want during the Live drop</p>
-                      <button onClick={() => setActiveBuyerTab("browse")} className="mt-4 px-5 py-2 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700">
-                        Browse Items
+                    <div className="bg-white rounded-2xl border border-gray-100 p-16 text-center">
+                      <svg viewBox="0 0 100 100" className="mx-auto mb-4 w-20 h-20 text-emerald-300" fill="none">
+                        {/* paper bag with checkmark */}
+                        <path d="M22 30 L78 30 L82 88 L18 88 Z" stroke="currentColor" strokeWidth="2.5" strokeLinejoin="round" />
+                        <path d="M32 30 Q32 18 50 18 Q68 18 68 30" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+                        <path d="M38 60 L46 68 L62 50" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                      <p className="text-gray-800 font-semibold">No claims yet</p>
+                      <p className="text-gray-500 text-sm mt-1">Browse items and claim what you want during the Live drop.</p>
+                      <button onClick={() => setActiveBuyerTab("discover")} className="mt-5 px-5 py-2 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700">
+                        Browse Discover
                       </button>
                     </div>
                   ) : (
-                    <div className="divide-y divide-gray-100">
-                      {myBuyerClaims.map((claim) => (
-                        <div key={claim.id} className="flex items-center gap-4 p-5 hover:bg-gray-50/50 transition-colors">
-                          <div className="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center shrink-0 overflow-hidden">
-                            {claim.item.photos[0]
-                              ? <img src={claim.item.photos[0]} alt={claim.item.title} className="w-full h-full object-cover" />
-                              : <Package size={22} className="text-gray-400" />
-                            }
+                    <div className="space-y-3">
+                      {myBuyerClaims.map((claim) => {
+                        const isConfirmed = claim.status === "CONFIRMED";
+                        const isPending = claim.status === "PENDING";
+                        const isPickedUp = claim.status === "PICKED_UP";
+                        const isRejected = claim.status === "REJECTED";
+
+                        const statusMeta = isConfirmed
+                          ? { label: "Pickup scheduled", Icon: CheckCircle, fg: "text-emerald-700", bg: "bg-emerald-50", border: "border-emerald-200", cardBg: "bg-white" }
+                          : isPending
+                          ? { label: "Waiting for seller", Icon: Clock, fg: "text-amber-700", bg: "bg-amber-50", border: "border-amber-200", cardBg: "bg-amber-50/30" }
+                          : isPickedUp
+                          ? { label: "Picked up", Icon: Check, fg: "text-gray-600", bg: "bg-gray-100", border: "border-gray-200", cardBg: "bg-gray-50/50" }
+                          : { label: "Declined", Icon: X, fg: "text-rose-600", bg: "bg-rose-50", border: "border-rose-200", cardBg: "bg-white" };
+                        const StatusIcon = statusMeta.Icon;
+                        const sellerFirstName = claim.seller.name.split(" ")[0];
+
+                        return (
+                          <div key={claim.id} className={`rounded-2xl border shadow-sm overflow-hidden ${statusMeta.cardBg} ${statusMeta.border}`}>
+                            <div className="p-5 flex flex-col sm:flex-row gap-4">
+                              {/* Photo / icon */}
+                              <div className="w-16 h-16 rounded-xl bg-gray-100 flex items-center justify-center shrink-0 overflow-hidden">
+                                {claim.item.photos[0]
+                                  ? <img src={claim.item.photos[0]} alt={claim.item.title} className="w-full h-full object-cover" />
+                                  : <Package size={28} className="text-gray-400" />}
+                              </div>
+
+                              {/* Main info */}
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-start justify-between gap-2 flex-wrap">
+                                  <h3 className="font-semibold text-gray-900 truncate">{claim.item.title}</h3>
+                                  <span className="text-emerald-600 font-bold whitespace-nowrap">${claim.item.price}</span>
+                                </div>
+
+                                {/* Status badge */}
+                                <span className={`mt-1.5 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold ${statusMeta.bg} ${statusMeta.fg} border ${statusMeta.border}`}>
+                                  <StatusIcon size={11} />
+                                  {statusMeta.label}
+                                </span>
+
+                                {/* Pickup details */}
+                                {!isPickedUp && !isRejected && (
+                                  <div className="mt-3 space-y-1.5 text-xs text-gray-600">
+                                    <div className="flex items-center gap-2">
+                                      <Calendar size={12} className="text-gray-400" />
+                                      <span>{claim.pickupSlot}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <MapPin size={12} className="text-gray-400" />
+                                      <span>
+                                        {claim.seller.name}
+                                        {claim.seller.neighborhood ? ` · ${claim.seller.neighborhood}` : ""}
+                                      </span>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Actions */}
+                                {(isConfirmed || isPending) && (
+                                  <div className="mt-4 flex flex-wrap items-center gap-2">
+                                    <button
+                                      onClick={() => setActiveBuyerTab("messages")}
+                                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                                    >
+                                      <MessageSquare size={12} />
+                                      Message {sellerFirstName}
+                                    </button>
+                                    {isConfirmed && (
+                                      <button
+                                        onClick={() => setCancelClaimTarget(claim)}
+                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-rose-200 bg-white text-rose-600 hover:bg-rose-50"
+                                      >
+                                        Cancel
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <h3 className="font-semibold text-gray-900 truncate">{claim.item.title}</h3>
-                            <p className="text-sm text-gray-500">{claim.seller.name} · {new Date(claim.createdAt).toLocaleDateString("en-CA", { month: "short", day: "numeric" })}</p>
-                            <p className="text-xs text-amber-600 mt-0.5">Pickup: {claim.pickupSlot}</p>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Cancel confirmation modal */}
+                  {cancelClaimTarget && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setCancelClaimTarget(null)}>
+                      <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-7">
+                        <div className="flex items-start gap-4">
+                          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-rose-50 ring-1 ring-rose-200 flex-shrink-0">
+                            <X size={20} className="text-rose-600" />
                           </div>
-                          <div className="text-right shrink-0">
-                            <p className="text-emerald-600 font-bold text-sm">${claim.item.price}</p>
-                            <span className={`mt-1 inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-                              claim.status === "CONFIRMED" ? "bg-emerald-100 text-emerald-700"
-                              : claim.status === "REJECTED" ? "bg-red-100 text-red-600"
-                              : claim.status === "PICKED_UP" ? "bg-blue-100 text-blue-700"
-                              : "bg-amber-100 text-amber-700"
-                            }`}>
-                              {claim.status === "PENDING" ? "Awaiting confirmation"
-                               : claim.status === "CONFIRMED" ? "Confirmed"
-                               : claim.status === "REJECTED" ? "Rejected"
-                               : "Picked up"}
-                            </span>
+                          <div className="flex-1">
+                            <h3 className="text-lg font-bold text-gray-900">Cancel this claim?</h3>
+                            <p className="mt-1 text-sm text-gray-600">
+                              Your claim on <strong>{cancelClaimTarget.item.title}</strong> will be released so another neighbour can claim it. The seller will be notified.
+                            </p>
+                            <div className="mt-4 flex items-start gap-2 rounded-xl bg-amber-50 border border-amber-200 p-3">
+                              <AlertCircle size={14} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                              <p className="text-xs text-amber-800">Please cancel at least 2 hours before your scheduled pickup.</p>
+                            </div>
                           </div>
                         </div>
-                      ))}
+                        <div className="mt-6 flex items-center justify-end gap-2">
+                          <button onClick={() => setCancelClaimTarget(null)} className="px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100 rounded-lg">
+                            Keep claim
+                          </button>
+                          <button
+                            onClick={() => {
+                              // TODO: wire to backend cancel endpoint (DELETE /api/claims/:id)
+                              setMyBuyerClaims((cs) => cs.filter((c) => c.id !== cancelClaimTarget.id));
+                              setCancelClaimTarget(null);
+                            }}
+                            className="px-4 py-2 text-sm font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-lg"
+                          >
+                            Cancel claim
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
               )}
 
-              {activeBuyerTab === "messages" && (
-                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                  <div className="p-6 border-b border-gray-100">
-                    <h2 className="text-xl font-bold text-gray-900">
-                      Messages
-                    </h2>
-                    <p className="text-gray-600 text-sm">
-                      Conversations with sellers
-                    </p>
-                  </div>
-                  <div className="divide-y divide-gray-100">
-                    {[
-                      {
-                        name: "Jane D.",
-                        preview: "Your claim for Sectional Sofa was confirmed.",
-                        time: "2h",
-                      },
-                      {
-                        name: "Mike T.",
-                        preview: "Pickup address sent. See you Saturday!",
-                        time: "1d",
-                      },
-                    ].map((m, i) => (
-                      <div
-                        key={i}
-                        className="flex items-center gap-4 p-6 hover:bg-gray-50/50 cursor-pointer"
-                      >
-                        <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center">
-                          <User size={24} className="text-gray-500" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h3 className="font-semibold text-gray-900">{m.name}</h3>
-                          <p className="text-sm text-gray-600 truncate">
-                            {m.preview}
-                          </p>
-                        </div>
-                        <span className="text-xs text-gray-400">{m.time}</span>
-                        <ChevronRight size={20} className="text-gray-400" />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+              {activeBuyerTab === "messages" && <MessagesScaffold />}
 
               {/* History Tab — Buyer */}
               {activeBuyerTab === "history" && <BuyerHistoryTab />}
@@ -2191,55 +2416,599 @@ function ItemCard({
   isSaved,
   onSave,
   onView,
+  onClaim,
+  myClaim,
+  canClaim = true,
 }: {
   item: MockItem;
   isSaved: boolean;
   onSave: () => void;
   onView: () => void;
+  onClaim?: () => void;
+  myClaim?: { status: string } | null;
+  canClaim?: boolean;
 }) {
+  const pickedUp = myClaim?.status === "PICKED_UP";
+  const claimedByMe = !!myClaim && !pickedUp;
+  const isClaimed = claimedByMe || pickedUp;
+  const discount = item.originalPrice ? Math.round((1 - item.price / item.originalPrice) * 100) : 0;
+  const initials = item.sellerName.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+
   return (
     <div
       onClick={onView}
-      className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow cursor-pointer group"
+      className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow cursor-pointer group flex flex-col"
     >
       <div className="relative">
-        <div className="aspect-square bg-gray-100 flex items-center justify-center text-5xl group-hover:scale-105 transition-transform">
+        <div className={`aspect-square bg-gray-100 flex items-center justify-center text-5xl transition-transform ${isClaimed ? "opacity-40" : "group-hover:scale-105"}`}>
           {item.emoji}
         </div>
-        {item.movingSale && (
-          <span className="absolute top-2 left-2 px-2 py-1 bg-amber-500 text-white text-xs font-bold rounded-lg shadow-sm">
+
+        {/* Top-left badge: Moving Sale OR discount */}
+        {item.movingSale ? (
+          <span className="absolute top-2 left-2 px-2 py-1 bg-amber-500 text-white text-[11px] font-bold rounded-lg shadow-sm">
             Moving Sale
           </span>
+        ) : discount > 0 ? (
+          <span className="absolute top-2 left-2 px-2 py-1 bg-emerald-600 text-white text-[11px] font-bold rounded-lg shadow-sm">
+            Save {discount}%
+          </span>
+        ) : null}
+
+        {/* Heart save button */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onSave();
+          }}
+          aria-label={isSaved ? "Remove from saved" : "Save"}
+          className="absolute top-2 right-2 flex items-center justify-center w-9 h-9 rounded-full bg-white/95 backdrop-blur shadow-sm hover:scale-110 active:scale-95 transition-transform"
+        >
+          <Heart size={16} className={isSaved ? "fill-rose-500 text-rose-500" : "text-gray-500"} />
+        </button>
+
+        {/* Claimed overlay (your claim) */}
+        {claimedByMe && (
+          <div className="absolute inset-0 flex items-center justify-center bg-emerald-50/90 backdrop-blur-sm">
+            <span className="px-3 py-1.5 bg-emerald-600 text-white text-[11px] font-bold uppercase tracking-wider rounded-lg shadow-md">
+              ✓ You Claimed This
+            </span>
+          </div>
+        )}
+        {pickedUp && (
+          <div className="absolute inset-0 flex items-center justify-center bg-gray-100/90 backdrop-blur-sm">
+            <span className="px-3 py-1.5 bg-gray-600 text-white text-[11px] font-bold uppercase tracking-wider rounded-lg shadow-md">
+              Picked Up
+            </span>
+          </div>
         )}
       </div>
-      <div className="p-4">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="font-semibold text-gray-900 truncate">{item.title}</h3>
-              {item.saleDate && item.movingSale && (
-                <span className="text-xs text-amber-600 font-medium">{item.saleDate}</span>
-              )}
-            </div>
-            <p className="text-emerald-600 font-medium">${item.price}</p>
-            <p className="text-xs text-gray-500 mt-1">
-              {item.distance} · {item.sellerName}
-            </p>
+
+      <div className="p-4 flex flex-col gap-3 flex-1">
+        <div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="font-semibold text-gray-900 truncate">{item.title}</h3>
+            {item.saleDate && item.movingSale && (
+              <span className="text-[11px] text-amber-600 font-medium">{item.saleDate}</span>
+            )}
           </div>
+          <div className="flex items-baseline gap-2 mt-0.5">
+            <span className="text-emerald-600 font-bold text-lg">${item.price}</span>
+            {item.originalPrice && item.originalPrice > item.price && (
+              <span className="text-gray-400 text-xs line-through">${item.originalPrice}</span>
+            )}
+          </div>
+        </div>
+
+        {/* Seller row with avatar */}
+        <div className="flex items-center gap-2 text-xs text-gray-600">
+          <div className="w-6 h-6 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0">
+            {initials}
+          </div>
+          <span className="truncate">{item.sellerName}</span>
+          <span className="text-gray-400">·</span>
+          <span className="whitespace-nowrap">{item.distance}</span>
+        </div>
+
+        {/* Claim CTA */}
+        {!isClaimed && onClaim && (
+          canClaim ? (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onClaim();
+              }}
+              className="mt-auto w-full px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-xl hover:bg-emerald-700 active:scale-[0.98] transition shadow-sm"
+            >
+              Claim Now
+            </button>
+          ) : (
+            <button
+              disabled
+              className="mt-auto w-full px-4 py-2 bg-gray-100 text-gray-400 text-sm font-medium rounded-xl cursor-not-allowed"
+            >
+              Drops Saturday 8am
+            </button>
+          )
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── FilterRail: search + category + sort with dismissible chips ─────────────
+function FilterRail({
+  searchQuery,
+  setSearchQuery,
+  categoryFilter,
+  setCategoryFilter,
+  sortOrder,
+  setSortOrder,
+}: {
+  searchQuery: string;
+  setSearchQuery: (q: string) => void;
+  categoryFilter: string;
+  setCategoryFilter: (c: string) => void;
+  sortOrder: "newest" | "price-asc" | "price-desc";
+  setSortOrder: (s: "newest" | "price-asc" | "price-desc") => void;
+}) {
+  const sortLabels: Record<string, string> = {
+    "newest": "Just listed",
+    "price-asc": "Price: low to high",
+    "price-desc": "Price: high to low",
+  };
+  const filterOptions = ["all", "Furniture", "Electronics", "Sports", "Home", "Clothing", "Books", "Other"];
+  const hasActiveFilters = !!searchQuery || categoryFilter !== "all" || sortOrder !== "newest";
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-col sm:flex-row gap-2">
+        <div className="flex-1 relative">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search items, sellers, categories..."
+            className="w-full pl-10 pr-3 py-2.5 rounded-xl border border-gray-200 bg-white text-sm focus:outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-200"
+          />
+        </div>
+        <select
+          value={categoryFilter}
+          onChange={(e) => setCategoryFilter(e.target.value)}
+          className="px-3 py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 focus:outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-200"
+        >
+          {filterOptions.map((c) => (
+            <option key={c} value={c}>{c === "all" ? "All categories" : c}</option>
+          ))}
+        </select>
+        <select
+          value={sortOrder}
+          onChange={(e) => setSortOrder(e.target.value as typeof sortOrder)}
+          className="px-3 py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 focus:outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-200"
+        >
+          {Object.entries(sortLabels).map(([key, label]) => (
+            <option key={key} value={key}>{label}</option>
+          ))}
+        </select>
+      </div>
+      {hasActiveFilters && (
+        <div className="flex flex-wrap items-center gap-2">
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-medium rounded-full hover:bg-emerald-100"
+            >
+              &ldquo;{searchQuery}&rdquo;
+              <X size={12} />
+            </button>
+          )}
+          {categoryFilter !== "all" && (
+            <button
+              onClick={() => setCategoryFilter("all")}
+              className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-medium rounded-full hover:bg-emerald-100"
+            >
+              {categoryFilter}
+              <X size={12} />
+            </button>
+          )}
+          {sortOrder !== "newest" && (
+            <button
+              onClick={() => setSortOrder("newest")}
+              className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-medium rounded-full hover:bg-emerald-100"
+            >
+              {sortLabels[sortOrder]}
+              <X size={12} />
+            </button>
+          )}
           <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onSave();
+            onClick={() => {
+              setSearchQuery("");
+              setCategoryFilter("all");
+              setSortOrder("newest");
             }}
-            className="flex-shrink-0 p-2 rounded-lg hover:bg-gray-100"
+            className="text-xs text-gray-500 hover:text-gray-700 underline ml-1"
           >
-            <Heart
-              size={20}
-              className={isSaved ? "fill-amber-500 text-amber-500" : "text-gray-400"}
-            />
+            Clear all
           </button>
         </div>
+      )}
+    </div>
+  );
+}
+
+// ── SellWithAICta: bottom-of-discover banner promoting AI seller agent ─────
+function SellWithAICta() {
+  return (
+    <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-violet-600 via-purple-600 to-violet-700 p-6 text-white shadow-md">
+      <div className="absolute -top-8 -right-8 w-32 h-32 rounded-full bg-white/10 blur-2xl" />
+      <div className="relative flex items-center gap-4 flex-wrap">
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/15 backdrop-blur ring-1 ring-white/20 flex-shrink-0">
+          <Sparkles size={22} />
+        </div>
+        <div className="flex-1 min-w-[200px]">
+          <h3 className="font-bold text-base">Got items to sell? Let AI do it.</h3>
+          <p className="text-sm text-violet-100/90 mt-0.5">
+            Snap a photo. The AI Seller Agent writes the listing, prices it fairly, and chats with buyers. Coming soon.
+          </p>
+        </div>
+        <button
+          className="px-4 py-2 rounded-full bg-white text-violet-700 text-sm font-semibold hover:bg-violet-50 transition flex-shrink-0"
+        >
+          Notify me
+        </button>
       </div>
+    </div>
+  );
+}
+
+// ── ClaimStatCard: small metric card used in the Claims stats bar ──────────
+function ClaimStatCard({
+  label,
+  count,
+  tone,
+  icon,
+}: {
+  label: string;
+  count: number;
+  tone: "green" | "amber" | "gray";
+  icon: React.ReactNode;
+}) {
+  const styles =
+    tone === "green"
+      ? { bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200" }
+      : tone === "amber"
+      ? { bg: "bg-amber-50", text: "text-amber-700", border: "border-amber-200" }
+      : { bg: "bg-gray-50", text: "text-gray-700", border: "border-gray-200" };
+  return (
+    <div className={`rounded-xl border p-3 ${styles.bg} ${styles.border}`}>
+      <div className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider ${styles.text}`}>
+        {icon}
+        {label}
+      </div>
+      <div className={`mt-1 text-2xl font-bold ${styles.text}`}>{count}</div>
+    </div>
+  );
+}
+
+// ── MessagesScaffold: master/detail messaging UI with mock data ────────────
+// NOTE: This is the FINAL design's visual scaffold. All threads + messages
+// are hardcoded mocks for demo only. Wire to real /api/conversations endpoints
+// when you're ready to ship messaging end-to-end.
+type MockThreadMsg = {
+  from: "you" | "seller" | "ai" | "system";
+  type: "text" | "claim" | "offer" | "counter" | "system-event" | "reminder" | "whatsapp";
+  text: string;
+  time?: string;
+  amount?: number;
+};
+type MockThread = {
+  id: string;
+  itemEmoji: string;
+  itemTitle: string;
+  itemPrice: number;
+  seller: { name: string; firstName: string; neighborhood: string; usesAI: boolean };
+  status: "pickup-today" | "pickup-confirmed" | "counter" | "answered" | "completed";
+  unread: boolean;
+  lastTime: string;
+  pickup?: { day: string; time: string; address: string };
+  messages: MockThreadMsg[];
+};
+
+const MOCK_THREADS: MockThread[] = [
+  {
+    id: "t1",
+    itemEmoji: "🛋️",
+    itemTitle: "Sectional Sofa",
+    itemPrice: 450,
+    seller: { name: "Jane D.", firstName: "Jane", neighborhood: "Glebe", usesAI: true },
+    status: "pickup-confirmed",
+    unread: false,
+    lastTime: "2h",
+    pickup: { day: "Saturday", time: "10:30 AM", address: "1234 Bank Street" },
+    messages: [
+      { from: "system", type: "system-event", text: "You claimed this item · Mar 12, 2026" },
+      { from: "you", type: "text", text: "Hi! Can I pick up Saturday morning?", time: "10:43 AM" },
+      { from: "ai", type: "text", text: "Yes! Saturday 10:30 AM works. I'll send the address shortly.", time: "10:44 AM" },
+      { from: "system", type: "whatsapp", text: "Address sent via WhatsApp" },
+      { from: "system", type: "reminder", text: "Pickup in 2 days · Saturday at 10:30 AM" },
+    ],
+  },
+  {
+    id: "t2",
+    itemEmoji: "📱",
+    itemTitle: "iPhone 13",
+    itemPrice: 320,
+    seller: { name: "Mike T.", firstName: "Mike", neighborhood: "Wellington West", usesAI: false },
+    status: "counter",
+    unread: true,
+    lastTime: "1d",
+    messages: [
+      { from: "system", type: "system-event", text: "You sent an offer" },
+      { from: "you", type: "offer", text: "Your offer", time: "Tue 4:12 PM", amount: 280 },
+      { from: "seller", type: "counter", text: "Counter offer", time: "Tue 6:30 PM", amount: 300 },
+      { from: "seller", type: "text", text: "Hi! I can do $300 firm — case and charger included.", time: "Tue 6:31 PM" },
+    ],
+  },
+  {
+    id: "t3",
+    itemEmoji: "🚲",
+    itemTitle: "Mountain Bike",
+    itemPrice: 180,
+    seller: { name: "Sarah M.", firstName: "Sarah", neighborhood: "Westboro", usesAI: false },
+    status: "completed",
+    unread: false,
+    lastTime: "3d",
+    messages: [
+      { from: "system", type: "system-event", text: "Pickup completed · Mar 9" },
+      { from: "you", type: "text", text: "Thanks Sarah! Great bike 🚲", time: "Sun 2:15 PM" },
+      { from: "seller", type: "text", text: "Enjoy it!", time: "Sun 3:00 PM" },
+    ],
+  },
+];
+
+function statusMeta(status: MockThread["status"]) {
+  switch (status) {
+    case "pickup-today":      return { label: "Pickup today",     dot: "bg-rose-500",    fg: "text-rose-700",    bg: "bg-rose-50",    border: "border-rose-200" };
+    case "pickup-confirmed":  return { label: "Pickup confirmed", dot: "bg-emerald-500", fg: "text-emerald-700", bg: "bg-emerald-50", border: "border-emerald-200" };
+    case "counter":           return { label: "Counter offer",    dot: "bg-amber-500",   fg: "text-amber-700",   bg: "bg-amber-50",   border: "border-amber-200" };
+    case "answered":          return { label: "Answered",         dot: "bg-sky-500",     fg: "text-sky-700",     bg: "bg-sky-50",     border: "border-sky-200" };
+    case "completed":         return { label: "Completed",        dot: "bg-gray-400",    fg: "text-gray-600",    bg: "bg-gray-100",   border: "border-gray-200" };
+  }
+}
+
+function MessagesScaffold() {
+  const [selectedId, setSelectedId] = useState<string>(MOCK_THREADS[0].id);
+  const [draftByThread, setDraftByThread] = useState<Record<string, string>>({});
+  const threads = MOCK_THREADS;
+  const selected = threads.find((t) => t.id === selectedId) ?? threads[0];
+  const unreadCount = threads.filter((t) => t.unread).length;
+  const draft = draftByThread[selected.id] ?? "";
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200">
+          <MessageSquare size={18} />
+        </div>
+        <div>
+          <h2 className="text-xl font-bold text-gray-900">Conversations</h2>
+          <p className="text-xs text-gray-500">
+            {threads.length} {threads.length === 1 ? "thread" : "threads"}
+            {unreadCount > 0 && ` · ${unreadCount} unread`}
+          </p>
+        </div>
+      </div>
+
+      {/* Master / Detail */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden grid grid-cols-1 lg:grid-cols-[340px_1fr]" style={{ height: "640px" }}>
+        {/* THREAD LIST */}
+        <div className="border-r border-gray-100 overflow-y-auto">
+          {threads.map((t) => {
+            const meta = statusMeta(t.status);
+            const isActive = t.id === selectedId;
+            const lastMsg = t.messages[t.messages.length - 1];
+            const preview = lastMsg.type === "text" ? lastMsg.text
+              : lastMsg.type === "counter" ? `Counter: $${lastMsg.amount}`
+              : lastMsg.type === "offer" ? `You offered $${lastMsg.amount}`
+              : lastMsg.text;
+
+            return (
+              <button
+                key={t.id}
+                onClick={() => setSelectedId(t.id)}
+                className={`relative w-full text-left p-4 border-b border-gray-100 transition-colors ${isActive ? "bg-emerald-50/60" : "hover:bg-gray-50"} ${t.status === "completed" ? "opacity-70" : ""}`}
+              >
+                {/* Unread indicator bar */}
+                {t.unread && <div className="absolute left-0 top-3 bottom-3 w-[3px] bg-emerald-500 rounded-r" />}
+
+                <div className="flex items-start gap-3">
+                  {/* Item emoji avatar */}
+                  <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center text-xl flex-shrink-0 border border-gray-200">
+                    {t.itemEmoji}
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${meta.dot}`} />
+                      <h3 className={`text-sm truncate ${t.unread ? "font-bold text-gray-900" : "font-semibold text-gray-800"}`}>{t.itemTitle}</h3>
+                      <span className="ml-auto text-[10px] text-gray-400 flex-shrink-0">{t.lastTime}</span>
+                    </div>
+                    <p className={`mt-0.5 text-xs truncate ${t.unread ? "text-gray-700" : "text-gray-500"}`}>{preview}</p>
+                    <div className="mt-1 flex items-center gap-1.5">
+                      <span className="text-[10px] text-gray-500">{t.seller.firstName}</span>
+                      {t.seller.usesAI && (
+                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-violet-50 text-violet-700 text-[9px] font-bold border border-violet-200">
+                          <Sparkles size={8} /> AI
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* CONVERSATION PANE */}
+        <div className="flex flex-col min-w-0">
+          {/* Thread header */}
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center text-lg border border-gray-200 flex-shrink-0">
+              {selected.itemEmoji}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="font-bold text-gray-900 truncate">{selected.itemTitle}</h3>
+                <span className="text-emerald-600 font-bold text-sm">${selected.itemPrice}</span>
+                {(() => {
+                  const m = statusMeta(selected.status);
+                  return (
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${m.bg} ${m.fg} ${m.border}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${m.dot}`} />
+                      {m.label}
+                    </span>
+                  );
+                })()}
+              </div>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {selected.seller.name} · {selected.seller.neighborhood}
+                {selected.seller.usesAI && <span className="ml-1.5 inline-flex items-center gap-0.5 text-violet-700"><Sparkles size={9} /> AI agent</span>}
+              </p>
+            </div>
+          </div>
+
+          {/* Pickup card */}
+          {selected.pickup && (
+            <div className="mx-5 mt-4 p-3 rounded-xl bg-emerald-50/60 border border-emerald-200 flex items-center gap-4 text-xs">
+              <div className="flex items-center gap-2 text-emerald-800">
+                <Calendar size={12} />
+                <span className="font-semibold">{selected.pickup.day}</span>
+                <span>·</span>
+                <span>{selected.pickup.time}</span>
+              </div>
+              <div className="flex items-center gap-2 text-emerald-800">
+                <MapPin size={12} />
+                <span>{selected.pickup.address}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Message canvas */}
+          <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3 bg-[#FAFAF8]">
+            {selected.messages.map((m, i) => {
+              if (m.type === "system-event") {
+                return (
+                  <div key={i} className="text-center text-[11px] italic text-gray-500 py-1">
+                    {m.text}
+                  </div>
+                );
+              }
+              if (m.type === "reminder") {
+                return (
+                  <div key={i} className="mx-auto inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-rose-50 border border-rose-200 text-[11px] font-semibold text-rose-700" style={{ display: "flex", width: "fit-content" }}>
+                    <Bell size={11} />
+                    {m.text}
+                  </div>
+                );
+              }
+              if (m.type === "whatsapp") {
+                return (
+                  <div key={i} className="text-center text-[11px] italic text-emerald-700 py-1 inline-flex items-center justify-center gap-1.5" style={{ display: "flex" }}>
+                    <span className="w-4 h-4 rounded-full bg-emerald-500 text-white inline-flex items-center justify-center text-[8px] font-bold">W</span>
+                    {m.text}
+                  </div>
+                );
+              }
+              // Bubbles (text / offer / counter / claim)
+              const isYou = m.from === "you";
+              const isAI = m.from === "ai";
+              return (
+                <div key={i} className={`flex ${isYou ? "justify-end" : "justify-start"}`}>
+                  <div className={`max-w-[78%] rounded-2xl px-3.5 py-2.5 ${
+                    isYou
+                      ? "bg-emerald-600 text-white"
+                      : isAI
+                      ? "bg-violet-50 border border-violet-200 text-gray-800"
+                      : "bg-white border border-gray-200 text-gray-800"
+                  }`}>
+                    {!isYou && (
+                      <p className={`text-[9px] font-bold uppercase tracking-wider mb-1 ${isAI ? "text-violet-700" : "text-gray-500"}`}>
+                        {isAI ? "🪄 AI Agent" : "👤 Seller"}
+                      </p>
+                    )}
+                    {(m.type === "offer" || m.type === "counter" || m.type === "claim") && (
+                      <p className={`text-[9px] font-bold uppercase tracking-wider mb-1 ${isYou ? "text-emerald-100" : "text-gray-500"}`}>
+                        {m.type === "offer" ? "Your offer" : m.type === "counter" ? "Counter offer" : "Claim"}
+                        {typeof m.amount === "number" && ` · $${m.amount}`}
+                      </p>
+                    )}
+                    {m.type === "text" && <p className="text-sm leading-snug">{m.text}</p>}
+                    {m.time && <p className={`text-[10px] mt-1 ${isYou ? "text-emerald-100" : "text-gray-400"}`}>{m.time}</p>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Composer */}
+          {selected.status === "completed" ? (
+            <div className="px-5 py-4 border-t border-gray-100 text-center text-xs text-gray-500 italic">
+              Conversation complete — this pickup has been finished.
+            </div>
+          ) : selected.status === "counter" ? (
+            <div className="px-5 py-3 border-t border-gray-100 bg-amber-50/40 flex items-center justify-between gap-3 flex-wrap">
+              <p className="text-xs text-amber-900 font-medium">Seller countered with <strong>$300</strong>. Accept or decline?</p>
+              <div className="flex gap-2">
+                <button className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-rose-200 bg-white text-rose-600 hover:bg-rose-50">
+                  Decline
+                </button>
+                <button className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700">
+                  Accept $300
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="px-5 py-3 border-t border-gray-100 flex items-center gap-2">
+              <input
+                type="text"
+                value={draft}
+                onChange={(e) => setDraftByThread((d) => ({ ...d, [selected.id]: e.target.value }))}
+                placeholder={`Message ${selected.seller.firstName}...`}
+                className="flex-1 px-3 py-2 rounded-full border border-gray-200 bg-white text-sm focus:outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-200"
+              />
+              <button
+                disabled={!draft.trim()}
+                onClick={() => { setDraftByThread((d) => ({ ...d, [selected.id]: "" })); /* TODO: send via real API */ }}
+                className={`flex items-center justify-center w-9 h-9 rounded-full transition ${draft.trim() ? "bg-emerald-600 text-white hover:bg-emerald-700" : "bg-gray-100 text-gray-400 cursor-not-allowed"}`}
+              >
+                <Send size={14} />
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── QuietReminder: subtle countdown row shown between drops ────────────────
+function QuietReminder({ countdownLabel, nextEventLabel }: { countdownLabel: string; nextEventLabel: string }) {
+  return (
+    <div className="flex items-center justify-between gap-4 rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3">
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-amber-600 ring-1 ring-amber-200 flex-shrink-0">
+          <Clock size={14} />
+        </div>
+        <div className="min-w-0">
+          <p className="text-xs font-semibold text-amber-900">{nextEventLabel}</p>
+          <p className="text-xs text-amber-700/80">{countdownLabel}</p>
+        </div>
+      </div>
+      <button className="text-xs font-semibold text-amber-700 hover:text-amber-900 whitespace-nowrap">
+        Remind Me
+      </button>
     </div>
   );
 }
@@ -2722,18 +3491,22 @@ function HistoryTransactionRow({ tx }: { tx: HistoryTx }) {
   const [reviewText, setReviewText] = React.useState("");
   const [localRated, setLocalRated] = React.useState(tx.rated);
   const [localRating, setLocalRating] = React.useState<number | null>(tx.rating);
+  const [localNote, setLocalNote] = React.useState<string>("");
+  const [expanded, setExpanded] = React.useState(false);
   const saved = tx.origPrice ? tx.origPrice - tx.price : 0;
-  const isDed = tx.layer === "dedicated";
-  const dedInfo = (tx as any).dedType === "moving" ? { l: "Moving Sale", c: HISTORY_C.tPrimary, ic: "🚚" }
-    : (tx as any).dedType === "estate" ? { l: "Estate Sale", c: "#7C3AED", ic: "🏠" }
-    : (tx as any).dedType === "garage" ? { l: "Garage Sale", c: HISTORY_C.oPrimary, ic: "🏷️" }
+  const dedInfo = (tx as { dedType?: string }).dedType === "moving" ? { l: "Moving Sale", c: HISTORY_C.tPrimary, ic: "🚚" }
+    : (tx as { dedType?: string }).dedType === "estate" ? { l: "Estate Sale", c: "#7C3AED", ic: "🏠" }
+    : (tx as { dedType?: string }).dedType === "garage" ? { l: "Garage Sale", c: HISTORY_C.oPrimary, ic: "🏷️" }
     : null;
 
   return (
-    <div style={{ padding: "14px 16px", borderRadius: 14, border: "1px solid #f0f0f0", backgroundColor: "#fff", marginBottom: 8, transition: "all 0.15s" }}
+    <div style={{ borderRadius: 14, border: "1px solid #f0f0f0", backgroundColor: "#fff", marginBottom: 8, transition: "all 0.2s", overflow: "hidden" }}
       onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.boxShadow = "0 4px 16px rgba(0,0,0,0.04)"; }}
       onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.boxShadow = "none"; }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+      <div
+        onClick={() => setExpanded((e) => !e)}
+        style={{ padding: "14px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14 }}
+      >
         <div style={{ width: 52, height: 52, borderRadius: 12, backgroundColor: dedInfo ? dedInfo.c + "08" : tx.layer === "drop" ? HISTORY_C.gLightBg : HISTORY_C.oLightBg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, flexShrink: 0, border: `1px solid ${dedInfo ? dedInfo.c + "15" : tx.layer === "drop" ? HISTORY_C.gSoft : "#f0f0f0"}` }}>
           {tx.img}
         </div>
@@ -2767,24 +3540,68 @@ function HistoryTransactionRow({ tx }: { tx: HistoryTx }) {
             </div>
           )}
           {!localRated && !showReview && (
-            <button onClick={() => setShowReview(true)} style={{ marginTop: 6, padding: "5px 12px", borderRadius: 8, border: `1px solid ${HISTORY_C.oPrimary}30`, cursor: "pointer", fontSize: 10, fontWeight: 700, backgroundColor: HISTORY_C.oLightBg, color: HISTORY_C.oPrimary, display: "flex", alignItems: "center", gap: 4 }}>
+            <button
+              onClick={(e) => { e.stopPropagation(); setShowReview(true); setExpanded(true); }}
+              style={{ marginTop: 6, padding: "5px 12px", borderRadius: 8, border: `1px solid ${HISTORY_C.oPrimary}30`, cursor: "pointer", fontSize: 10, fontWeight: 700, backgroundColor: HISTORY_C.oLightBg, color: HISTORY_C.oPrimary, display: "inline-flex", alignItems: "center", gap: 4 }}
+            >
               <Star size={10} /> Leave a Review
             </button>
           )}
         </div>
+        <ChevronDown size={16} style={{ color: "#ccc", flexShrink: 0, transform: expanded ? "rotate(180deg)" : "rotate(0)", transition: "transform 0.2s" }} />
       </div>
-      {showReview && !localRated && (
-        <div style={{ marginTop: 12, padding: 14, borderRadius: 12, backgroundColor: "#fafafa", border: "1px solid #f0f0f0" }}>
-          <p style={{ fontSize: 12, fontWeight: 700, color: HISTORY_C.gDark, marginBottom: 8 }}>How was your experience with {tx.seller}?</p>
+
+      {/* Expanded section: review note + Change rating + View conversation */}
+      {expanded && !showReview && (
+        <div style={{ padding: "0 16px 14px", borderTop: "1px solid #f5f5f5" }}>
+          {localRated && localNote && (
+            <div style={{ marginTop: 12, padding: 12, borderRadius: 10, backgroundColor: "#fafafa", border: "1px solid #f0f0f0" }}>
+              <p style={{ fontSize: 11, fontWeight: 700, color: "#999", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>Your review</p>
+              <p style={{ fontSize: 12, color: HISTORY_C.gDark, fontStyle: "italic" }}>&ldquo;{localNote}&rdquo;</p>
+            </div>
+          )}
+          <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {localRated && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setShowReview(true); setReviewRating(localRating ?? 0); setReviewText(localNote); }}
+                style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #e5e7eb", cursor: "pointer", fontSize: 11, fontWeight: 700, backgroundColor: "#fff", color: "#777", display: "inline-flex", alignItems: "center", gap: 5 }}
+              >
+                <Star size={11} /> Change rating
+              </button>
+            )}
+            <button
+              onClick={(e) => { e.stopPropagation(); /* TODO: deep-link to messages tab for matching thread */ }}
+              style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #e5e7eb", cursor: "pointer", fontSize: 11, fontWeight: 700, backgroundColor: "#fff", color: "#777", display: "inline-flex", alignItems: "center", gap: 5 }}
+              title="Opens the message thread for this purchase (coming soon)"
+            >
+              <MessageSquare size={11} /> View conversation
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Review form (inline at bottom) */}
+      {showReview && (
+        <div style={{ margin: "0 16px 14px", padding: 14, borderRadius: 12, backgroundColor: "#fafafa", border: "1px solid #f0f0f0" }}>
+          <p style={{ fontSize: 12, fontWeight: 700, color: HISTORY_C.gDark, marginBottom: 8 }}>{localRated ? "Update your rating" : `How was your experience with ${tx.seller}?`}</p>
           <HistoryStarRating rating={reviewRating} onRate={setReviewRating} interactive />
           {reviewRating > 0 && (
             <>
               <textarea value={reviewText} onChange={(e) => setReviewText(e.target.value)} placeholder="Optional — tell your neighbours about the experience..."
                 style={{ width: "100%", height: 60, padding: 10, borderRadius: 10, border: "1px solid #e5e7eb", fontSize: 12, color: HISTORY_C.gDark, resize: "none", outline: "none", marginTop: 8, backgroundColor: "#fff", boxSizing: "border-box" }} />
               <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
-                <button onClick={() => setShowReview(false)} style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid #e5e7eb", cursor: "pointer", fontSize: 11, fontWeight: 600, backgroundColor: "#fff", color: "#777" }}>Cancel</button>
-                <button onClick={() => { setLocalRated(true); setLocalRating(reviewRating); setShowReview(false); }}
-                  style={{ padding: "6px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 11, fontWeight: 700, backgroundColor: HISTORY_C.gPrimary, color: "#fff" }}>Submit Review</button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setShowReview(false); }}
+                  style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid #e5e7eb", cursor: "pointer", fontSize: 11, fontWeight: 600, backgroundColor: "#fff", color: "#777" }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setLocalRated(true); setLocalRating(reviewRating); setLocalNote(reviewText); setShowReview(false); /* TODO: POST review to /api/reviews */ }}
+                  style={{ padding: "6px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 11, fontWeight: 700, backgroundColor: HISTORY_C.gPrimary, color: "#fff" }}
+                >
+                  {localRated ? "Save changes" : "Submit Review"}
+                </button>
               </div>
             </>
           )}
@@ -2799,9 +3616,10 @@ function BuyerHistoryTab() {
   const totalItems = txs.length;
   const totalSpent = txs.reduce((a, t) => a + t.price, 0);
   const totalSaved = txs.reduce((a, t) => a + (t.origPrice ? t.origPrice - t.price : 0), 0);
-  const catCounts: Record<string, number> = {};
-  txs.forEach((t) => { catCounts[t.cat] = (catCounts[t.cat] || 0) + 1; });
-  const topCat = Object.entries(catCounts).sort((a, b) => b[1] - a[1])[0];
+  const ratedTxs = txs.filter((t) => t.rated && typeof t.rating === "number");
+  const avgRating = ratedTxs.length > 0
+    ? (ratedTxs.reduce((a, t) => a + (t.rating ?? 0), 0) / ratedTxs.length).toFixed(1)
+    : "—";
   const unratedCount = txs.filter((t) => !t.rated).length;
 
   const getYear = (d: string) => new Date(d).getFullYear();
@@ -2827,7 +3645,18 @@ function BuyerHistoryTab() {
 
   return (
     <div style={{ maxWidth: 860, margin: "0 auto", paddingBottom: 40 }}>
-      <h2 style={{ fontSize: 22, fontWeight: 900, color: HISTORY_C.gDark, marginBottom: 20 }}>Purchase History</h2>
+      {/* Header with icon + count */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+        <div style={{ display: "flex", width: 40, height: 40, borderRadius: 12, backgroundColor: HISTORY_C.gLightBg, alignItems: "center", justifyContent: "center", border: `1px solid ${HISTORY_C.gSoft}` }}>
+          <History size={18} style={{ color: HISTORY_C.gPrimary }} />
+        </div>
+        <div>
+          <h2 style={{ fontSize: 20, fontWeight: 900, color: HISTORY_C.gDark }}>Purchase history</h2>
+          <p style={{ fontSize: 11, color: "#999", marginTop: 2 }}>
+            {totalItems === 0 ? "Nothing here yet" : `${totalItems} ${totalItems === 1 ? "purchase" : "purchases"} in your archive`}
+          </p>
+        </div>
+      </div>
 
       {/* Stats strip */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 24 }}>
@@ -2835,7 +3664,7 @@ function BuyerHistoryTab() {
           { label: "Items Bought",  value: String(totalItems),                   Icon: ShoppingCart, color: HISTORY_C.gPrimary, bg: HISTORY_C.gLightBg },
           { label: "Total Spent",   value: `$${totalSpent.toLocaleString()}`,     Icon: DollarSign,   color: HISTORY_C.oPrimary, bg: HISTORY_C.oLightBg },
           { label: "Total Saved",   value: `$${totalSaved.toLocaleString()}`,     Icon: TrendingDown, color: HISTORY_C.gPrimary, bg: HISTORY_C.gLightBg, sub: "vs original prices" },
-          { label: "Top Category",  value: topCat ? topCat[0] : "—",             Icon: Award,        color: HISTORY_C.ai,       bg: HISTORY_C.aiLight,  sub: topCat ? `${topCat[1]} items` : undefined },
+          { label: "Avg Rating",    value: avgRating === "—" ? "—" : `${avgRating} ★`, Icon: Star,        color: HISTORY_C.oPrimary, bg: HISTORY_C.oLightBg,  sub: ratedTxs.length > 0 ? `${ratedTxs.length} rated` : "Rate to see" },
         ].map((s, i) => (
           <div key={i} style={{ padding: 16, borderRadius: 14, border: "1px solid #f0f0f0", backgroundColor: "#fff" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>

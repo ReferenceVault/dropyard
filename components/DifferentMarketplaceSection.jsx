@@ -103,30 +103,30 @@ export default function DifferentMarketplaceSection() {
           <div>
             <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-[#2f8a22]/15 bg-white/80 px-4 py-2 shadow-sm backdrop-blur-xl">
               <span className="h-2 w-2 rounded-full bg-[#ff9412] shadow-[0_0_0_5px_rgba(255,148,18,0.14)]" />
-              <span className="text-xs font-black uppercase tracking-[0.22em] text-[#2f8a22]">
+              <span className="text-[11px] font-black uppercase tracking-[0.18em] text-[#2f8a22]">
                 A different kind of marketplace
               </span>
             </div>
 
-            <h2 className="max-w-3xl text-4xl font-black tracking-[-0.055em] text-[#0b2f20] sm:text-5xl lg:text-6xl">
+            <h2 className="max-w-3xl text-[29px] font-semibold tracking-tighter leading-[1.1] text-[#0b2f20] sm:text-[35px] lg:text-[47px]">
               Built around the parts of resale people actually hate.
             </h2>
 
-            <p className="mt-6 max-w-xl text-base leading-8 text-slate-700 sm:text-lg">
+            <p className="mt-6 max-w-xl text-[15px] leading-8 text-slate-700 sm:text-[17px]">
               DropYard turns local resale into scheduled, neighbourhood-based Drops — fewer random messages, fewer awkward meetups, and a cleaner path from listed to claimed.
             </p>
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               <a
                 href="/for-buyers"
-                className="group inline-flex items-center justify-center rounded-full bg-[#ff9412] px-6 py-3.5 text-sm font-extrabold text-white shadow-[0_18px_36px_rgba(255,148,18,0.25)] transition duration-300 hover:-translate-y-1 hover:bg-[#ff8500] hover:shadow-[0_22px_46px_rgba(255,148,18,0.32)]"
+                className="group inline-flex items-center justify-center rounded-full bg-[#ff9412] px-6 py-3.5 text-[13px] font-extrabold text-white shadow-[0_18px_36px_rgba(255,148,18,0.25)] transition duration-300 hover:-translate-y-1 hover:bg-[#ff8500] hover:shadow-[0_22px_46px_rgba(255,148,18,0.32)]"
               >
                 Explore Drops
                 <ArrowIcon className="ml-2 h-4 w-4 transition duration-300 group-hover:translate-x-1" />
               </a>
               <a
                 href="/how-it-works"
-                className="inline-flex items-center justify-center rounded-full border border-[#2f8a22]/18 bg-white/80 px-6 py-3.5 text-sm font-extrabold text-[#0b2f20] shadow-sm backdrop-blur-xl transition duration-300 hover:-translate-y-1 hover:border-[#2f8a22]/35 hover:bg-white"
+                className="inline-flex items-center justify-center rounded-full border border-[#2f8a22]/18 bg-white/80 px-6 py-3.5 text-[13px] font-extrabold text-[#0b2f20] shadow-sm backdrop-blur-xl transition duration-300 hover:-translate-y-1 hover:border-[#2f8a22]/35 hover:bg-white"
               >
                 See how it works
               </a>
@@ -145,8 +145,8 @@ export default function DifferentMarketplaceSection() {
                   <div className="relative mb-7 flex h-16 w-16 items-center justify-center rounded-2xl bg-[#0f5c3b] text-white shadow-[0_16px_32px_rgba(15,92,59,0.22)] ring-8 ring-[#0f5c3b]/8 transition duration-300 group-hover:rotate-[-3deg] group-hover:scale-105">
                     <Icon className="h-9 w-9" />
                   </div>
-                  <div className="relative text-2xl font-black tracking-tight text-[#0b2f20]">{card.title}</div>
-                  <p className="relative mt-2 text-sm leading-6 text-slate-600">{card.body}</p>
+                  <div className="relative text-[23px] font-black tracking-tight text-[#0b2f20]">{card.title}</div>
+                  <p className="relative mt-2 text-[13px] leading-6 text-slate-600">{card.body}</p>
                 </div>
               );
             })}
@@ -158,8 +158,8 @@ export default function DifferentMarketplaceSection() {
             <div className="border-b border-slate-200/80 p-6 sm:p-8 lg:border-b-0 lg:border-r lg:p-10">
               <div className="mb-8 flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">The old way</p>
-                  <h3 className="mt-2 text-2xl font-black text-slate-950">Marketplace friction</h3>
+                  <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">The old way</p>
+                  <h3 className="mt-2 text-[23px] font-black text-slate-950">Marketplace friction</h3>
                 </div>
                 <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
                   <XIcon className="h-6 w-6" />
@@ -172,7 +172,7 @@ export default function DifferentMarketplaceSection() {
                     <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-200 text-slate-500 transition duration-300 group-hover:bg-slate-300">
                       <XIcon className="h-3.5 w-3.5" />
                     </span>
-                    <p className="text-sm leading-6 text-slate-600">{item}</p>
+                    <p className="text-[13px] leading-6 text-slate-600">{item}</p>
                   </div>
                 ))}
               </div>
@@ -183,8 +183,8 @@ export default function DifferentMarketplaceSection() {
               <div className="absolute right-0 top-0 h-48 w-48 rounded-full bg-[#ff9412]/14 blur-3xl" />
               <div className="relative">
                 <div className="mb-8">
-                  <p className="text-xs font-black uppercase tracking-[0.22em] text-[#ff9412]">The DropYard way</p>
-                  <h3 className="mt-2 text-2xl font-black text-[#0b2f20]">Designed for clean claims</h3>
+                  <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#ff9412]">The DropYard way</p>
+                  <h3 className="mt-2 text-[23px] font-black text-[#0b2f20]">Designed for clean claims</h3>
                 </div>
 
                 <div className="space-y-3">
@@ -193,7 +193,7 @@ export default function DifferentMarketplaceSection() {
                       <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#ff9412] text-white shadow-[0_8px_18px_rgba(255,148,18,0.22)] transition duration-300 group-hover:scale-110">
                         <CheckIcon className="h-3.5 w-3.5" />
                       </span>
-                      <p className="text-sm font-semibold leading-6 text-[#0b2f20]">{item}</p>
+                      <p className="text-[13px] font-semibold leading-6 text-[#0b2f20]">{item}</p>
                     </div>
                   ))}
                 </div>

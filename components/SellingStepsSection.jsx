@@ -172,20 +172,20 @@ export default function SellingStepsSection() {
 
       <div className="relative mx-auto max-w-6xl">
         <div className="text-center">
-          <p className="text-xs font-bold uppercase tracking-[0.35em] text-[#ff9412]">
+          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#ff9412]">
             Simple steps
           </p>
 
-          <h2 className="mt-4 text-4xl font-black tracking-[-0.04em] text-[#0b2f20] sm:text-5xl">
+          <h2 className="mt-2 text-[35px] font-semibold tracking-tighter leading-[1.05] text-[#0b2f20] sm:text-[47px]">
             How selling works
           </h2>
 
-          <p className="mx-auto mt-4 max-w-2xl text-lg text-slate-600">
+          <p className="mx-auto mt-3 max-w-2xl text-[17px] text-slate-600">
             From listing to pickup, DropYard makes selling to your neighbours effortless.
           </p>
         </div>
 
-        <div className="relative mt-20 hidden lg:block">
+        <div className="relative mt-10 hidden lg:block">
           <div className="relative h-[4px] overflow-visible rounded-full bg-slate-200">
             <div
               className="h-full rounded-full bg-gradient-to-r from-[#ff9412] via-[#2f8a22] to-[#14b8a6] transition-all duration-700 ease-out"
@@ -204,7 +204,7 @@ export default function SellingStepsSection() {
           </div>
         </div>
 
-        <div className="relative mt-16 grid grid-cols-1 gap-10 md:grid-cols-2 lg:grid-cols-4">
+        <div className="relative mt-8 grid grid-cols-1 gap-10 md:grid-cols-2 lg:grid-cols-4">
           {steps.map((step, index) => {
             const Icon = step.Icon;
             const isActive = index === active;
@@ -223,7 +223,7 @@ export default function SellingStepsSection() {
                 }`}
               >
                 <div
-                  className={`absolute -top-4 left-6 flex h-9 w-9 items-center justify-center rounded-full text-xs font-semibold shadow-sm transition ${
+                  className={`absolute -top-4 left-6 flex h-9 w-9 items-center justify-center rounded-full text-[11px] font-semibold shadow-sm transition ${
                     isActive ? activeAccent.badge : "border border-slate-200 bg-white text-slate-500"
                   }`}
                 >
@@ -238,9 +238,9 @@ export default function SellingStepsSection() {
                   <Icon className="h-5 w-5" />
                 </div>
 
-                <h3 className="mt-6 text-lg font-semibold text-[#0b2f20]">{step.title}</h3>
+                <h3 className="mt-6 text-[17px] font-semibold text-[#0b2f20]">{step.title}</h3>
 
-                <p className="mt-2 text-sm leading-relaxed text-slate-600">{step.description}</p>
+                <p className="mt-2 text-[13px] leading-relaxed text-slate-600">{step.description}</p>
 
                 {isActive && (
                   <div className="pointer-events-none absolute inset-0 rounded-2xl">
@@ -254,10 +254,10 @@ export default function SellingStepsSection() {
         </div>
 
         <div className="mt-8 flex items-center gap-4 rounded-2xl border border-slate-200 bg-white px-6 py-5 shadow-sm">
-          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#22c55e] text-lg font-bold text-white shadow">
+          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#22c55e] text-[17px] font-bold text-white shadow">
             ✓
           </div>
-          <p className="text-sm text-slate-700">
+          <p className="text-[13px] text-slate-700">
             Claims, confirmations, and pickup reminders — all delivered to your WhatsApp
           </p>
         </div>

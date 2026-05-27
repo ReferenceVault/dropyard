@@ -65,24 +65,23 @@ export default function EarlyAccessSection() {
       <div className="relative max-w-4xl mx-auto text-center">
 
         {/* LABEL */}
-        <p className="text-xs font-bold tracking-[0.3em] text-[#ff9412] uppercase">
+        <p className="text-[11px] font-bold tracking-[0.18em] text-[#ff9412] uppercase">
           Early Access
         </p>
 
         {/* HEADLINE */}
-        <h2 className="mt-6 text-4xl sm:text-5xl lg:text-6xl font-black tracking-[-0.04em] text-[#0b2f20] leading-tight">
-          Get the Friday email for
-          <br />
+        <h2 className="mt-2 text-[28px] sm:text-[34px] lg:text-[46px] font-semibold tracking-tighter text-[#0b2f20] leading-[1.05]">
+          Get the Friday email for{" "}
           <span className="text-[#ff9412]">Barrhaven.</span>
         </h2>
 
         {/* SUBTEXT */}
-        <p className="mt-6 text-lg text-slate-600 leading-relaxed max-w-2xl mx-auto">
+        <p className="mt-3 text-[15px] text-slate-600 leading-relaxed max-w-2xl mx-auto">
           One email every Friday with the weekend&rsquo;s best items, plus what&rsquo;s new on The Shelf. No spam. Unsubscribe anytime.
         </p>
 
         {/* INPUT + CTA */}
-        <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
+        <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-4">
           <div className={`relative flex items-center gap-3 w-full sm:w-auto bg-white rounded-full px-6 py-4 shadow-md border transition ${
             error
               ? "border-red-400 animate-shake"
@@ -95,14 +94,14 @@ export default function EarlyAccessSection() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-              className="outline-none bg-transparent text-sm w-full sm:w-72"
+              className="outline-none bg-transparent text-[13px] w-full sm:w-72"
             />
           </div>
 
           <button
             onClick={handleSubmit}
             disabled={loading}
-            className="group inline-flex items-center justify-center rounded-full bg-[#2f8a22] px-8 py-4 text-sm font-bold text-white shadow-[0_15px_35px_rgba(47,138,34,0.3)] transition duration-300 hover:-translate-y-1 hover:bg-[#26751d] disabled:opacity-70"
+            className="group inline-flex items-center justify-center rounded-full bg-[#2f8a22] px-8 py-4 text-[13px] font-bold text-white shadow-[0_15px_35px_rgba(47,138,34,0.3)] transition duration-300 hover:-translate-y-1 hover:bg-[#26751d] disabled:opacity-70"
           >
             {loading ? "Saving your spot..." : "Save my spot"}
           </button>
@@ -110,26 +109,26 @@ export default function EarlyAccessSection() {
 
         {/* ERROR */}
         {error && (
-          <p className="mt-4 text-sm text-red-500">{error}</p>
+          <p className="mt-4 text-[13px] text-red-500">{error}</p>
         )}
 
         {/* SUCCESS STATE */}
         {submitted && (
           <div className="mt-6 flex flex-col items-center gap-2">
-            <div className="text-2xl">🎉</div>
-            <p className="text-sm text-[#2f8a22] font-semibold">
+            <div className="text-[23px]">🎉</div>
+            <p className="text-[13px] text-[#2f8a22] font-semibold">
               You&rsquo;re in. Friday just got better.
             </p>
           </div>
         )}
 
         {/* SOCIAL PROOF (LIVE) */}
-        <div className="mt-10 text-xs tracking-wide text-slate-500">
+        <div className="mt-5 text-[12px] tracking-wide text-slate-500">
           <span className="font-semibold text-[#0b2f20]">{count.toLocaleString()} neighbours</span> already joined &middot; One email/week &middot; No spam
         </div>
 
         {/* TRUST BADGES */}
-        <div className="mt-6 flex justify-center gap-6 text-xs text-slate-400">
+        <div className="mt-3 flex justify-center gap-6 text-[12px] text-slate-400">
           <span>&#10004; Privacy-first</span>
           <span>&#10004; No spam ever</span>
           <span>&#10004; One-click unsubscribe</span>

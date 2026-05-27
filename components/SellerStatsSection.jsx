@@ -146,22 +146,22 @@ function StatCard({ stat }) {
         <Icon className="h-7 w-7" />
       </div>
 
-      <div className="relative mt-7 bg-gradient-to-br from-[#0b2f20] to-slate-500 bg-clip-text text-4xl font-black tracking-[-0.06em] text-transparent sm:text-5xl">
+      <div className="relative mt-7 bg-gradient-to-br from-[#0b2f20] to-slate-500 bg-clip-text text-[33px] font-semibold tracking-tighter text-transparent sm:text-[45px]">
         {stat.value}
       </div>
 
       <div className="relative mt-2 flex flex-col items-center gap-2">
-        <p className="text-sm font-semibold text-slate-600">{stat.label}</p>
+        <p className="text-[13px] font-semibold text-slate-600">{stat.label}</p>
         {stat.comingSoon && (
           <span
-            className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] backdrop-blur-sm ${tone.badge}`}
+            className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.16em] backdrop-blur-sm ${tone.badge}`}
           >
             Coming Soon
           </span>
         )}
       </div>
 
-      <p className="relative mx-auto mt-4 max-w-[13rem] text-xs leading-5 text-slate-500 transition-all duration-300 line-clamp-2 opacity-80 group-hover:line-clamp-none group-hover:opacity-100">
+      <p className="relative mx-auto mt-4 max-w-[13rem] text-[13px] leading-5 text-slate-500 transition-all duration-300 line-clamp-2 opacity-80 group-hover:line-clamp-none group-hover:opacity-100">
         {stat.helper}
       </p>
     </article>
@@ -181,18 +181,18 @@ export default function SellerStatsSection() {
         <div className="pointer-events-none absolute inset-x-[-100vw] inset-y-0 bg-gradient-to-br from-[#ffb020]/8 via-transparent to-[#2f8a22]/8" />
 
         <div className="relative text-center">
-          <p className="text-xs font-black uppercase tracking-[0.35em] text-[#0d7c4e]">Built for neighbourhood commerce</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#0d7c4e]">Built for neighbourhood commerce</p>
 
-          <h2 className="mx-auto mt-5 max-w-4xl text-4xl font-black tracking-[-0.065em] text-[#0b2f20] sm:text-6xl">
+          <h2 className="mx-auto mt-2 max-w-4xl text-[23px] font-semibold tracking-tighter leading-[1.05] text-[#0b2f20] sm:text-[47px]">
             Sellers are thriving
           </h2>
 
-          <p className="mx-auto mt-4 max-w-2xl text-base leading-7 text-slate-600">
+          <p className="mx-auto mt-3 text-[15px] leading-7 text-slate-600 sm:whitespace-nowrap">
             Real traction from local sellers transforming unused household items into premium neighbourhood commerce experiences.
           </p>
         </div>
 
-        <div className="relative mt-14 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="relative mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
           {stats.map((stat) => (
             <StatCard key={stat.label} stat={stat} />
           ))}
