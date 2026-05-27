@@ -41,21 +41,21 @@ export default function ShopWaysSection() {
 
         {/* HEADER */}
         <div className="text-center">
-          <p className="text-xs font-bold uppercase tracking-[0.35em] text-[#ff9412]">
+          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#ff9412]">
             Two ways to shop
           </p>
 
-          <h2 className="mt-4 text-4xl font-black tracking-[-0.04em] text-[#0b2f20] sm:text-5xl">
+          <h2 className="mt-2 text-[35px] font-semibold tracking-tighter leading-[1.05] text-[#0b2f20] sm:text-[47px]">
             There&rsquo;s always something for you
           </h2>
 
-          <p className="mx-auto mt-4 max-w-2xl text-lg text-slate-600">
+          <p className="mx-auto mt-3 max-w-2xl text-[17px] text-slate-600">
             Whether it&apos;s Drop day or a quiet Tuesday, your community has items waiting.
           </p>
         </div>
 
         {/* GRID */}
-        <div className="mt-24 grid grid-cols-1 gap-12 lg:grid-cols-2">
+        <div className="mt-10 grid grid-cols-1 gap-12 lg:grid-cols-2">
 
           {/* DROP CARD */}
           <div className="group relative rounded-3xl bg-white p-[1.5px] shadow-[0_20px_70px_rgba(0,0,0,0.08)] transition duration-500 hover:-translate-y-3">
@@ -67,20 +67,20 @@ export default function ShopWaysSection() {
 
               {/* TOP */}
               <div className="flex items-center justify-between">
-                <span className="text-xs tracking-[0.3em] uppercase text-[#0b2f20]/60">Every Saturday</span>
-                <span className="text-xs bg-[#2f8a22]/10 text-[#2f8a22] px-3 py-1 rounded-full">Live weekly</span>
+                <span className="text-[11px] tracking-[0.3em] uppercase text-[#0b2f20]/60">Every Saturday</span>
+                <span className="text-[11px] bg-[#2f8a22]/10 text-[#2f8a22] px-3 py-1 rounded-full">Live weekly</span>
               </div>
 
-              <h3 className="mt-6 text-2xl font-bold text-[#0b2f20]">The Drop</h3>
+              <h3 className="mt-6 text-[23px] font-bold text-[#0b2f20]">The Drop</h3>
 
-              <p className="mt-3 text-[#0b2f20]/70 text-sm max-w-md">
+              <p className="mt-3 text-[#0b2f20]/70 text-[13px] max-w-md">
                 Fresh items go live Saturday 8am. Browse, claim, and pick up — all within 48 hours.
               </p>
 
               {/* FEATURES */}
               <ul className="mt-8 space-y-4">
                 {dropFeatures.map((f, i) => (
-                  <li key={i} className="flex items-center gap-3 text-sm text-[#0b2f20]/80">
+                  <li key={i} className="flex items-center gap-3 text-[13px] text-[#0b2f20]/80">
                     <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#2f8a22]/10 text-[#2f8a22]">
                       <CheckIcon className="h-3 w-3" />
                     </div>
@@ -90,7 +90,7 @@ export default function ShopWaysSection() {
               </ul>
 
               {/* CTA */}
-              <button className="mt-10 w-full rounded-xl bg-[#0f6a44] text-white py-3 text-sm font-semibold transition hover:bg-[#0b5638] hover:shadow-lg">
+              <button className="mt-10 w-full rounded-xl bg-[#0f6a44] text-white py-3 text-[13px] font-semibold transition hover:bg-[#0b5638] hover:shadow-lg">
                 Browse Drops &rarr;
               </button>
 
@@ -107,20 +107,20 @@ export default function ShopWaysSection() {
 
               {/* TOP */}
               <div className="flex items-center justify-between">
-                <span className="text-xs tracking-[0.3em] uppercase text-[#0b2f20]/60">Always open</span>
-                <span className="text-xs bg-[#ff9412]/10 text-[#ff9412] px-3 py-1 rounded-full">Open now</span>
+                <span className="text-[11px] tracking-[0.3em] uppercase text-[#0b2f20]/60">Always open</span>
+                <span className="text-[11px] bg-[#ff9412]/10 text-[#ff9412] px-3 py-1 rounded-full">Open now</span>
               </div>
 
-              <h3 className="mt-6 text-2xl font-bold text-[#0b2f20]">The Shelf</h3>
+              <h3 className="mt-6 text-[23px] font-bold text-[#0b2f20]">The Shelf</h3>
 
-              <p className="mt-3 text-[#0b2f20]/70 text-sm max-w-md">
+              <p className="mt-3 text-[#0b2f20]/70 text-[13px] max-w-md">
                 Items available right now, anytime. No countdown, no rush — browse and claim when you&apos;re ready.
               </p>
 
               {/* FEATURES */}
               <ul className="mt-8 space-y-4">
                 {shelfFeatures.map((f, i) => (
-                  <li key={i} className="flex items-center gap-3 text-sm text-[#ff9412]/80">
+                  <li key={i} className="flex items-center gap-3 text-[13px] text-[#ff9412]/80">
                     <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#ff9412]/10 text-[#ff9412]">
                       <CheckIcon className="h-3 w-3" />
                     </div>
@@ -130,7 +130,7 @@ export default function ShopWaysSection() {
               </ul>
 
               {/* CTA */}
-              <button className="mt-10 w-full rounded-xl bg-[#ff6a00] text-white py-3 text-sm font-semibold transition hover:bg-[#e85f00] hover:shadow-lg">
+              <button className="mt-10 w-full rounded-xl bg-[#ff6a00] text-white py-3 text-[13px] font-semibold transition hover:bg-[#e85f00] hover:shadow-lg">
                 Explore Shelf &rarr;
               </button>
 

@@ -86,18 +86,18 @@ function StatCard({ stat, shouldStart }) {
   const Icon = stat.Icon;
 
   return (
-    <div className="group relative rounded-3xl bg-white p-8 border border-slate-200 transition duration-300 hover:-translate-y-2 hover:shadow-[0_20px_60px_rgba(0,0,0,0.1)]">
-      <div className={`mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-2xl ring-8 transition group-hover:scale-110 ${accentStyles(stat.accent)}`}>
-        <Icon className="h-6 w-6" />
+    <div className="group relative rounded-3xl bg-white p-6 border border-slate-200 transition duration-300 hover:-translate-y-2 hover:shadow-[0_20px_60px_rgba(0,0,0,0.1)]">
+      <div className={`mx-auto mb-4 flex h-11 w-11 items-center justify-center rounded-2xl ring-8 transition group-hover:scale-110 ${accentStyles(stat.accent)}`}>
+        <Icon className="h-5 w-5" />
       </div>
 
-      <div className="text-4xl sm:text-5xl font-black text-[#0b2f20] tracking-tight">
+      <div className="text-[27px] sm:text-[33px] font-semibold text-[#0b2f20] tracking-tighter">
         {stat.prefix || ""}
         {count.toLocaleString()}
         {stat.suffix || ""}
       </div>
 
-      <p className="mt-2 text-sm text-slate-500">{stat.label}</p>
+      <p className="mt-1.5 text-[12px] text-slate-500">{stat.label}</p>
     </div>
   );
 }
@@ -127,19 +127,19 @@ export default function TrustedLocallyStats() {
   return (
     <section ref={sectionRef} className="bg-[#f7faf8] py-10 px-4 sm:px-6 lg:px-8">
       <div className="max-w-6xl mx-auto text-center">
-        <p className="text-xs font-bold tracking-[0.3em] text-[#2f8a22] uppercase">
+        <p className="text-[11px] font-bold tracking-[0.18em] text-[#2f8a22] uppercase">
           Trusted locally
         </p>
 
-        <h2 className="mt-4 text-4xl sm:text-5xl font-black tracking-[-0.03em] text-[#0b2f20]">
+        <h2 className="mt-2 text-[33px] sm:text-[45px] font-semibold tracking-tighter leading-[1.05] text-[#0b2f20]">
           DropYard by the numbers
         </h2>
 
-        <p className="mt-4 text-lg text-slate-600 max-w-2xl mx-auto">
+        <p className="mt-3 text-[15px] text-slate-600 mx-auto sm:whitespace-nowrap">
           Real traction from real neighbourhoods — proving local buying can be simple, affordable, and reliable.
         </p>
 
-        <div className="mt-12 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {stats.map((stat) => (
             <StatCard key={stat.label} stat={stat} shouldStart={isVisible} />
           ))}

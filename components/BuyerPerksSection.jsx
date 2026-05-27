@@ -115,20 +115,20 @@ export default function BuyerPerksSection() {
     <section className="bg-white px-4 py-12 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-5xl">
         <div className="text-center">
-          <p className="text-xs font-bold uppercase tracking-[0.35em] text-[#2f8a22]">
+          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#2f8a22]">
             The perks
           </p>
 
-          <h2 className="mt-4 text-4xl font-black tracking-[-0.04em] text-[#0b2f20] sm:text-5xl">
+          <h2 className="mt-2 text-[29px] font-semibold tracking-tighter leading-[1.05] text-[#0b2f20] sm:text-[35px]">
             Why buy on DropYard?
           </h2>
 
-          <p className="mx-auto mt-4 max-w-2xl text-lg text-slate-600">
+          <p className="mx-auto mt-3 text-[15px] text-slate-600 sm:whitespace-nowrap">
             Shop smarter, closer, and faster with neighbourhood finds that feel more personal than a typical marketplace.
           </p>
         </div>
 
-        <div className="mt-16 divide-y divide-slate-200">
+        <div className="mt-10 divide-y divide-slate-200">
           {perks.map((perk, i) => {
             const Icon = perk.Icon;
             const isOpen = openIndex === i;
@@ -143,7 +143,7 @@ export default function BuyerPerksSection() {
               >
                 <div className={`absolute left-0 top-0 h-full w-[3px] ${AccentBar(perk.accent)} opacity-60 transition duration-300 group-hover:opacity-100`} />
 
-                <div className="hidden w-10 items-center justify-center text-xs font-semibold text-slate-400 sm:flex">
+                <div className="hidden w-10 items-center justify-center text-[11px] font-semibold text-slate-400 sm:flex">
                   {String(i + 1).padStart(2, "0")}
                 </div>
 
@@ -152,15 +152,15 @@ export default function BuyerPerksSection() {
                 </div>
 
                 <div className="flex-1">
-                  <h3 className="text-lg font-semibold text-[#0b2f20]">
+                  <h3 className="text-[17px] font-semibold text-[#0b2f20]">
                     {perk.title}
                   </h3>
-                  <p className="mt-2 max-w-md text-sm text-slate-600">
+                  <p className="mt-2 max-w-md text-[13px] text-slate-600">
                     {perk.description}
                   </p>
 
                   <div className={`grid transition-all duration-300 ${isOpen ? "mt-4 grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}>
-                    <p className="overflow-hidden rounded-xl bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">
+                    <p className="overflow-hidden rounded-xl bg-slate-50 px-4 py-3 text-[13px] leading-6 text-slate-600">
                       {perk.detail}
                     </p>
                   </div>

@@ -1,12 +1,11 @@
-"use client";
+﻿"use client";
 
-import React, { useEffect, useState, useRef, useMemo } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import DynamicDropCard from "@/components/previews/DynamicDropCard";
 import DifferentMarketplaceSection from "@/components/DifferentMarketplaceSection";
 import EarlyAccessSection from "@/components/EarlyAccessSection";
 import SellingWaysSection from "@/components/SellingWaysSection";
 import { motion } from "framer-motion";
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Users,
@@ -14,16 +13,13 @@ import {
   Recycle,
   Package,
   MapPin,
-  Calendar,
   ShoppingBag,
   ChevronRight,
   Check,
   ArrowRight,
-  Truck,
   User,
   CheckCircle,
   ChevronLeft,
-  Sparkles,
   Bell,
   Heart,
   Search,
@@ -115,19 +111,12 @@ const detectZone = (pc: string) => {
 export default function DropYardWebsite() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [page, setPage] = useState("home");
 
   useEffect(() => {
     const p = searchParams?.get("page");
-    if (p === "howitworks") {
-      router.replace("/how-it-works");
-      return;
-    }
-    if (p === "sellers") {
-      router.replace("/for-sellers");
-      return;
-    }
-    if (p === "buyers") setPage("buyers");
+    if (p === "howitworks") router.replace("/how-it-works");
+    else if (p === "sellers") router.replace("/for-sellers");
+    else if (p === "buyers") router.replace("/for-buyers");
   }, [searchParams, router]);
 
   const goBuyerAuth = (mode: "signup" | "login" = "signup") => {
@@ -137,48 +126,8 @@ export default function DropYardWebsite() {
   const goMovingAuth = () => router.push("/join?mode=signup");
 
   return (
-    <>
-      <Website
-        page={page}
-        setPage={setPage}
-        goBuyerAuth={goBuyerAuth}
-        goSellerAuth={goSellerAuth}
-        goMovingAuth={goMovingAuth}
-      />
-    </>
-  );
-}
-
-// ============================================================================
-// WEBSITE SHELL
-// ============================================================================
-function Website({
-  page,
-  setPage,
-  goBuyerAuth,
-  goSellerAuth,
-  goMovingAuth,
-}: {
-  page: string;
-  setPage: (p: string) => void;
-  goBuyerAuth: (mode?: "signup" | "login") => void;
-  goSellerAuth: (mode?: "signup" | "login") => void;
-  goMovingAuth: (mode?: "signup" | "login") => void;
-}) {
-  return (
     <div className="min-h-full font-sans bg-white">
-      {page === "home" && (
-        <HomePage setPage={setPage} goBuyerAuth={goBuyerAuth} goSellerAuth={goSellerAuth} goMovingAuth={goMovingAuth} />
-      )}
-      {page === "buyers" && (
-        <BuyersPage goBuyerAuth={goBuyerAuth} goSellerAuth={goSellerAuth} goMovingAuth={goMovingAuth} setPage={setPage} />
-      )}
-      {page === "sellers" && (
-        <SellersPage goBuyerAuth={goBuyerAuth} goSellerAuth={goSellerAuth} goMovingAuth={goMovingAuth} setPage={setPage} />
-      )}
-      {page === "howitworks" && (
-        <HowItWorksPage goBuyerAuth={goBuyerAuth} goSellerAuth={goSellerAuth} setPage={setPage} />
-      )}
+      <HomePage goBuyerAuth={goBuyerAuth} goSellerAuth={goSellerAuth} goMovingAuth={goMovingAuth} />
     </div>
   );
 }
@@ -211,33 +160,33 @@ function ItemCard({ item }: { item: typeof FEATURED_ITEMS[0] }) {
   return (
     <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden hover:shadow-lg hover:border-emerald-200 transition-all duration-300 group">
       <div className="relative bg-gradient-to-br from-gray-50 to-gray-100 h-44 flex items-center justify-center">
-        <span className="text-6xl group-hover:scale-110 transition-transform duration-300">{item.image}</span>
-        <div className="absolute top-3 left-3 bg-amber-500 text-white text-xs font-bold px-2 py-1 rounded-full">-{discount}%</div>
+        <span className="text-[59px] group-hover:scale-110 transition-transform duration-300">{item.image}</span>
+        <div className="absolute top-3 left-3 bg-amber-500 text-white text-[11px] font-bold px-2 py-1 rounded-full">-{discount}%</div>
         <button
           onClick={() => setSaved(!saved)}
           className={`absolute top-3 right-3 w-8 h-8 rounded-full flex items-center justify-center ${saved ? "bg-rose-500 text-white" : "bg-white/90 text-gray-400 hover:text-rose-500"}`}
         >
           <Heart size={16} fill={saved ? "currentColor" : "none"} />
         </button>
-        <div className="absolute bottom-3 left-3 bg-white/90 text-xs font-medium px-2 py-1 rounded-full text-gray-700">{item.condition}</div>
+        <div className="absolute bottom-3 left-3 bg-white/90 text-[11px] font-medium px-2 py-1 rounded-full text-gray-700">{item.condition}</div>
       </div>
       <div className="p-4">
-        <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
+        <div className="flex items-center justify-between text-[11px] text-gray-500 mb-2">
           <span className="bg-gray-100 px-2 py-0.5 rounded-full">{item.category}</span>
           <span className="flex items-center gap-1"><MapPin size={12} />{item.distance}</span>
         </div>
         <h3 className="font-semibold text-gray-900 mb-2 line-clamp-2 group-hover:text-emerald-700">{item.title}</h3>
         <div className="flex items-center gap-2 mb-3">
           <div className="w-6 h-6 bg-emerald-100 rounded-full flex items-center justify-center"><User size={12} className="text-emerald-600" /></div>
-          <span className="text-xs text-gray-600">{item.seller}</span>
-          <span className="text-xs text-gray-400">• {item.neighborhood}</span>
+          <span className="text-[11px] text-gray-600">{item.seller}</span>
+          <span className="text-[11px] text-gray-400">• {item.neighborhood}</span>
         </div>
         <div className="flex items-center justify-between">
           <div>
-            <span className="text-lg font-bold text-emerald-600">${item.price}</span>
-            <span className="text-sm text-gray-400 line-through ml-2">${item.originalPrice}</span>
+            <span className="text-[17px] font-bold text-emerald-600">${item.price}</span>
+            <span className="text-[13px] text-gray-400 line-through ml-2">${item.originalPrice}</span>
           </div>
-          <div className="flex items-center gap-1 text-xs text-gray-400"><Heart size={12} />{item.saves}</div>
+          <div className="flex items-center gap-1 text-[11px] text-gray-400"><Heart size={12} />{item.saves}</div>
         </div>
       </div>
     </div>
@@ -270,14 +219,14 @@ function SearchBar() {
           className="flex items-center gap-2 px-4 py-3 bg-gray-50 rounded-xl hover:bg-gray-100 min-w-[180px]"
         >
           <MapPin size={18} className="text-emerald-600" />
-          <span className="text-gray-700 text-sm">{selectedNeighborhood || "All Neighborhoods"}</span>
+          <span className="text-gray-700 text-[13px]">{selectedNeighborhood || "All Neighborhoods"}</span>
           <ChevronDown size={16} className="text-gray-400 ml-auto" />
         </button>
         {showDropdown && (
           <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50">
             <button
               onClick={() => { setSelectedNeighborhood(""); setShowDropdown(false); }}
-              className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50"
+              className="w-full px-4 py-2 text-left text-[13px] hover:bg-gray-50"
             >
               All Neighborhoods
             </button>
@@ -285,10 +234,10 @@ function SearchBar() {
               <button
                 key={n.id}
                 onClick={() => { setSelectedNeighborhood(n.name); setShowDropdown(false); }}
-                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center justify-between"
+                className="w-full px-4 py-2 text-left text-[13px] hover:bg-gray-50 flex items-center justify-between"
               >
                 <span>{n.name}</span>
-                <span className="text-xs text-gray-400">{n.items} items</span>
+                <span className="text-[11px] text-gray-400">{n.items} items</span>
               </button>
             ))}
           </div>
@@ -324,7 +273,7 @@ function DropCountdown() {
   const pad = (n: number) => String(n).padStart(2, "0");
 
   return (
-    <div className="flex items-center gap-1.5 font-mono text-sm">
+    <div className="flex items-center gap-1.5 font-mono text-[13px]">
       <span className="bg-emerald-900/60 px-1.5 py-0.5 rounded text-white font-bold">{pad(time.hours)}</span>
       <span className="text-emerald-300 font-bold">:</span>
       <span className="bg-emerald-900/60 px-1.5 py-0.5 rounded text-white font-bold">{pad(time.minutes)}</span>
@@ -368,8 +317,8 @@ function WaitlistCard({ area, isSelected, onSelect }: {
       <div className="relative flex h-full flex-col justify-between gap-4">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h3 className="text-2xl font-bold tracking-[-0.03em] text-slate-950">{area.name}</h3>
-            <p className="mt-1 text-sm text-slate-500">{area.interested} people interested</p>
+            <h3 className="text-[23px] font-bold tracking-[-0.03em] text-slate-950">{area.name}</h3>
+            <p className="mt-1 text-[13px] text-slate-500">{area.interested} people interested</p>
           </div>
           <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ring-1 transition-all ${
             isSelected
@@ -380,9 +329,9 @@ function WaitlistCard({ area, isSelected, onSelect }: {
           </div>
         </div>
         <div>
-          <div className="mb-2 flex items-center justify-between gap-3 text-sm">
+          <div className="mb-2 flex items-center justify-between gap-3 text-[13px]">
             <span className="font-medium text-slate-500">Demand level</span>
-            <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
+            <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
               <TrendingUp className="h-3.5 w-3.5" />
               {area.trend}
             </span>
@@ -422,14 +371,14 @@ function NeighbourhoodWaitlistSection() {
           transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
           className="mx-auto max-w-4xl text-center"
         >
-          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 shadow-sm">
+          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-[11px] font-semibold text-amber-700 shadow-sm">
             <MapPin className="h-3.5 w-3.5" />
             Expanding across Ottawa
           </div>
-          <h2 className="text-balance text-2xl font-bold tracking-[-0.03em] text-slate-950 sm:text-3xl">
+          <h2 className="text-balance text-[23px] font-bold tracking-[-0.03em] text-slate-950 sm:text-[29px]">
             Not in Barrhaven? <span className="text-amber-600">We&apos;re coming to you.</span>
           </h2>
-          <p className="mx-auto mt-3 max-w-3xl text-sm leading-6 text-slate-600 sm:text-base">
+          <p className="mx-auto mt-3 max-w-3xl text-[13px] leading-6 text-slate-600 sm:text-[15px]">
             Join the waitlist for your neighbourhood and be first to know when a local Drop goes live near you.
           </p>
         </motion.div>
@@ -477,19 +426,19 @@ function NeighbourhoodWaitlistSection() {
               <div className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-white text-amber-600 shadow-sm ring-1 ring-amber-200">
                 <Bell className="h-5 w-5" />
               </div>
-              <h3 className="text-xl font-bold tracking-[-0.03em] text-slate-950">
+              <h3 className="text-[19px] font-bold tracking-[-0.03em] text-slate-950">
                 Notify me for {selected?.name}
               </h3>
-              <p className="mt-2 text-sm leading-6 text-slate-600">
+              <p className="mt-2 text-[13px] leading-6 text-slate-600">
                 Join the waitlist and be first to know when DropYard launches in your neighbourhood.
               </p>
               <div className="mt-5 rounded-2xl border border-amber-200 bg-white/85 p-3.5">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-xs font-medium text-slate-500">Current interest</p>
-                    <p className="mt-0.5 text-lg font-bold text-slate-950">{selected?.interested} people</p>
+                    <p className="text-[11px] font-medium text-slate-500">Current interest</p>
+                    <p className="mt-0.5 text-[17px] font-bold text-slate-950">{selected?.interested} people</p>
                   </div>
-                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-semibold text-amber-700">
                     <TrendingUp className="h-3.5 w-3.5" />
                     {selected?.trend}
                   </span>
@@ -498,18 +447,18 @@ function NeighbourhoodWaitlistSection() {
               {!submitted ? (
                 <form className="mt-6 space-y-4" onSubmit={(e) => { e.preventDefault(); if (email) setSubmitted(true); }}>
                   <label className="block">
-                    <span className="mb-2 block text-sm font-semibold text-slate-700">Email address</span>
+                    <span className="mb-2 block text-[13px] font-semibold text-slate-700">Email address</span>
                     <input
                       type="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="you@email.com"
-                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 text-base text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-amber-300 focus:ring-4 focus:ring-amber-100"
+                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 text-[15px] text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-amber-300 focus:ring-4 focus:ring-amber-100"
                     />
                   </label>
                   <button
                     type="submit"
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 py-4 text-base font-semibold text-white transition hover:bg-slate-800"
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 py-4 text-[15px] font-semibold text-white transition hover:bg-slate-800"
                   >
                     Notify Me
                     <ArrowRight className="h-4 w-4" />
@@ -519,10 +468,10 @@ function NeighbourhoodWaitlistSection() {
                 <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-center">
                   <CheckCircle className="mx-auto mb-2 h-7 w-7 text-emerald-500" />
                   <p className="font-semibold text-slate-900">You&apos;re on the {selected?.name} waitlist!</p>
-                  <p className="mt-1 text-sm text-slate-600">We&apos;ll email you at {email} when the {selected?.name} Drop goes live.</p>
+                  <p className="mt-1 text-[13px] text-slate-600">We&apos;ll email you at {email} when the {selected?.name} Drop goes live.</p>
                 </div>
               )}
-              <p className="mt-4 text-sm leading-6 text-slate-500">
+              <p className="mt-4 text-[13px] leading-6 text-slate-500">
                 You&apos;ll only get launch updates for <span className="font-semibold text-slate-700">{selected?.name}</span>.
               </p>
             </div>
@@ -603,11 +552,11 @@ function HowItWorksSection() {
 
         <div className="max-w-6xl mx-auto px-4 w-full relative z-10">
           <div className="text-center mb-10">
-            <h2 className={`text-3xl md:text-4xl font-bold text-white mb-3 header-anim ${visible ? "animate" : ""}`}>
+            <h2 className={`text-[29px] md:text-[35px] font-bold text-white mb-3 header-anim ${visible ? "animate" : ""}`}>
               How DropYard Works
             </h2>
             <p
-              className={`text-emerald-200 text-lg max-w-xl mx-auto header-anim ${visible ? "animate" : ""}`}
+              className={`text-emerald-200 text-[17px] max-w-xl mx-auto header-anim ${visible ? "animate" : ""}`}
               style={{ animationDelay: "0.15s" }}
             >
               Four simple steps from listing to pickup
@@ -635,7 +584,7 @@ function HowItWorksSection() {
                 style={{ animationDelay: `${(step.num - 1) * 0.2}s` }}
               >
                 <div className="bg-white rounded-2xl overflow-hidden shadow-lg hover:shadow-xl transition-all hover:-translate-y-1 relative">
-                  <div className="absolute top-3 left-3 z-10 bg-amber-500 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shadow-md">
+                  <div className="absolute top-3 left-3 z-10 bg-amber-500 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold text-[13px] shadow-md">
                     {step.num}
                   </div>
                   <div className="flex items-center justify-center p-4 sm:p-6">
@@ -644,7 +593,7 @@ function HowItWorksSection() {
                 </div>
                 {step.num === 3 && (
                   <div className="flex items-center justify-center gap-1.5 mt-3 py-1.5 px-3 rounded-lg mx-auto w-fit" style={{ backgroundColor: "rgba(251,191,36,0.15)", border: "1px solid rgba(251,191,36,0.25)" }}>
-                    <span className="text-amber-300 text-xs font-semibold">The Shelf is always open</span>
+                    <span className="text-amber-300 text-[11px] font-semibold">The Shelf is always open</span>
                   </div>
                 )}
               </div>
@@ -658,12 +607,12 @@ function HowItWorksSection() {
             <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: "rgba(245,158,11,0.15)", border: "1px solid rgba(245,158,11,0.2)" }}>
               <span style={{ fontSize: 18 }}>📚</span>
             </div>
-            <p className="text-white/70 text-sm flex-1" style={{ minWidth: 260 }}>
+            <p className="text-white/70 text-[13px] flex-1" style={{ minWidth: 260 }}>
               <span className="text-white font-bold">Missed the Drop?</span>{" "}
               Items are always available on the Shelf — browse and claim anytime between Drops.
             </p>
             <button
-              className="flex items-center gap-1.5 py-2 px-4 rounded-lg text-white text-xs font-bold flex-shrink-0 transition-transform hover:scale-105"
+              className="flex items-center gap-1.5 py-2 px-4 rounded-lg text-white text-[11px] font-bold flex-shrink-0 transition-transform hover:scale-105"
               style={{ backgroundColor: "#F08A00" }}
             >
               Browse the Shelf
@@ -729,7 +678,7 @@ function HeroSection({ goBuyerAuth }: { goBuyerAuth: (mode?: "signup" | "login")
           {/* LEFT — Text */}
           <div>
             {/* Live badge */}
-            <div className="mb-5 inline-flex items-center gap-2 rounded-full bg-emerald-700 px-3 py-1.5 text-xs font-semibold text-white shadow-md">
+            <div className="mb-5 inline-flex items-center gap-2 rounded-full bg-emerald-700 px-3 py-1.5 text-[11px] font-semibold text-white shadow-md">
               <span className="relative flex h-2 w-2">
                 <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-300 animate-ping opacity-75" />
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-white" />
@@ -737,33 +686,33 @@ function HeroSection({ goBuyerAuth }: { goBuyerAuth: (mode?: "signup" | "login")
               Now live in Barrhaven
             </div>
 
-            <h1 className="text-4xl font-extrabold tracking-tight text-gray-900 leading-[1.1] sm:text-5xl lg:text-6xl">
+            <h1 className="text-[35px] font-semibold tracking-tighter text-gray-900 leading-[1.1] sm:text-[47px] lg:text-[59px]">
               Barrhaven<br />
               neighbourhood<br />
               <span className="text-emerald-700">yardsale — Online.</span>
             </h1>
 
-            <p className="mt-4 text-base text-gray-600 max-w-md leading-relaxed sm:text-lg">
+            <p className="mt-4 text-[15px] text-gray-600 max-w-md leading-relaxed sm:text-[17px]">
               Buy and sell locally through curated weekend Drops.
             </p>
-            <p className="mt-1 text-emerald-700 font-semibold text-sm sm:text-base">From one home to another.™</p>
+            <p className="mt-1 text-emerald-700 font-semibold text-[13px] sm:text-[15px]">From one home to another.™</p>
 
             <div className="mt-6 flex flex-wrap gap-3">
               <button
                 onClick={() => goBuyerAuth("signup")}
-                className="inline-flex items-center gap-2 rounded-full bg-emerald-700 px-5 py-3 text-sm font-bold text-white shadow-lg hover:bg-emerald-800 transition-all hover:-translate-y-0.5 sm:px-6 sm:text-base"
+                className="inline-flex items-center gap-2 rounded-full bg-emerald-700 px-5 py-3 text-[13px] font-bold text-white shadow-lg hover:bg-emerald-800 transition-all hover:-translate-y-0.5 sm:px-6 sm:text-[15px]"
               >
                 Browse the Barrhaven Drop <ArrowRight size={16} />
               </button>
               <button
                 onClick={() => goBuyerAuth("signup")}
-                className="inline-flex items-center gap-2 rounded-full bg-amber-500 px-5 py-3 text-sm font-bold text-white shadow-lg hover:bg-amber-600 transition-all hover:-translate-y-0.5 sm:px-6 sm:text-base"
+                className="inline-flex items-center gap-2 rounded-full bg-amber-500 px-5 py-3 text-[13px] font-bold text-white shadow-lg hover:bg-amber-600 transition-all hover:-translate-y-0.5 sm:px-6 sm:text-[15px]"
               >
                 Sell with DropYard <ArrowRight size={16} />
               </button>
             </div>
 
-            <p className="mt-3 text-xs text-gray-500 sm:text-sm">
+            <p className="mt-3 text-[11px] text-gray-500 sm:text-[13px]">
               Already have an account?{" "}
               <button onClick={() => goBuyerAuth("login")} className="text-emerald-700 font-semibold hover:underline">
                 Log in
@@ -786,12 +735,10 @@ function HeroSection({ goBuyerAuth }: { goBuyerAuth: (mode?: "signup" | "login")
 // PAGE SECTIONS (to be filled)
 // ============================================================================
 function HomePage({
-  setPage,
   goBuyerAuth,
   goSellerAuth,
   goMovingAuth,
 }: {
-  setPage: (p: string) => void;
   goBuyerAuth: (mode?: "signup" | "login") => void;
   goSellerAuth: (mode?: "signup" | "login") => void;
   goMovingAuth: (mode?: "signup" | "login") => void;
@@ -857,7 +804,7 @@ function HomePage({
             { icon: Clock, text: "Time-limited Drops" },
             { icon: Recycle, text: "Reuse, not waste" },
           ].map((item, i) => (
-            <div key={i} className="flex items-center gap-2 text-sm">
+            <div key={i} className="flex items-center gap-2 text-[13px]">
               <item.icon size={16} className="text-amber-400" />
               <span className="text-emerald-100">{item.text}</span>
             </div>
@@ -870,7 +817,7 @@ function HomePage({
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex items-center justify-between mb-8">
             <div>
-              <h2 className="text-2xl md:text-3xl font-bold text-gray-900">Featured This Week</h2>
+              <h2 className="text-[23px] md:text-[29px] font-bold text-gray-900">Featured This Week</h2>
               <p className="text-gray-600 mt-1">Hand-picked deals from your neighbors</p>
             </div>
             <button
@@ -964,10 +911,10 @@ function HomePage({
                 <span className="absolute inline-flex h-full w-full rounded-full bg-rose-500" style={{ animation: "lbn-pulse-dot 2.2s ease-out infinite" }} />
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-rose-500" />
               </span>
-              <span className="text-[10px] font-black uppercase tracking-[0.22em] text-amber-800">Voices from the neighbourhood</span>
+              <span className="text-[9px] font-semibold uppercase tracking-[0.18em] text-amber-800">Voices from the neighbourhood</span>
             </div>
-            <h2 className="mt-4 text-3xl md:text-4xl font-black tracking-[-0.02em] text-amber-950">Loved by neighbors</h2>
-            <p className="text-amber-800/70 text-sm md:text-base mt-1 italic">Real stories from real communities</p>
+            <h2 className="mt-4 text-[28px] md:text-[34px] font-semibold tracking-tighter text-amber-950">Loved by neighbors</h2>
+            <p className="text-amber-800/70 text-[13px] md:text-[15px] mt-1 italic">Real stories from real communities</p>
           </div>
 
           <div className="relative min-h-[320px] flex items-center justify-center">
@@ -1002,16 +949,16 @@ function HomePage({
 
             <div className="relative z-30 max-w-lg mx-auto mt-4">
               <div className="bg-white rounded-2xl shadow-2xl shadow-amber-300/30 ring-1 ring-amber-200/50 px-6 pt-8 pb-5 text-center">
-                <p className="text-sm lg:text-base text-gray-700 leading-relaxed mb-3.5 italic">
+                <p className="text-[13px] lg:text-[15px] text-gray-700 leading-relaxed mb-3.5 italic">
                   &ldquo;{testimonials[activeTestimonialIndex].text}&rdquo;
                 </p>
-                <h3 className="text-base font-bold text-gray-900 mb-0.5">
+                <h3 className="text-[15px] font-bold text-gray-900 mb-0.5">
                   {testimonials[activeTestimonialIndex].name}
                 </h3>
-                <p className="text-emerald-700 text-xs mb-1.5">
+                <p className="text-emerald-700 text-[11px] mb-1.5">
                   {testimonials[activeTestimonialIndex].location}
                 </p>
-                <div className="flex items-center justify-center gap-1 text-amber-400 text-sm">
+                <div className="flex items-center justify-center gap-1 text-amber-400 text-[13px]">
                   {Array.from({ length: testimonials[activeTestimonialIndex].rating }).map((_, i) => (
                     <span key={`star-${i}`}>★</span>
                   ))}
@@ -1051,19 +998,19 @@ function HomePage({
         </div>
 
         <div className="relative max-w-6xl mx-auto text-center">
-          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-[-0.03em] text-white leading-tight">
+          <h2 className="text-[29px] sm:text-[35px] lg:text-[47px] font-semibold tracking-tighter text-white leading-tight">
             Ready to join your neighbourhood&rsquo;s next
             <span className="text-[#ff9412]"> Drop?</span>
           </h2>
 
-          <p className="mt-4 text-base sm:text-lg text-white/80 max-w-xl mx-auto">
+          <p className="mt-4 text-[15px] sm:text-[17px] text-white/80 max-w-xl mx-auto">
             Sign up now and start buying or selling this weekend
           </p>
 
           <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
             <button
               onClick={() => goBuyerAuth("signup")}
-              className="group inline-flex items-center gap-3 rounded-full bg-white px-8 py-3 text-sm font-bold text-[#0f5c3b] shadow-[0_10px_25px_rgba(0,0,0,0.25)] transition duration-300 hover:-translate-y-1"
+              className="group inline-flex items-center gap-3 rounded-full bg-white px-8 py-3 text-[13px] font-bold text-[#0f5c3b] shadow-[0_10px_25px_rgba(0,0,0,0.25)] transition duration-300 hover:-translate-y-1"
             >
               <ShoppingBag className="h-5 w-5" />
               Join as a Buyer
@@ -1072,7 +1019,7 @@ function HomePage({
 
             <button
               onClick={() => goSellerAuth("signup")}
-              className="group inline-flex items-center gap-3 rounded-full bg-[#ff9412] px-8 py-3 text-sm font-bold text-white shadow-[0_10px_25px_rgba(255,148,18,0.35)] transition duration-300 hover:-translate-y-1 hover:bg-[#e8830f]"
+              className="group inline-flex items-center gap-3 rounded-full bg-[#ff9412] px-8 py-3 text-[13px] font-bold text-white shadow-[0_10px_25px_rgba(255,148,18,0.35)] transition duration-300 hover:-translate-y-1 hover:bg-[#e8830f]"
             >
               <Package className="h-5 w-5" />
               Start Selling
@@ -1080,7 +1027,7 @@ function HomePage({
             </button>
           </div>
 
-          <p className="mt-6 text-[11px] text-white/60 tracking-wide">
+          <p className="mt-6 text-[10px] text-white/60 tracking-wide">
             No fees &middot; Takes 60 seconds &middot; No spam
           </p>
         </div>
@@ -1089,316 +1036,7 @@ function HomePage({
   );
 }
 
-function BuyersPage({
-  goBuyerAuth,
-  goSellerAuth,
-  goMovingAuth,
-  setPage,
-}: {
-  goBuyerAuth: (mode?: "signup" | "login") => void;
-  goSellerAuth: (mode?: "signup" | "login") => void;
-  goMovingAuth: (mode?: "signup" | "login") => void;
-  setPage: (p: string) => void;
-}) {
-  return (
-    <div>
-      <section className="min-h-[70vh] flex items-center bg-gradient-to-br from-emerald-50 via-white to-amber-50 pt-16">
-        <div className="max-w-7xl mx-auto px-4 py-12 md:py-20">
-          <div className="grid lg:grid-cols-2 gap-8 lg:gap-12 items-center">
-            <div>
-              <div className="inline-flex items-center gap-2 bg-emerald-100 text-emerald-800 px-4 py-2 rounded-full text-sm font-medium mb-6">
-                <ShoppingBag size={16} />
-                For Buyers
-              </div>
-              <h1 className="text-3xl md:text-5xl font-bold text-gray-900 mb-6">
-                Shop locally.
-                <span className="text-emerald-700"> Simply.</span>
-              </h1>
-              <p className="text-lg text-gray-600 mb-8">
-                Discover amazing deals from your neighbors through curated weekend Drops. Quality items at great
-                prices, just around the corner.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-3">
-                <button
-                  onClick={() => goBuyerAuth("signup")}
-                  className="bg-emerald-700 text-white px-6 py-3 rounded-full font-semibold hover:bg-emerald-800 transition-colors flex items-center justify-center gap-2"
-                >
-                  Join This Week&apos;s Drop
-                  <ArrowRight size={18} />
-                </button>
-                <button
-                  onClick={() => goBuyerAuth("login")}
-                  className="border-2 border-emerald-700 text-emerald-700 px-6 py-3 rounded-full font-semibold hover:bg-emerald-50 transition-colors"
-                >
-                  I Have an Account
-                </button>
-              </div>
-            </div>
-            <div className="hidden lg:block">
-              <div className="bg-white rounded-3xl p-6 shadow-lg border border-gray-100">
-                <div className="text-center mb-6">
-                  <div className="inline-flex items-center gap-2 bg-amber-100 text-amber-700 px-4 py-2 rounded-full text-sm font-medium">
-                    <span className="w-2 h-2 bg-amber-500 rounded-full animate-pulse" />
-                    Drop ends in 23:45:32
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  {[
-                    { emoji: "🛋️", title: "Sectional Sofa", price: "$450", orig: "$1800" },
-                    { emoji: "📱", title: "iPhone 13", price: "$320", orig: "$600" },
-                    { emoji: "🚲", title: "Mountain Bike", price: "$180", orig: "$500" },
-                    { emoji: "🎮", title: "PS5 Bundle", price: "$380", orig: "$550" },
-                  ].map((item, i) => (
-                    <div key={i} className="bg-gray-50 rounded-xl p-3 hover:bg-emerald-50 transition-colors cursor-pointer">
-                      <div className="text-3xl mb-2">{item.emoji}</div>
-                      <p className="font-medium text-gray-900 text-sm truncate">{item.title}</p>
-                      <div className="flex items-center gap-1">
-                        <span className="font-bold text-emerald-600">{item.price}</span>
-                        <span className="text-xs text-gray-400 line-through">{item.orig}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
 
-      <section className="py-16 md:py-24 bg-white">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">Why buy on DropYard?</h2>
-          </div>
-          <div className="grid md:grid-cols-3 gap-6">
-            {[
-              {
-                icon: "💰",
-                title: "Amazing Prices",
-                desc: "Items priced 50-70% below retail. Your neighbors' quality stuff at yard sale prices.",
-              },
-              {
-                icon: "📍",
-                title: "Hyper-Local",
-                desc: "Everything is in your neighborhood. No shipping, no waiting—just walk or drive over.",
-              },
-              {
-                icon: "⭐",
-                title: "Quality Items",
-                desc: "Real neighbors selling real stuff. See seller ratings and item conditions upfront.",
-              },
-            ].map((benefit, i) => (
-              <div key={i} className="bg-gray-50 rounded-2xl p-6 text-center hover:bg-emerald-50 transition-colors">
-                <div className="text-5xl mb-4">{benefit.icon}</div>
-                <h3 className="text-xl font-bold text-gray-900 mb-2">{benefit.title}</h3>
-                <p className="text-gray-600">{benefit.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="py-16 md:py-24 bg-gray-50">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">How buying works</h2>
-          </div>
-          <div className="grid md:grid-cols-4 gap-6">
-            {[
-              { step: "1", title: "Browse", desc: "Explore items in your neighborhood during weekend Drops" },
-              { step: "2", title: "Save & Claim", desc: "Save favorites and claim items you want to buy" },
-              { step: "3", title: "Confirm Pickup", desc: "Choose a pickup window that works for you" },
-              { step: "4", title: "Pick Up & Pay", desc: "Meet your neighbor and complete the transaction" },
-            ].map((step, i) => (
-              <div key={i} className="text-center">
-                <div className="w-12 h-12 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold text-xl mx-auto mb-4">
-                  {step.step}
-                </div>
-                <h3 className="font-semibold text-gray-900 mb-2">{step.title}</h3>
-                <p className="text-sm text-gray-600">{step.desc}</p>
-              </div>
-            ))}
-          </div>
-          <div className="text-center mt-12">
-            <button
-              onClick={() => goBuyerAuth("signup")}
-              className="bg-emerald-700 text-white px-8 py-4 rounded-full font-semibold hover:bg-emerald-800 transition-colors inline-flex items-center gap-2"
-            >
-              Get Started
-              <ArrowRight size={18} />
-            </button>
-          </div>
-        </div>
-      </section>
-    </div>
-  );
-}
-
-export function SellersPage({
-  goBuyerAuth,
-  goSellerAuth,
-  goMovingAuth,
-  setPage,
-}: {
-  goBuyerAuth: (mode?: "signup" | "login") => void;
-  goSellerAuth: (mode?: "signup" | "login") => void;
-  goMovingAuth: (mode?: "signup" | "login") => void;
-  setPage: (p: string) => void;
-}) {
-  return (
-    <div className="min-h-full flex flex-col">
-      {/* Hero - Magical gradient */}
-      <section className="relative pt-6 pb-10 px-4 md:px-[5%] lg:px-[10%] overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-amber-50 via-orange-50/60 to-emerald-50" />
-        <div className="absolute top-20 right-10 w-72 h-72 bg-amber-300/25 rounded-full blur-3xl" />
-        <div className="absolute bottom-10 left-10 w-96 h-96 bg-amber-200/20 rounded-full blur-3xl" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-emerald-200/10 rounded-full blur-3xl" />
-
-        <div className="relative max-w-4xl mx-auto text-center">
-          <div className="inline-flex items-center gap-2 bg-white/80 backdrop-blur-sm border border-amber-200/60 text-amber-800 px-4 py-2 rounded-full text-sm font-medium mb-6 shadow-sm">
-            <Sparkles size={16} className="text-amber-500" />
-            Turn clutter into cash
-          </div>
-
-          <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold text-gray-900 mb-4 tracking-tight">
-            Sell easily to <span className="bg-gradient-to-r from-amber-500 to-amber-600 bg-clip-text text-transparent">your neighbors.</span>
-          </h1>
-          <p className="text-lg md:text-xl text-gray-600 mb-10 max-w-2xl mx-auto">
-            Turn unused items into cash through simple, time-limited community Drops. No meetups with strangers—just
-            neighbors helping neighbors.
-          </p>
-
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <button
-              onClick={() => goSellerAuth("signup")}
-              className="group inline-flex items-center justify-center gap-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-white px-8 py-4 rounded-2xl font-semibold shadow-lg shadow-amber-500/25 hover:shadow-xl hover:shadow-amber-500/30 hover:-translate-y-0.5 transition-all duration-200"
-            >
-              Become a Seller
-              <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
-            </button>
-            <button
-              onClick={() => goSellerAuth("login")}
-              className="inline-flex items-center justify-center border-2 border-amber-500 text-amber-600 hover:bg-amber-50 hover:border-amber-600 px-8 py-4 rounded-2xl font-semibold transition-all duration-200 hover:-translate-y-0.5"
-            >
-              I Have an Account
-            </button>
-          </div>
-        </div>
-      </section>
-
-      {/* Choose how you want to sell */}
-      <section className="py-12 px-4 md:px-[5%] lg:px-[10%] bg-white">
-        <div className="max-w-5xl mx-auto">
-          <div className="text-center mb-10">
-            <span className="inline-block text-amber-600 font-semibold text-sm uppercase tracking-wider mb-2">Two options</span>
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-2">Choose how you want to sell</h2>
-            <p className="text-gray-600">Pick the option that fits your needs</p>
-          </div>
-          <div className="grid md:grid-cols-2 gap-6">
-            <div className="group bg-white rounded-3xl p-6 md:p-8 border-2 border-emerald-200 shadow-lg hover:shadow-xl hover:shadow-emerald-500/10 hover:border-emerald-400 transition-all duration-300 hover:-translate-y-1 overflow-hidden relative">
-              <div className="absolute inset-0 bg-gradient-to-br from-emerald-50/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-              <div className="relative">
-                <div className="w-16 h-16 bg-gradient-to-br from-emerald-600 to-emerald-700 rounded-2xl flex items-center justify-center mb-6 shadow-lg shadow-emerald-500/30 group-hover:scale-105 transition-transform">
-                  <Calendar size={30} className="text-white" />
-                </div>
-                <h3 className="text-xl md:text-2xl font-bold text-gray-900 mb-3">Weekly Neighborhood Drop</h3>
-                <p className="text-gray-600 mb-6">
-                  Sell a few items each week. Perfect for regular decluttering or selling items as you go.
-                </p>
-                <ul className="space-y-3 mb-6">
-                  {["List 1-10 items per week", "Items go live each weekend", "Quick, easy sales", "No commitment required"].map((item, i) => (
-                    <li key={i} className="flex items-center gap-2 text-sm text-gray-700">
-                      <Check size={18} className="text-emerald-500 flex-shrink-0" />
-                      {item}
-                    </li>
-                  ))}
-                </ul>
-                <button
-                  onClick={() => goSellerAuth("signup")}
-                  className="w-full bg-emerald-600 text-white py-4 rounded-2xl font-semibold hover:bg-emerald-700 transition-all shadow-md hover:shadow-lg"
-                >
-                  Start Selling Weekly
-                </button>
-              </div>
-            </div>
-
-            <div className="group bg-white rounded-3xl p-6 md:p-8 border-2 border-amber-200 shadow-lg hover:shadow-xl hover:shadow-amber-500/10 hover:border-amber-400 transition-all duration-300 hover:-translate-y-1 overflow-hidden relative">
-              <div className="absolute inset-0 bg-gradient-to-br from-amber-50/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-              <div className="relative">
-                <div className="w-16 h-16 bg-gradient-to-br from-amber-500 to-amber-600 rounded-2xl flex items-center justify-center mb-6 shadow-lg shadow-amber-500/30 group-hover:scale-105 transition-transform">
-                  <Truck size={30} className="text-white" />
-                </div>
-                <h3 className="text-xl md:text-2xl font-bold text-gray-900 mb-3">Moving Sale Drop</h3>
-                <p className="text-gray-600 mb-6">
-                  Sell everything at once when you&apos;re moving. Get featured placement and reach more buyers.
-                </p>
-                <ul className="space-y-3 mb-6">
-                  {["Unlimited items", "Featured placement in feeds", "Dedicated sale page", "Priority support"].map((item, i) => (
-                    <li key={i} className="flex items-center gap-2 text-sm text-gray-700">
-                      <Check size={18} className="text-amber-500 flex-shrink-0" />
-                      {item}
-                    </li>
-                  ))}
-                </ul>
-                <button
-                  onClick={() => goMovingAuth("signup")}
-                  className="w-full bg-amber-500 text-white py-4 rounded-2xl font-semibold hover:bg-amber-600 transition-all shadow-md hover:shadow-lg"
-                >
-                  Plan Your Moving Sale
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Why sellers love DropYard */}
-      <section className="py-12 px-4 md:px-[5%] lg:px-[10%] bg-gradient-to-b from-gray-50 to-white">
-        <div className="max-w-6xl mx-auto">
-          <div className="text-center mb-10">
-            <span className="inline-block text-amber-600 font-semibold text-sm uppercase tracking-wider mb-2">The perks</span>
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900">Why sellers love DropYard</h2>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {[
-              { icon: "⚡", title: "Sell Fast", desc: "Items sell quickly during weekend Drops" },
-              { icon: "🏠", title: "Local Only", desc: "Buyers come to you—no shipping hassle" },
-              { icon: "💵", title: "Keep More", desc: "No fees on your first 10 items each month" },
-              { icon: "🛡️", title: "Safe & Easy", desc: "Verified neighbors, clear pickup windows" },
-            ].map((benefit, i) => (
-              <div
-                key={i}
-                className="group bg-white/90 backdrop-blur-sm rounded-2xl p-6 border border-gray-100 shadow-lg hover:shadow-xl hover:shadow-amber-500/5 hover:-translate-y-1 transition-all duration-300 text-center"
-              >
-                <div className="text-4xl mb-3 transition-transform duration-300 group-hover:scale-110">{benefit.icon}</div>
-                <h3 className="font-bold text-gray-900 mb-2">{benefit.title}</h3>
-                <p className="text-sm text-gray-600">{benefit.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* CTA */}
-      <section className="relative py-12 px-4 overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-amber-500 via-amber-600 to-amber-700" />
-        <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(ellipse_at_top_left,_var(--tw-gradient-stops))] from-emerald-400/20 via-transparent to-transparent" />
-        <div className="absolute bottom-0 right-0 w-96 h-96 bg-amber-400/20 rounded-full blur-3xl" />
-        <div className="relative max-w-2xl mx-auto text-center">
-          <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">Ready to start selling?</h2>
-          <p className="text-amber-100 text-lg mb-8">Join DropYard and turn your unused items into cash.</p>
-          <button
-            onClick={() => goSellerAuth("signup")}
-            className="inline-flex items-center justify-center gap-2 bg-white text-amber-600 px-10 py-4 rounded-2xl font-bold hover:bg-amber-50 transition-all shadow-xl hover:shadow-2xl hover:-translate-y-1"
-          >
-            Get Started
-            <ChevronRight size={22} />
-          </button>
-        </div>
-      </section>
-    </div>
-  );
-}
 
 export function Footer({
   goBuyerAuth,
@@ -1420,10 +1058,11 @@ export function Footer({
       <div className="max-w-7xl mx-auto px-4 relative z-10">
         <div className="grid grid-cols-2 md:grid-cols-5 gap-8 md:gap-10 mb-10">
           <div className="col-span-2 md:col-span-1">
-            <div className="flex items-center gap-3 mb-1">
-              <DropYardLogo size="large" />
+            <div className="flex items-center gap-3 mb-1 -mt-8 -ml-10">
+              {/* Footer uses Logo_1.png — icon + wordmark, no tagline. Negative ml compensates for whitespace baked into the PNG. */}
+              <img src="/Logo_1.png" alt="DropYard" className="h-28 w-auto object-contain" />
             </div>
-            <p className="text-slate-300 text-sm leading-relaxed max-w-xs">
+            <p className="text-slate-300 text-[13px] leading-relaxed max-w-xs -mt-4">
               DropYard brings back the simplicity of yard sales—without the hassle of setting up in your driveway.
             </p>
             <div className="flex items-center gap-3 mt-5">
@@ -1445,254 +1084,50 @@ export function Footer({
             </div>
           </div>
           <div>
-            <h4 className="font-bold mb-4 text-emerald-400 text-sm uppercase tracking-wider">Discover</h4>
+            <h4 className="font-bold mb-4 text-emerald-400 text-[13px] uppercase tracking-wider">Discover</h4>
             <div className="flex flex-col gap-3">
-              <button onClick={() => setPage("howitworks")} className="inline-block w-fit cursor-pointer text-left text-sm font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-emerald-300 hover:font-bold">How it Works</button>
-              <button onClick={() => setPage("buyers")} className="inline-block w-fit cursor-pointer text-left text-sm font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-emerald-300 hover:font-bold">Browse Items</button>
-              <button onClick={() => setPage("buyers")} className="inline-block w-fit cursor-pointer text-left text-sm font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-emerald-300 hover:font-bold">For Buyers</button>
-              <button onClick={() => setPage("sellers")} className="inline-block w-fit cursor-pointer text-left text-sm font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-emerald-300 hover:font-bold">For Sellers</button>
+              <button onClick={() => setPage("howitworks")} className="inline-block w-fit cursor-pointer text-left text-[13px] font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-emerald-300 hover:font-bold">How it Works</button>
+              <button onClick={() => setPage("buyers")} className="inline-block w-fit cursor-pointer text-left text-[13px] font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-emerald-300 hover:font-bold">Browse Items</button>
+              <button onClick={() => setPage("buyers")} className="inline-block w-fit cursor-pointer text-left text-[13px] font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-emerald-300 hover:font-bold">For Buyers</button>
+              <button onClick={() => setPage("sellers")} className="inline-block w-fit cursor-pointer text-left text-[13px] font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-emerald-300 hover:font-bold">For Sellers</button>
             </div>
           </div>
           <div>
-            <h4 className="font-bold mb-4 text-amber-400 text-sm uppercase tracking-wider">For Sellers</h4>
+            <h4 className="font-bold mb-4 text-amber-400 text-[13px] uppercase tracking-wider">For Sellers</h4>
             <div className="flex flex-col gap-3">
-              <button onClick={() => goSellerAuth("signup")} className="inline-block w-fit cursor-pointer text-left text-sm font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-amber-300 hover:font-bold">Weekly Drop</button>
-              <button onClick={() => goSellerAuth("signup")} className="inline-block w-fit cursor-pointer text-left text-sm font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-amber-300 hover:font-bold">The Shelf</button>
-              <button className="inline-block w-fit cursor-pointer text-left text-sm font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-amber-300 hover:font-bold">Seller FAQ</button>
+              <button onClick={() => goSellerAuth("signup")} className="inline-block w-fit cursor-pointer text-left text-[13px] font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-amber-300 hover:font-bold">Weekly Drop</button>
+              <button onClick={() => goSellerAuth("signup")} className="inline-block w-fit cursor-pointer text-left text-[13px] font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-amber-300 hover:font-bold">The Shelf</button>
             </div>
           </div>
           <div>
-            <h4 className="font-bold mb-4 text-emerald-400 text-sm uppercase tracking-wider">Company</h4>
+            <h4 className="font-bold mb-4 text-emerald-400 text-[13px] uppercase tracking-wider">Company</h4>
             <div className="flex flex-col gap-3">
-              <button onClick={() => setPage("about")} className="inline-block w-fit cursor-pointer text-left text-sm font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-emerald-300 hover:font-bold">About Us</button>
-              <button onClick={() => setPage("contact")} className="inline-block w-fit cursor-pointer text-left text-sm font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-emerald-300 hover:font-bold">Contact Us</button>
-              <button className="inline-block w-fit cursor-pointer text-left text-sm font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-emerald-300 hover:font-bold">FAQ</button>
-              <button className="inline-block w-fit cursor-pointer text-left text-sm font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-emerald-300 hover:font-bold">Community Guidelines</button>
-              <button className="inline-block w-fit cursor-pointer text-left text-sm font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-emerald-300 hover:font-bold">Privacy Policy</button>
+              <a href="/about" className="inline-block w-fit cursor-pointer text-left text-[13px] font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-emerald-300 hover:font-bold">About Us</a>
+              <a href="/contact" className="inline-block w-fit cursor-pointer text-left text-[13px] font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-emerald-300 hover:font-bold">Contact Us</a>
+              <a href="/faq" className="inline-block w-fit cursor-pointer text-left text-[13px] font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-emerald-300 hover:font-bold">FAQ</a>
+              <a href="/community-guidelines" className="inline-block w-fit cursor-pointer text-left text-[13px] font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-emerald-300 hover:font-bold">Community Guidelines</a>
+              <a href="/privacy-policy" className="inline-block w-fit cursor-pointer text-left text-[13px] font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-emerald-300 hover:font-bold">Privacy Policy</a>
             </div>
           </div>
           <div>
-            <h4 className="font-bold mb-4 text-emerald-400 text-sm uppercase tracking-wider">Join Free</h4>
+            <h4 className="font-bold mb-4 text-emerald-400 text-[13px] uppercase tracking-wider">Join Free</h4>
             <div className="flex flex-col gap-3">
-              <button onClick={() => goBuyerAuth("signup")} className="inline-block w-fit cursor-pointer text-left text-sm font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-white hover:font-bold">Sign up</button>
-              <button onClick={() => goBuyerAuth("login")} className="inline-block w-fit cursor-pointer text-left text-sm font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-white hover:font-bold">Log in</button>
-              <button className="inline-block w-fit cursor-pointer text-left text-sm font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-white hover:font-bold">Help Center</button>
+              <button onClick={() => goBuyerAuth("signup")} className="inline-block w-fit cursor-pointer text-left text-[13px] font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-white hover:font-bold">Sign up</button>
+              <button onClick={() => goBuyerAuth("login")} className="inline-block w-fit cursor-pointer text-left text-[13px] font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-white hover:font-bold">Log in</button>
+              <a href="/help-center" className="inline-block w-fit cursor-pointer text-left text-[13px] font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-white hover:font-bold">Help Center</a>
             </div>
           </div>
         </div>
 
         <div className="border-t border-slate-700/80 pt-6 flex flex-col md:flex-row items-center justify-between gap-4">
-          <p className="text-slate-400 text-sm">© 2026 DropYard. All rights reserved.</p>
-          <div className="flex items-center gap-6 text-sm">
-            <span className="inline-block cursor-pointer text-slate-400 underline-offset-4 decoration-2 decoration-emerald-400 transition-all duration-300 ease-out hover:text-white hover:underline">Privacy Policy</span>
-            <span className="inline-block cursor-pointer text-slate-400 underline-offset-4 decoration-2 decoration-amber-400 transition-all duration-300 ease-out hover:text-white hover:underline">Terms of Service</span>
-            <span className="inline-block cursor-pointer text-slate-400 underline-offset-4 decoration-2 decoration-emerald-400 transition-all duration-300 ease-out hover:text-white hover:underline">Contact</span>
+          <p className="text-slate-400 text-[13px]">© 2026 DropYard. All rights reserved.</p>
+          <div className="flex items-center gap-6 text-[13px]">
+            <a href="/privacy-policy" className="inline-block cursor-pointer text-slate-400 underline-offset-4 decoration-2 decoration-emerald-400 transition-all duration-300 ease-out hover:text-white hover:underline">Privacy Policy</a>
+            <a href="/terms-of-service" className="inline-block cursor-pointer text-slate-400 underline-offset-4 decoration-2 decoration-amber-400 transition-all duration-300 ease-out hover:text-white hover:underline">Terms of Service</a>
+            <a href="/contact" className="inline-block cursor-pointer text-slate-400 underline-offset-4 decoration-2 decoration-emerald-400 transition-all duration-300 ease-out hover:text-white hover:underline">Contact</a>
           </div>
         </div>
       </div>
     </footer>
   );
 }
-
-export function HowItWorksPage({
-  goBuyerAuth,
-  goSellerAuth,
-  setPage,
-}: {
-  goBuyerAuth: (mode?: "signup" | "login") => void;
-  goSellerAuth: (mode?: "signup" | "login") => void;
-  setPage: (p: string) => void;
-}) {
-  return (
-    <div>
-      <section className="pt-6 md:pt-8 pb-8 md:pb-12 bg-gradient-to-br from-emerald-50 via-white to-amber-50">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="text-center mb-6">
-            <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">How It Works</h1>
-            <p className="text-xl text-gray-600 max-w-2xl mx-auto">A simple weekly rhythm to keep value local</p>
-          </div>
-
-          <div className="max-w-4xl mx-auto">
-            <div className="bg-white rounded-3xl overflow-hidden shadow-xl border border-gray-100 ring-1 ring-black/5 hover:shadow-2xl transition-shadow duration-300">
-              {/* Header */}
-              <div className="grid grid-cols-5 md:grid-cols-12 bg-gradient-to-r from-emerald-600 via-emerald-700 to-teal-700 text-white">
-                <div className="col-span-2 md:col-span-3 px-4 md:px-6 py-4 font-semibold text-sm md:text-base tracking-wide uppercase">Day</div>
-                <div className="col-span-3 md:col-span-9 px-4 md:px-6 py-4 font-semibold text-sm md:text-base tracking-wide uppercase">
-                  What Happens
-                </div>
-              </div>
-
-              {/* Row 1 - Monday-Wednesday */}
-              <div className="grid grid-cols-5 md:grid-cols-12 border-b border-gray-100 hover:bg-blue-50/50 transition-all duration-200 group border-l-4 border-l-blue-400">
-                <div className="col-span-2 md:col-span-3 px-4 md:px-6 py-4 md:py-5 font-semibold text-gray-900 text-xs md:text-base flex items-center group-hover:text-blue-800 transition-colors">
-                  Monday–Wednesday
-                </div>
-                <div className="col-span-3 md:col-span-9 px-4 md:px-6 py-4 md:py-5">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center text-xl flex-shrink-0 group-hover:scale-110 transition-transform duration-200 shadow-sm">
-                      📦
-                    </div>
-                    <div>
-                      <div className="font-semibold text-gray-900 text-sm md:text-base">Sellers upload items</div>
-                      <div className="text-xs md:text-sm text-blue-700 font-medium">Submission window</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Row 2 - Thursday */}
-              <div className="grid grid-cols-5 md:grid-cols-12 border-b border-gray-100 hover:bg-purple-50/50 transition-all duration-200 group border-l-4 border-l-purple-400">
-                <div className="col-span-2 md:col-span-3 px-4 md:px-6 py-4 md:py-5 font-semibold text-gray-900 text-xs md:text-base flex items-center group-hover:text-purple-800 transition-colors">
-                  Thursday
-                </div>
-                <div className="col-span-3 md:col-span-9 px-4 md:px-6 py-4 md:py-5">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center text-xl flex-shrink-0 group-hover:scale-110 transition-transform duration-200 shadow-sm">
-                      👀
-                    </div>
-                    <div>
-                      <div className="font-semibold text-gray-900 text-sm md:text-base">
-                        Submission closes, items enter &quot;Preview&quot;
-                      </div>
-                      <div className="text-xs md:text-sm text-purple-700 font-medium">Browse begins</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Row 3 - Thursday-Friday */}
-              <div className="grid grid-cols-5 md:grid-cols-12 border-b border-gray-100 hover:bg-purple-50/50 transition-all duration-200 group border-l-4 border-l-purple-400">
-                <div className="col-span-2 md:col-span-3 px-4 md:px-6 py-4 md:py-5 font-semibold text-gray-900 text-xs md:text-base flex items-center group-hover:text-purple-800 transition-colors">
-                  Thursday–Friday
-                </div>
-                <div className="col-span-3 md:col-span-9 px-4 md:px-6 py-4 md:py-5">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center text-xl flex-shrink-0 group-hover:scale-110 transition-transform duration-200 shadow-sm">
-                      💜
-                    </div>
-                    <div>
-                      <div className="font-semibold text-gray-900 text-sm md:text-base">
-                        Buyers browse, save favorites, get alerts
-                      </div>
-                      <div className="text-xs md:text-sm text-purple-700 font-medium">Preview mode</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Row 4 - Saturday 8am - THE MAIN EVENT */}
-              <div className="grid grid-cols-5 md:grid-cols-12 border-b border-gray-100 bg-gradient-to-r from-emerald-50 via-amber-50/80 to-emerald-50 border-l-4 border-l-amber-500 shadow-inner relative overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-r from-amber-200/10 to-emerald-200/10" />
-                <div className="col-span-2 md:col-span-3 px-4 md:px-6 py-4 md:py-5 font-bold text-emerald-800 text-xs md:text-base flex items-center relative z-10">
-                  Saturday 8am
-                </div>
-                <div className="col-span-3 md:col-span-9 px-4 md:px-6 py-4 md:py-5 relative z-10">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 bg-amber-200 rounded-xl flex items-center justify-center text-xl flex-shrink-0 ring-2 ring-amber-400 ring-offset-2 shadow-md animate-pulse">
-                      🔔
-                    </div>
-                    <div>
-                      <div className="font-bold text-emerald-800 text-base md:text-lg flex items-center gap-2">
-                        DROP GOES LIVE—claiming opens
-                        <span className="inline-flex h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
-                      </div>
-                      <div className="text-xs md:text-sm text-emerald-700 font-semibold">The main event!</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Row 5 - Saturday-Sunday */}
-              <div className="grid grid-cols-5 md:grid-cols-12 border-b border-gray-100 hover:bg-emerald-50/50 transition-all duration-200 group border-l-4 border-l-emerald-500">
-                <div className="col-span-2 md:col-span-3 px-4 md:px-6 py-4 md:py-5 font-semibold text-gray-900 text-xs md:text-base flex items-center group-hover:text-emerald-800 transition-colors">
-                  Saturday–Sunday
-                </div>
-                <div className="col-span-3 md:col-span-9 px-4 md:px-6 py-4 md:py-5">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center text-xl flex-shrink-0 group-hover:scale-110 transition-transform duration-200 shadow-sm">
-                      🛒
-                    </div>
-                    <div>
-                      <div className="font-semibold text-gray-900 text-sm md:text-base">
-                        48-hour claim & pickup window
-                      </div>
-                      <div className="text-xs md:text-sm text-emerald-700 font-medium">Claim items, coordinate pickup</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Row 6 - Sunday 8pm */}
-              <div className="grid grid-cols-5 md:grid-cols-12 hover:bg-gray-50 transition-all duration-200 group border-l-4 border-l-gray-300">
-                <div className="col-span-2 md:col-span-3 px-4 md:px-6 py-4 md:py-5 font-semibold text-gray-900 text-xs md:text-base flex items-center group-hover:text-gray-700 transition-colors">
-                  Sunday 8pm
-                </div>
-                <div className="col-span-3 md:col-span-9 px-4 md:px-6 py-4 md:py-5">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 bg-gray-100 rounded-xl flex items-center justify-center text-xl flex-shrink-0 group-hover:scale-110 transition-transform duration-200 shadow-sm">
-                      🔒
-                    </div>
-                    <div>
-                      <div className="font-semibold text-gray-900 text-sm md:text-base">
-                        Drop closes, unclaimed items return to sellers
-                      </div>
-                      <div className="text-xs md:text-sm text-gray-600 font-medium">Reset for next week</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Legend */}
-            <div className="mt-8 flex justify-center">
-              <div className="flex items-center gap-2 md:gap-3 text-xs flex-wrap justify-center">
-                <span className="px-3 md:px-4 py-2 bg-blue-100 text-blue-700 rounded-full font-medium hover:bg-blue-200 transition-colors cursor-default">Submit</span>
-                <ChevronRight size={16} className="text-blue-300" />
-                <span className="px-3 md:px-4 py-2 bg-purple-100 text-purple-700 rounded-full font-medium hover:bg-purple-200 transition-colors cursor-default">
-                  Preview
-                </span>
-                <ChevronRight size={16} className="text-purple-300" />
-                <span className="px-3 md:px-4 py-2 bg-emerald-100 text-emerald-700 rounded-full font-medium flex items-center gap-1.5 hover:bg-emerald-200 transition-colors cursor-default border border-emerald-200">
-                  <span className="text-amber-500">🔔</span> Live Drop
-                </span>
-                <ChevronRight size={16} className="text-gray-300" />
-                <span className="px-3 md:px-4 py-2 bg-gray-100 text-gray-600 rounded-full font-medium hover:bg-gray-200 transition-colors cursor-default">Close</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="py-8 md:py-12 bg-white">
-        <div className="max-w-4xl mx-auto px-4 text-center">
-          <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-6">Ready to join the next Drop?</h2>
-          <p className="text-lg text-gray-600 mb-10">
-            Whether you&apos;re buying or selling, it only takes a minute to get started.
-          </p>
-          <div className="flex flex-col sm:flex-row justify-center gap-4">
-            <button
-              onClick={() => goBuyerAuth("signup")}
-              className="bg-emerald-700 text-white px-8 py-4 rounded-full font-semibold hover:bg-emerald-800 transition-colors flex items-center justify-center gap-2"
-            >
-              Browse as Buyer
-              <ArrowRight size={18} />
-            </button>
-            <button
-              onClick={() => goSellerAuth("signup")}
-              className="bg-amber-500 text-white px-8 py-4 rounded-full font-semibold hover:bg-amber-600 transition-colors flex items-center justify-center gap-2"
-            >
-              Become a Seller
-              <ArrowRight size={18} />
-            </button>
-          </div>
-        </div>
-      </section>
-    </div>
-  );
-}
-
-// AuthFlow and SuccessScreen removed - auth is handled by /join page
-
-// ============================================================================
-// SOCIAL SIDEBAR
-// ============================================================================
