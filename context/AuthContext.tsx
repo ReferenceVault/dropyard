@@ -12,6 +12,8 @@ import { apiRequest } from "@/lib/api";
 export interface AuthUser {
   id: string;
   name: string;
+  firstName?: string | null;
+  lastName?: string | null;
   email: string;
   phone?: string;
   role: string;
@@ -20,6 +22,10 @@ export interface AuthUser {
   zone?: string;
   buyerOnboardingDone: boolean;
   sellerOnboardingDone: boolean;
+  // True when the user has a passwordHash set. Used by Settings to choose
+  // between "Set password" and "Change password".
+  hasPassword?: boolean;
+  createdAt?: string;
 }
 
 interface AuthState {
@@ -29,7 +35,13 @@ interface AuthState {
 }
 
 interface AuthContextValue extends AuthState {
-  signup: (name: string, email: string, password: string, phone?: string) => Promise<AuthUser>;
+  signup: (
+    firstName: string,
+    lastName: string,
+    email: string,
+    password: string,
+    phone?: string
+  ) => Promise<AuthUser>;
   signin: (email: string, password: string) => Promise<AuthUser>;
   /** Google Identity Services JWT (`credential` from GoogleLogin) */
   signInWithGoogle: (credential: string) => Promise<AuthUser>;
@@ -70,14 +82,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signup = useCallback(async (
-    name: string,
+    firstName: string,
+    lastName: string,
     email: string,
     password: string,
     phone?: string
   ): Promise<AuthUser> => {
     const data = await apiRequest<{ user: AuthUser; accessToken: string; refreshToken: string }>(
       '/api/auth/signup',
-      { method: 'POST', body: JSON.stringify({ name, email, password, phone }) }
+      { method: 'POST', body: JSON.stringify({ firstName, lastName, email, password, phone }) }
     );
     localStorage.setItem(ACCESS_TOKEN_KEY, data.accessToken);
     localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
@@ -123,7 +136,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem(ACCESS_TOKEN_KEY);
     localStorage.removeItem(REFRESH_TOKEN_KEY);
     setState({ user: null, accessToken: null, loading: false });
-    window.location.href = '/join';
+    // Send admins back to the admin login, everyone else to /join.
+    const target = typeof window !== 'undefined' && window.location.pathname.startsWith('/admin')
+      ? '/admin/login'
+      : '/join';
+    window.location.href = target;
   }, []);
 
   return (

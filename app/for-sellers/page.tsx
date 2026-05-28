@@ -5,12 +5,13 @@ import { useRouter } from "next/navigation";
 import {
   Sparkles, ArrowRight, MessageCircle, Calendar, Eye,
   Tag, CheckCircle, Upload, Check, DollarSign, Zap,
-  MapPin, Package,
+  MapPin, Package, Mail,
 } from "lucide-react";
 import SellingStepsSection from "@/components/SellingStepsSection";
 import SellingWaysSection from "@/components/SellingWaysSection";
 import SellerStatsSection from "@/components/SellerStatsSection";
 import SellerCTASection from "@/components/SellerCTASection";
+import { submitSubmission, isValidEmail } from "@/lib/submissions";
 
 // DropYard theme colors
 const C = {
@@ -25,6 +26,34 @@ const C = {
 export default function ForSellersPage() {
   const router = useRouter();
   const goJoin = () => router.push("/join?mode=signup");
+
+  // AI Seller waitlist (inline form replacing the old "Notify Me When Available" button).
+  const [aiEmail, setAiEmail] = useState("");
+  const [aiSubmitting, setAiSubmitting] = useState(false);
+  const [aiSubmitted, setAiSubmitted] = useState(false);
+  const [aiError, setAiError] = useState("");
+
+  const submitAiWaitlist = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isValidEmail(aiEmail)) {
+      setAiError("Enter a valid email address.");
+      return;
+    }
+    setAiSubmitting(true);
+    setAiError("");
+    try {
+      await submitSubmission({
+        type: "SELLER_AI_WAITLIST",
+        source: "for-sellers-ai-waitlist",
+        payload: { email: aiEmail.trim() },
+      });
+      setAiSubmitted(true);
+    } catch (err) {
+      setAiError(err instanceof Error ? err.message : "Could not save your spot. Try again.");
+    } finally {
+      setAiSubmitting(false);
+    }
+  };
 
   return (
     <>
@@ -179,10 +208,42 @@ export default function ForSellersPage() {
                     </div>
                   ))}
                 </div>
-                <button onClick={goJoin} style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "14px 28px", borderRadius: 50, border: "none", cursor: "pointer", fontSize: 15, fontWeight: 700, background: `linear-gradient(135deg,${C.ai},#6D28D9)`, color: "#fff", boxShadow: `0 6px 24px ${C.ai}30` }}>
-                  Notify Me When Available <ArrowRight size={16} />
-                </button>
-                <p style={{ fontSize: 11, color: "#94a3b8", marginTop: 8 }}>Then $4.99/month for unlimited AI listings</p>
+                {aiSubmitted ? (
+                  <div style={{ display: "inline-flex", alignItems: "center", gap: 10, padding: "12px 20px", borderRadius: 14, background: C.aiLight, border: `1px solid ${C.aiBorder}` }}>
+                    <CheckCircle size={18} style={{ color: C.ai }} />
+                    <div>
+                      <p style={{ fontSize: 13, fontWeight: 700, color: C.ai }}>You&apos;re on the AI Seller waitlist!</p>
+                      <p style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>We&apos;ll email you when it goes live.</p>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <form onSubmit={submitAiWaitlist} style={{ display: "flex", flexWrap: "wrap", alignItems: "stretch", gap: 8, maxWidth: 460 }}>
+                      <div style={{ position: "relative", flex: "1 1 220px", minWidth: 220 }}>
+                        <Mail size={15} style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "#94a3b8", pointerEvents: "none" }} />
+                        <input
+                          type="email"
+                          value={aiEmail}
+                          onChange={(e) => { setAiEmail(e.target.value); if (aiError) setAiError(""); }}
+                          placeholder="you@email.com"
+                          disabled={aiSubmitting}
+                          style={{ width: "100%", padding: "13px 14px 13px 38px", borderRadius: 14, border: "1px solid #e2e8f0", background: "#fff", fontSize: 13, color: "#0f172a", outline: "none" }}
+                        />
+                      </div>
+                      <button
+                        type="submit"
+                        disabled={aiSubmitting}
+                        style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "13px 22px", borderRadius: 14, border: "none", cursor: aiSubmitting ? "not-allowed" : "pointer", fontSize: 14, fontWeight: 700, background: `linear-gradient(135deg,${C.ai},#6D28D9)`, color: "#fff", boxShadow: `0 6px 24px ${C.ai}30`, opacity: aiSubmitting ? 0.7 : 1 }}
+                      >
+                        {aiSubmitting ? "Saving..." : <>Notify Me <ArrowRight size={15} /></>}
+                      </button>
+                    </form>
+                    {aiError && (
+                      <p style={{ fontSize: 12, color: "#dc2626", marginTop: 8 }}>{aiError}</p>
+                    )}
+                    <p style={{ fontSize: 11, color: "#94a3b8", marginTop: 8 }}>Then $4.99/month for unlimited AI listings</p>
+                  </>
+                )}
               </div>
 
               {/* Chat simulation */}

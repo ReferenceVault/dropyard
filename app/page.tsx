@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useRef } from "react";
 import DynamicDropCard from "@/components/previews/DynamicDropCard";
+import { submitSubmission, isValidEmail } from "@/lib/submissions";
 import DifferentMarketplaceSection from "@/components/DifferentMarketplaceSection";
 import EarlyAccessSection from "@/components/EarlyAccessSection";
 import SellingWaysSection from "@/components/SellingWaysSection";
@@ -355,7 +356,40 @@ function NeighbourhoodWaitlistSection() {
   const [selectedArea, setSelectedArea] = useState("Kanata");
   const [email, setEmail] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
   const selected = COMING_SOON_HOODS.find((n) => n.name === selectedArea);
+
+  // Reset success state when the user picks a different neighbourhood.
+  useEffect(() => {
+    setSubmitted(false);
+    setError("");
+  }, [selectedArea]);
+
+  const handleWaitlistSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isValidEmail(email)) {
+      setError("Enter a valid email address.");
+      return;
+    }
+    setSubmitting(true);
+    setError("");
+    try {
+      await submitSubmission({
+        type: "NEIGHBOURHOOD_WAITLIST",
+        source: "homepage-hero-waitlist",
+        payload: {
+          email: email.trim(),
+          neighbourhood: selected?.name,
+        },
+      });
+      setSubmitted(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save your spot. Try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <section className="relative overflow-hidden bg-[#f8faf8] py-6 md:py-8">
@@ -445,23 +479,28 @@ function NeighbourhoodWaitlistSection() {
                 </div>
               </div>
               {!submitted ? (
-                <form className="mt-6 space-y-4" onSubmit={(e) => { e.preventDefault(); if (email) setSubmitted(true); }}>
+                <form className="mt-6 space-y-4" onSubmit={handleWaitlistSubmit}>
                   <label className="block">
                     <span className="mb-2 block text-[13px] font-semibold text-slate-700">Email address</span>
                     <input
                       type="email"
                       value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      onChange={(e) => { setEmail(e.target.value); if (error) setError(""); }}
                       placeholder="you@email.com"
-                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 text-[15px] text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-amber-300 focus:ring-4 focus:ring-amber-100"
+                      disabled={submitting}
+                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 text-[15px] text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-amber-300 focus:ring-4 focus:ring-amber-100 disabled:opacity-60"
                     />
                   </label>
+                  {error && (
+                    <p className="text-[13px] text-rose-600">{error}</p>
+                  )}
                   <button
                     type="submit"
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 py-4 text-[15px] font-semibold text-white transition hover:bg-slate-800"
+                    disabled={submitting}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 py-4 text-[15px] font-semibold text-white transition hover:bg-slate-800 disabled:opacity-60"
                   >
-                    Notify Me
-                    <ArrowRight className="h-4 w-4" />
+                    {submitting ? "Saving your spot..." : "Notify Me"}
+                    {!submitting && <ArrowRight className="h-4 w-4" />}
                   </button>
                 </form>
               ) : (

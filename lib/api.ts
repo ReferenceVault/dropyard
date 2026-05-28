@@ -3,6 +3,22 @@ const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 const ACCESS_TOKEN_KEY  = 'dy_access_token';
 const REFRESH_TOKEN_KEY = 'dy_refresh_token';
 
+// Auth-attempt endpoints — a 401 here means "wrong credentials", NOT
+// "session expired", so we must not blow away tokens or redirect.
+const AUTH_ATTEMPT_PATHS = new Set([
+  '/api/auth/signin',
+  '/api/auth/signup',
+  '/api/auth/google',
+  '/api/auth/refresh',
+]);
+
+// Route the "session expired" redirect to the admin login when the user is
+// already inside the admin area, otherwise to the public /join page.
+function sessionExpiredRedirect(): string {
+  if (typeof window === 'undefined') return '/join';
+  return window.location.pathname.startsWith('/admin') ? '/admin/login' : '/join';
+}
+
 interface ApiOptions extends RequestInit {
   token?: string;
   _isRetry?: boolean; // internal flag — prevent infinite retry loop
@@ -32,8 +48,11 @@ export async function apiRequest<T = unknown>(
 
   let res = await doFetch(path, options);
 
-  // Auto-refresh on 401 (token expired) — one retry only
-  if (res.status === 401 && !options._isRetry) {
+  const isAuthAttempt = AUTH_ATTEMPT_PATHS.has(path);
+
+  // Auto-refresh on 401 (token expired) — one retry only. Skip for auth-attempt
+  // endpoints where 401 means "bad credentials", not "session expired".
+  if (res.status === 401 && !options._isRetry && !isAuthAttempt) {
     const refreshToken = typeof window !== 'undefined'
       ? localStorage.getItem(REFRESH_TOKEN_KEY)
       : null;
@@ -57,7 +76,7 @@ export async function apiRequest<T = unknown>(
           // Refresh token itself is expired — clear session
           localStorage.removeItem(ACCESS_TOKEN_KEY);
           localStorage.removeItem(REFRESH_TOKEN_KEY);
-          window.location.href = '/join';
+          window.location.href = sessionExpiredRedirect();
           throw new Error('Session expired. Please sign in again.');
         }
       } catch (err) {
@@ -70,11 +89,16 @@ export async function apiRequest<T = unknown>(
   const data = await res.json();
 
   if (!res.ok) {
-    // If still 401 after refresh attempt, session is gone — redirect to sign in
+    // 401 from an auth attempt (signin/signup/google) — surface the server
+    // message to the form. Do NOT clear tokens or redirect.
+    if (res.status === 401 && isAuthAttempt) {
+      throw new Error(data.error || 'Invalid email or password.');
+    }
+    // 401 from an authenticated endpoint after refresh failed — session is gone.
     if (res.status === 401 && typeof window !== 'undefined') {
       localStorage.removeItem(ACCESS_TOKEN_KEY);
       localStorage.removeItem(REFRESH_TOKEN_KEY);
-      window.location.href = '/join';
+      window.location.href = sessionExpiredRedirect();
       throw new Error('Session expired. Please sign in again.');
     }
     throw new Error(data.error || 'Something went wrong');
