@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { DropYardLogo, DropYardWordmark } from "../page";
 import DropYardSellerDashboard from "@/components/previews/DropYard_SellerDashboard";
@@ -163,17 +163,23 @@ function BuyerDashboardContent() {
   const [activeSellerTab, setActiveSellerTab] =
     useState<SellerTab>("overview");
 
-  // Seed mode + onboarding flags from authenticated user
+  // Seed mode + onboarding flags from authenticated user.
+  // Mode/dropType are initialized ONCE per user identity — otherwise
+  // refreshUser() after a profile save would re-run setMode() and bounce
+  // BOTH-role users back to the buyer dashboard. Onboarding flags can change
+  // during the session (e.g. completing onboarding), so they sync on every
+  // user update.
+  const modeInitForUserIdRef = useRef<string | null>(null);
   useEffect(() => {
     if (!user) return;
-    // Default landing: Buyer for everyone except pure sellers.
-    // BOTH-role users land on Buyer and can flip to Seller via the role toggle.
-    const isOnlySeller = user.role === "SELLER";
-    setMode(isOnlySeller ? "seller" : "buyer");
+    if (modeInitForUserIdRef.current !== user.id) {
+      modeInitForUserIdRef.current = user.id;
+      const isOnlySeller = user.role === "SELLER";
+      setMode(isOnlySeller ? "seller" : "buyer");
+      if (user.role === "BOTH") setDropType("moving");
+    }
     setSellerOnboardingComplete(user.sellerOnboardingDone);
     setBuyerOnboardingComplete(user.buyerOnboardingDone);
-    // Moving Sale sellers can list anytime — not gated by weekly drop phase
-    if (user.role === "BOTH") setDropType("moving");
   }, [user, setMode, setSellerOnboardingComplete, setBuyerOnboardingComplete, setDropType]);
   const [activeBuyerTab, setActiveBuyerTab] = useState<BuyerTab>("discover");
   const [condition, setCondition] = useState("Excellent");

@@ -6,7 +6,13 @@ import { GlobalFooter } from "./GlobalFooter";
 
 export function GlobalLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const isDashboard = pathname === "/buyer" || pathname.startsWith("/admin") || pathname.startsWith("/preview");
+  // Authed/portal routes render their own shell — the public header + footer
+  // should NOT appear on top of them.
+  const isDashboard =
+    pathname.startsWith("/buyer") ||
+    pathname.startsWith("/seller") ||
+    pathname.startsWith("/admin") ||
+    pathname.startsWith("/preview");
 
   return (
     <div className="min-h-screen flex flex-col">

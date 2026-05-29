@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { apiRequest } from "@/lib/api";
 import { useSocketEvent } from "@/context/SocketContext";
+import { useAuth } from "@/context/AuthContext";
 import {
   Search, Heart, Clock, MapPin, Package, ChevronRight, ChevronDown, ChevronUp,
   Check, X, User, ShoppingBag, MessageSquare, Sparkles, Truck, Calendar,
@@ -12,7 +13,12 @@ import {
   DollarSign, AlertCircle, CheckCircle, Share2, Award, Leaf,
   Banknote,
   Phone,
-  LogOut
+  LogOut,
+  Lock,
+  KeyRound,
+  Loader2,
+  ShieldCheck,
+  Settings as SettingsIcon
 } from "lucide-react";
 
 // Short relative-time string used in inbox previews ("3h ago"). Mirrors the
@@ -172,7 +178,7 @@ function computeDropState() {
 
 // Avatar with dropdown menu - real user initials and sign-out.
 // Click outside (the invisible overlay) to close.
-function UserMenu({ user, onSignout }) {
+function UserMenu({ user, onSignout, onOpenSettings }) {
   const [open, setOpen] = useState(false);
   const initials = user?.name ? initialsOf(user.name) : "?";
   return (
@@ -209,6 +215,20 @@ function UserMenu({ user, onSignout }) {
               </p>
             </div>
             <button
+              onClick={() => { setOpen(false); onOpenSettings && onOpenSettings(); }}
+              style={{
+                width: "100%", display: "flex", alignItems: "center", gap: 10,
+                padding: "12px 16px", border: "none", background: "transparent",
+                cursor: "pointer", fontFamily: F.head, fontSize: 13, fontWeight: 700,
+                color: C.ink, textAlign: "left",
+                borderBottom: "1px solid " + C.fawn,
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = C.greenMist; }}
+              onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+            >
+              <SettingsIcon size={14}/> Settings
+            </button>
+            <button
               onClick={() => { setOpen(false); onSignout && onSignout(); }}
               style={{
                 width: "100%", display: "flex", alignItems: "center", gap: 10,
@@ -225,6 +245,62 @@ function UserMenu({ user, onSignout }) {
         </>
       )}
     </div>
+  );
+}
+
+// Magical "Switch to Seller" pill: amber-tinted gradient outline, Truck icon,
+// arrow that slides on hover, soft glow underneath, and a quick scale tick.
+function SwitchToSellerButton({ onClick }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        position: "relative",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "8px 14px 8px 12px",
+        borderRadius: 999,
+        border: "1.5px solid " + (hover ? C.amber : C.fawn),
+        background: hover
+          ? "linear-gradient(135deg, " + C.amberMist + " 0%, " + C.paper + " 100%)"
+          : C.paper,
+        cursor: "pointer",
+        fontFamily: F.head,
+        fontSize: 12,
+        fontWeight: 800,
+        color: hover ? C.amberDeep : C.mink,
+        boxShadow: hover
+          ? "0 6px 18px " + C.amber + "33, 0 1px 2px rgba(31,29,25,0.04)"
+          : "0 1px 2px rgba(31,29,25,0.04)",
+        transform: hover ? "translateY(-1px)" : "translateY(0)",
+        transition: "all 200ms cubic-bezier(0.4, 0, 0.2, 1)",
+      }}
+    >
+      {/* Tiny truck tile that animates on hover */}
+      <span style={{
+        width: 22, height: 22, borderRadius: 7,
+        background: hover ? C.amber : C.amberMist,
+        display: "inline-flex", alignItems: "center", justifyContent: "center",
+        boxShadow: hover ? "0 2px 6px " + C.amber + "55" : "none",
+        transition: "all 200ms ease",
+      }}>
+        <Truck size={12} style={{ color: hover ? "#fff" : C.amberDeep }} strokeWidth={2.6}/>
+      </span>
+      <span style={{ letterSpacing: "0.01em" }}>Switch to Seller</span>
+      <ArrowRight
+        size={13}
+        strokeWidth={2.6}
+        style={{
+          color: hover ? C.amberDeep : C.ash,
+          transform: hover ? "translateX(3px)" : "translateX(0)",
+          transition: "transform 200ms ease, color 200ms ease",
+        }}
+      />
+    </button>
   );
 }
 
@@ -266,10 +342,8 @@ function TopBar({ page, setPage, savedCount, claimsCount, onSwitchRole, onReset,
         </nav>
 
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <button onClick={() => onSwitchRole && onSwitchRole()} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 999, border: "1.5px solid " + C.fawn, background: C.paper, fontSize: 12, fontWeight: 700, color: C.mink, cursor: "pointer", fontFamily: F.head }}>
-            Switch to Seller
-          </button>
-          <UserMenu user={user} onSignout={onSignout}/>
+          <SwitchToSellerButton onClick={() => onSwitchRole && onSwitchRole()}/>
+          <UserMenu user={user} onSignout={onSignout} onOpenSettings={() => setPage("settings")}/>
         </div>
       </div>
     </header>
@@ -3447,6 +3521,314 @@ function DiscoverPage({ savedIds, onToggleSave, onSelect, onClaimNow, state, rem
 }
 
 /* ============================================================
+   SETTINGS — native-styled, mirrors the seller pattern but Profile-only.
+   No subscription tab (buyers don't have a paid plan).
+   ============================================================ */
+
+/* Helpers — prefixed BSF_ ("Buyer Settings Form") to avoid any collision. */
+function BSF_Field({ label, helper, children }) {
+  return (
+    <div>
+      <p style={{ fontFamily: F.head, fontSize: 10, fontWeight: 800, color: C.mink, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 6 }}>{label}</p>
+      {children}
+      {helper && <p style={{ fontFamily: F.body, fontSize: 11, color: C.ash, marginTop: 6 }}>{helper}</p>}
+    </div>
+  );
+}
+
+function BSF_Input({ style, ...props }) {
+  return (
+    <input
+      {...props}
+      style={{
+        width: "100%", padding: "10px 14px", borderRadius: 10,
+        border: "1.5px solid " + C.fawn, background: C.paper,
+        fontFamily: F.body, fontSize: 14, fontWeight: 500, color: C.ink,
+        outline: "none", boxSizing: "border-box",
+        ...(props.disabled ? { opacity: 0.75, cursor: "not-allowed" } : {}),
+        ...style,
+      }}
+    />
+  );
+}
+
+function BSF_PrimaryButton({ disabled, loading, children, ...props }) {
+  return (
+    <button
+      {...props}
+      disabled={disabled}
+      style={{
+        display: "inline-flex", alignItems: "center", gap: 7,
+        padding: "10px 20px", borderRadius: 999, border: "none",
+        cursor: disabled ? "not-allowed" : "pointer",
+        fontFamily: F.head, fontSize: 13, fontWeight: 800,
+        background: disabled ? C.fawn : C.green,
+        color: disabled ? C.ash : "#fff",
+        boxShadow: disabled ? "none" : "0 2px 0 " + C.greenDeep,
+        opacity: loading ? 0.7 : 1,
+        transition: "background 150ms ease",
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function BSF_ErrorBanner({ message }) {
+  return (
+    <div style={{ padding: "10px 12px", borderRadius: 10, background: C.claretMist, border: "1px solid " + C.claret + "40", display: "flex", alignItems: "flex-start", gap: 8 }}>
+      <AlertCircle size={14} style={{ color: C.claret, flexShrink: 0, marginTop: 1 }}/>
+      <p style={{ fontFamily: F.body, fontSize: 12, fontWeight: 600, color: C.claret }}>{message}</p>
+    </div>
+  );
+}
+
+function BSF_SavedBadge({ label }) {
+  return (
+    <p style={{ display: "inline-flex", alignItems: "center", gap: 5, fontFamily: F.head, fontSize: 12, fontWeight: 800, color: C.greenDeep }}>
+      <CheckCircle size={13}/> {label}
+    </p>
+  );
+}
+
+function BSF_SuccessBanner({ message, onClose }) {
+  useEffect(() => {
+    if (!message) return;
+    const t = setTimeout(onClose, 2600);
+    return () => clearTimeout(t);
+  }, [message, onClose]);
+  if (!message) return null;
+  return (
+    <div className="fade-in" style={{ position: "sticky", top: 0, zIndex: 30, maxWidth: 1160, margin: "0 auto 16px", padding: "12px 16px", borderRadius: 12, background: C.greenMist, border: "1px solid " + C.green + "55", display: "flex", alignItems: "center", gap: 10, boxShadow: "0 6px 20px rgba(48, 132, 36, 0.12)" }}>
+      <div style={{ width: 28, height: 28, borderRadius: "50%", background: C.green, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        <Check size={15} style={{ color: "#fff" }} strokeWidth={3}/>
+      </div>
+      <p style={{ fontFamily: F.head, fontSize: 13.5, fontWeight: 800, color: C.greenDeep, flex: 1 }}>{message}</p>
+      <button onClick={onClose} aria-label="Dismiss" style={{ width: 26, height: 26, borderRadius: "50%", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: C.greenDeep }}>
+        <X size={14} strokeWidth={2.5}/>
+      </button>
+    </div>
+  );
+}
+
+/* Header — same compact treatment as seller Inventory/History/Messages/Profile */
+function BuyerSettingsHeader() {
+  return (
+    <div className="fade-in" style={{ maxWidth: 1160, margin: "0 auto 14px" }}>
+      <div style={{ padding: "14px 0 10px", position: "relative", marginBottom: 4 }}>
+        <div style={{ position: "absolute", top: 18, right: 0, display: "flex", gap: 6, opacity: 0.5 }}>
+          <span style={{ width: 5, height: 5, borderRadius: "50%", background: C.green }}/>
+          <span style={{ width: 5, height: 5, borderRadius: "50%", background: C.amber }}/>
+          <span style={{ width: 5, height: 5, borderRadius: "50%", background: C.claret }}/>
+        </div>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
+          <div style={{ width: 48, height: 48, borderRadius: 14, background: C.greenMist, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 2, boxShadow: "0 2px 0 " + C.fawn }}>
+            <SettingsIcon size={20} style={{ color: C.greenDeep }} strokeWidth={2.2}/>
+          </div>
+          <div>
+            <h1 style={{ fontFamily: F.head, fontSize: 30, fontWeight: 900, color: C.ink, letterSpacing: "-0.03em", lineHeight: 1.05, marginBottom: 4 }}>Profile</h1>
+            <p style={{ fontFamily: F.body, fontSize: 14, fontWeight: 500, color: C.mink, lineHeight: 1.45, maxWidth: 560 }}>
+              Edit your name and manage your sign-in password.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* Profile + password content. Two cards side-by-side. */
+function BuyerProfileContent({ user, onSuccess }) {
+  const { refreshUser } = useAuth();
+
+  // Profile info state
+  const [firstName, setFirstName] = useState(user?.firstName || "");
+  const [lastName, setLastName] = useState(user?.lastName || "");
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileError, setProfileError] = useState("");
+  const [profileSavedAt, setProfileSavedAt] = useState(null);
+
+  // Password state
+  const hasPassword = user?.hasPassword !== false;
+  const [currentPw, setCurrentPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [confirmPw, setConfirmPw] = useState("");
+  const [savingPw, setSavingPw] = useState(false);
+  const [pwError, setPwError] = useState("");
+  const [pwSavedAt, setPwSavedAt] = useState(null);
+
+  useEffect(() => {
+    setFirstName(user?.firstName || "");
+    setLastName(user?.lastName || "");
+  }, [user?.firstName, user?.lastName]);
+
+  const profileDirty =
+    firstName.trim() !== (user?.firstName || "") ||
+    lastName.trim() !== (user?.lastName || "");
+
+  async function submitProfile(e) {
+    e.preventDefault();
+    if (!firstName.trim() || !lastName.trim()) {
+      setProfileError("First and last name are both required.");
+      return;
+    }
+    setSavingProfile(true); setProfileError("");
+    try {
+      await apiRequest("/api/auth/me/profile", {
+        method: "PATCH",
+        body: JSON.stringify({ firstName: firstName.trim(), lastName: lastName.trim() }),
+      });
+      await refreshUser();
+      setProfileSavedAt(Date.now());
+      setTimeout(() => setProfileSavedAt(null), 2400);
+      onSuccess && onSuccess("Profile updated successfully.");
+    } catch (err) {
+      setProfileError(err instanceof Error ? err.message : "Could not save changes.");
+    } finally {
+      setSavingProfile(false);
+    }
+  }
+
+  async function submitPassword(e) {
+    e.preventDefault();
+    if (newPw.length < 8) { setPwError("Password must be at least 8 characters."); return; }
+    if (newPw !== confirmPw) { setPwError("New password and confirmation do not match."); return; }
+    if (hasPassword && !currentPw) { setPwError("Enter your current password."); return; }
+    setSavingPw(true); setPwError("");
+    try {
+      const path = hasPassword ? "/api/auth/me/change-password" : "/api/auth/me/set-password";
+      const body = hasPassword
+        ? { currentPassword: currentPw, newPassword: newPw }
+        : { newPassword: newPw };
+      const data = await apiRequest(path, { method: "POST", body: JSON.stringify(body) });
+      if (data && data.refreshToken) {
+        localStorage.setItem("dy_refresh_token", data.refreshToken);
+      }
+      await refreshUser();
+      setCurrentPw(""); setNewPw(""); setConfirmPw("");
+      setPwSavedAt(Date.now());
+      setTimeout(() => setPwSavedAt(null), 2400);
+      onSuccess && onSuccess(hasPassword ? "Password updated successfully." : "Password set successfully.");
+    } catch (err) {
+      setPwError(err instanceof Error ? err.message : "Could not update password.");
+    } finally {
+      setSavingPw(false);
+    }
+  }
+
+  const memberSince = user?.createdAt
+    ? new Date(user.createdAt).toLocaleDateString(undefined, { month: "long", year: "numeric" })
+    : "—";
+  const roleLabel = user?.role
+    ? (user.role.charAt(0) + user.role.slice(1).toLowerCase())
+    : "—";
+
+  return (
+    <div style={{ maxWidth: 1160, margin: "0 auto", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+      {/* Profile information */}
+      <form onSubmit={submitProfile} style={{ background: C.paper, border: "1px solid " + C.fawn, borderRadius: 16, padding: 24, display: "flex", flexDirection: "column", gap: 18 }}>
+        <h2 style={{ fontFamily: F.head, fontSize: 16, fontWeight: 800, color: C.ink, letterSpacing: "-0.01em" }}>Profile information</h2>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          <BSF_Field label="First name">
+            <BSF_Input value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="First name" autoComplete="given-name" disabled={savingProfile}/>
+          </BSF_Field>
+          <BSF_Field label="Last name">
+            <BSF_Input value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Last name" autoComplete="family-name" disabled={savingProfile}/>
+          </BSF_Field>
+        </div>
+
+        <BSF_Field label="Email" helper="To change your email, contact info@dropyard.app.">
+          <BSF_Input type="email" value={user?.email || ""} readOnly disabled style={{ background: C.sand, color: C.mink }}/>
+        </BSF_Field>
+
+        <div style={{ background: C.sand, border: "1px solid " + C.fawn, borderRadius: 12, padding: "12px 14px", display: "flex", gap: 28 }}>
+          <div>
+            <p style={{ fontFamily: F.head, fontSize: 10, fontWeight: 800, color: C.ash, letterSpacing: "0.14em", textTransform: "uppercase" }}>Member since</p>
+            <p style={{ fontFamily: F.head, fontSize: 13, fontWeight: 700, color: C.ink, marginTop: 2 }}>{memberSince}</p>
+          </div>
+          <div>
+            <p style={{ fontFamily: F.head, fontSize: 10, fontWeight: 800, color: C.ash, letterSpacing: "0.14em", textTransform: "uppercase" }}>Role</p>
+            <p style={{ fontFamily: F.head, fontSize: 13, fontWeight: 700, color: C.ink, marginTop: 2 }}>{roleLabel}</p>
+          </div>
+          <div>
+            <p style={{ fontFamily: F.head, fontSize: 10, fontWeight: 800, color: C.ash, letterSpacing: "0.14em", textTransform: "uppercase" }}>Neighbourhood</p>
+            <p style={{ fontFamily: F.head, fontSize: 13, fontWeight: 700, color: C.ink, marginTop: 2 }}>{user?.neighborhood || user?.zone || "—"}</p>
+          </div>
+        </div>
+
+        {profileError && <BSF_ErrorBanner message={profileError}/>}
+
+        <div style={{ marginTop: "auto", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, paddingTop: 14, borderTop: "1px solid " + C.fawn }}>
+          {profileSavedAt
+            ? <BSF_SavedBadge label="Changes saved"/>
+            : <p style={{ fontFamily: F.body, fontSize: 12, color: C.ash }}>Save when you&apos;re ready.</p>}
+          <BSF_PrimaryButton type="submit" disabled={!profileDirty || savingProfile} loading={savingProfile}>
+            {savingProfile ? "Saving..." : "Save changes"}
+          </BSF_PrimaryButton>
+        </div>
+      </form>
+
+      {/* Password */}
+      <form onSubmit={submitPassword} style={{ background: C.paper, border: "1px solid " + C.fawn, borderRadius: 16, padding: 24, display: "flex", flexDirection: "column", gap: 18 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <h2 style={{ fontFamily: F.head, fontSize: 16, fontWeight: 800, color: C.ink, letterSpacing: "-0.01em", flex: 1 }}>
+            {hasPassword ? "Change password" : "Set a password"}
+          </h2>
+          {!hasPassword && (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 10px", borderRadius: 999, background: C.amberMist, color: C.amberDeep, fontFamily: F.head, fontSize: 10, fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase" }}>
+              <ShieldCheck size={10}/> Google only
+            </span>
+          )}
+        </div>
+
+        {hasPassword && (
+          <BSF_Field label="Current password">
+            <BSF_Input type="password" value={currentPw} onChange={e => setCurrentPw(e.target.value)} autoComplete="current-password" disabled={savingPw}/>
+          </BSF_Field>
+        )}
+
+        <BSF_Field label="New password">
+          <BSF_Input type="password" value={newPw} onChange={e => setNewPw(e.target.value)} placeholder="At least 8 characters" autoComplete="new-password" disabled={savingPw}/>
+        </BSF_Field>
+
+        <BSF_Field label="Confirm new password">
+          <BSF_Input type="password" value={confirmPw} onChange={e => setConfirmPw(e.target.value)} placeholder="Re-enter new password" autoComplete="new-password" disabled={savingPw}/>
+        </BSF_Field>
+
+        {pwError && <BSF_ErrorBanner message={pwError}/>}
+
+        <div style={{ marginTop: "auto", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, paddingTop: 14, borderTop: "1px solid " + C.fawn }}>
+          {pwSavedAt
+            ? <BSF_SavedBadge label={hasPassword ? "Password updated" : "Password set"}/>
+            : <p style={{ fontFamily: F.body, fontSize: 12, color: C.ash }}>
+                {hasPassword ? "Other devices will be signed out." : "Adds a password so you can sign in with email too."}
+              </p>}
+          <BSF_PrimaryButton
+            type="submit"
+            disabled={savingPw || !newPw || !confirmPw || (hasPassword && !currentPw)}
+            loading={savingPw}
+          >
+            {savingPw ? "Saving..." : (hasPassword ? "Update password" : "Set password")}
+          </BSF_PrimaryButton>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function SettingsPage({ user }) {
+  const [toast, setToast] = useState(null);
+  return (
+    <div>
+      <BSF_SuccessBanner message={toast} onClose={() => setToast(null)}/>
+      <BuyerSettingsHeader/>
+      <BuyerProfileContent user={user} onSuccess={setToast}/>
+    </div>
+  );
+}
+
+/* ============================================================
    MAIN APP
    ============================================================ */
 export default function DropYardBuyerDashboard({
@@ -3520,6 +3902,7 @@ export default function DropYardBuyerDashboard({
               {page === "claims"   && <ClaimsPage claims={claims} setClaims={setClaims} onBrowse={() => setPage("discover")} onGoToMessages={() => setPage("messages")}/>}
               {page === "messages" && <MessagesPage user={user} accessToken={accessToken}/>}
               {page === "history"  && <HistoryPage/>}
+              {page === "settings" && <SettingsPage user={user}/>}
             </>
           )}
         </div>

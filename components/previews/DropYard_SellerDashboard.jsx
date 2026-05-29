@@ -4,6 +4,8 @@ import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { apiRequest, uploadItemPhoto } from "@/lib/api";
 import { useSocketEvent } from "@/context/SocketContext";
+import { useAuth } from "@/context/AuthContext";
+import { submitSubmission, isValidEmail } from "@/lib/submissions";
 import {
   Camera, X, Check, ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Sparkles, Zap,
   MessageCircle, Package, Eye, ArrowRight, User, Clock, Calendar,
@@ -11,7 +13,7 @@ import {
   MessageSquare, Plus, Truck, History, ArrowLeft, Shield, Tag, TrendingDown,
   Home, Heart, Users, Mail, Phone, Info, Lock, CreditCard, Banknote, Upload, RefreshCw,
   Star, Settings, BarChart3, Bell, Award, Leaf, Send, Share2, AlertCircle,
-  Search, CreditCard as CardIcon, LogOut
+  Search, CreditCard as CardIcon, LogOut, Loader2, Menu, ShoppingBag
 } from "lucide-react";
 
 /* ============================================================
@@ -296,7 +298,276 @@ function StatusBadge({ status, size = "sm", label }) {
 }
 
 /* ============================== SIDEBAR ============================== */
-function Sidebar({ activeView, onNav, aiPlan, onSwitchRole }) {
+
+// Magical Seller/Buyer toggle: animated sliding pill with gradient, icons,
+// glow, and a brief switching feedback before the dashboard actually flips.
+function RoleToggle({ onSwitchToBuyer }) {
+  const [switching, setSwitching] = useState(false);
+  const [hoverBuyer, setHoverBuyer] = useState(false);
+
+  function handleBuyerClick() {
+    if (switching) return;
+    // Animate slider over to "Buyer" for ~180ms before triggering the actual
+    // role switch, so the user sees the transition before unmount.
+    setSwitching(true);
+    setTimeout(() => {
+      onSwitchToBuyer && onSwitchToBuyer();
+    }, 220);
+  }
+
+  // Slider sits over the "active" half. Seller is the current dashboard,
+  // so it lives on the left until the user clicks Buyer.
+  const sliderOnRight = switching;
+
+  return (
+    <div style={{
+      position: "relative",
+      display: "flex",
+      padding: 4,
+      borderRadius: 14,
+      background: C.sand,
+      border: "1px solid " + C.fawn,
+      boxShadow: "inset 0 1px 2px rgba(31,29,25,0.06)",
+      overflow: "hidden",
+    }}>
+      {/* Animated slider pill */}
+      <div style={{
+        position: "absolute",
+        top: 4, bottom: 4,
+        left: 4,
+        width: "calc(50% - 4px)",
+        background: sliderOnRight
+          ? "linear-gradient(135deg, " + C.amber + " 0%, " + C.amberDeep + " 100%)"
+          : "linear-gradient(135deg, " + C.green + " 0%, " + C.greenDeep + " 100%)",
+        borderRadius: 10,
+        boxShadow: sliderOnRight
+          ? "0 4px 12px " + C.amber + "55, 0 1px 2px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.18)"
+          : "0 4px 12px " + C.green + "55, 0 1px 2px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.18)",
+        transform: sliderOnRight ? "translateX(100%)" : "translateX(0)",
+        transition: "transform 220ms cubic-bezier(0.4, 0, 0.2, 1), background 220ms ease, box-shadow 220ms ease",
+      }}/>
+
+      {/* SELLER (always the active side while on seller dashboard) */}
+      <button
+        disabled
+        style={{
+          flex: 1,
+          padding: "9px 0",
+          borderRadius: 10,
+          border: "none",
+          background: "transparent",
+          cursor: "default",
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+          fontSize: 12.5,
+          fontWeight: 800,
+          fontFamily: F.head,
+          letterSpacing: "0.02em",
+          color: sliderOnRight ? C.ash : "#fff",
+          position: "relative", zIndex: 1,
+          transition: "color 200ms ease",
+        }}
+      >
+        <Truck size={13} strokeWidth={2.6}/>
+        Seller
+      </button>
+
+      {/* BUYER (clickable — slides the pill, then routes) */}
+      <button
+        onClick={handleBuyerClick}
+        onMouseEnter={() => setHoverBuyer(true)}
+        onMouseLeave={() => setHoverBuyer(false)}
+        disabled={switching}
+        style={{
+          flex: 1,
+          padding: "9px 0",
+          borderRadius: 10,
+          border: "none",
+          background: "transparent",
+          cursor: switching ? "default" : "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+          fontSize: 12.5,
+          fontWeight: 800,
+          fontFamily: F.head,
+          letterSpacing: "0.02em",
+          color: sliderOnRight ? "#fff" : (hoverBuyer ? C.ink : C.mink),
+          position: "relative", zIndex: 1,
+          transition: "color 200ms ease, transform 180ms ease",
+          transform: hoverBuyer && !sliderOnRight ? "scale(1.03)" : "scale(1)",
+        }}
+      >
+        <ShoppingBag size={13} strokeWidth={2.6}/>
+        Buyer
+      </button>
+    </div>
+  );
+}
+
+// Magic nav item: left accent bar with glow on active, sliding chevron on
+// hover, premium icon tile with subtle elevation, smooth transitions.
+// In `collapsed` (rail) mode, renders icon-only with the label in `title`
+// as a native tooltip.
+function SidebarNavItem({ item, active, accent, accentMist, Icon, onClick, showBadge, collapsed = false }) {
+  const [hover, setHover] = useState(false);
+  const bg = active
+    ? accentMist
+    : (hover ? C.sand : "transparent");
+
+  if (collapsed) {
+    return (
+      <button
+        onClick={onClick}
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
+        title={item.label}
+        aria-label={item.label}
+        style={{
+          position: "relative",
+          width: "100%",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          padding: "8px 0",
+          borderRadius: 10,
+          border: "none",
+          cursor: "pointer",
+          marginBottom: 4,
+          background: bg,
+          transition: "background 180ms ease",
+        }}
+      >
+        {active && (
+          <span style={{
+            position: "absolute",
+            left: -2, top: 7, bottom: 7,
+            width: 3,
+            borderRadius: "0 3px 3px 0",
+            background: accent,
+            boxShadow: "0 0 8px " + accent + "80, 0 0 2px " + accent,
+          }}/>
+        )}
+        <span style={{
+          width: 34, height: 34, borderRadius: 9,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          background: active ? accent : (hover ? C.paper : "transparent"),
+          boxShadow: active
+            ? "0 3px 8px " + accent + "44"
+            : (hover ? "0 1px 2px rgba(31,29,25,0.08)" : "none"),
+          transition: "background 180ms ease, box-shadow 180ms ease",
+        }}>
+          <Icon size={16} style={{ color: active ? "#fff" : C.mink }} strokeWidth={2.2}/>
+        </span>
+        {showBadge && (
+          <span style={{
+            position: "absolute",
+            top: 4, right: 6,
+            width: 6, height: 6, borderRadius: "50%",
+            background: C.amberDeep,
+            boxShadow: "0 0 0 2px " + C.paper,
+          }}/>
+        )}
+      </button>
+    );
+  }
+
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        position: "relative",
+        width: "100%",
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "9px 12px 9px 14px",
+        borderRadius: 10,
+        border: "none",
+        cursor: "pointer",
+        marginBottom: 3,
+        textAlign: "left",
+        background: bg,
+        transition: "background 180ms ease, transform 160ms ease",
+        transform: hover && !active ? "translateX(2px)" : "translateX(0)",
+        overflow: "visible",
+      }}
+    >
+      {/* Active left accent bar with soft glow */}
+      {active && (
+        <span style={{
+          position: "absolute",
+          left: -2,
+          top: 7,
+          bottom: 7,
+          width: 3,
+          borderRadius: "0 3px 3px 0",
+          background: accent,
+          boxShadow: "0 0 8px " + accent + "80, 0 0 2px " + accent,
+        }}/>
+      )}
+
+      {/* Icon tile — premium feel when active or hover */}
+      <span style={{
+        width: 28,
+        height: 28,
+        borderRadius: 8,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: active ? accent : (hover ? C.paper : "transparent"),
+        boxShadow: active
+          ? "0 3px 8px " + accent + "44"
+          : (hover ? "0 1px 2px rgba(31,29,25,0.08)" : "none"),
+        transition: "background 180ms ease, box-shadow 180ms ease",
+        flexShrink: 0,
+      }}>
+        <Icon size={15} style={{ color: active ? "#fff" : C.mink }} strokeWidth={2.2}/>
+      </span>
+
+      {/* Label */}
+      <span style={{
+        fontSize: 13,
+        fontWeight: active ? 800 : 600,
+        color: active ? accent : C.mink,
+        fontFamily: F.head,
+        flex: 1,
+        letterSpacing: active ? "-0.005em" : 0,
+        transition: "color 180ms ease",
+      }}>
+        {item.label}
+      </span>
+
+      {/* Badge (e.g. AI usage 3/5) */}
+      {showBadge && (
+        <span style={{
+          fontSize: 9,
+          fontWeight: 800,
+          padding: "2px 7px",
+          borderRadius: 999,
+          background: C.amberMist,
+          color: C.amberDeep,
+          fontFamily: F.head,
+        }}>
+          3/5
+        </span>
+      )}
+
+      {/* Sliding chevron on active OR hover (not when badge is showing) */}
+      {!showBadge && (active || hover) && (
+        <ChevronRight
+          size={13}
+          style={{
+            color: active ? accent : C.ash,
+            opacity: active ? 0.9 : 0.6,
+            transform: hover && !active ? "translateX(2px)" : "translateX(0)",
+            transition: "transform 160ms ease, opacity 160ms ease",
+          }}
+          strokeWidth={2.5}
+        />
+      )}
+    </button>
+  );
+}
+
+function Sidebar({ activeView, onNav, aiPlan, onSwitchRole, collapsed = false }) {
   const sections = [
     { header: "ACTIVITY", items: [
       { id: "overview",  label: "Overview",  icon: LayoutGrid },
@@ -309,16 +580,19 @@ function Sidebar({ activeView, onNav, aiPlan, onSwitchRole }) {
     ]},
   ];
 
+  // Collapsible section state — default open. Keyed by section header.
+  const [collapsedSections, setCollapsedSections] = useState({});
+  const isCollapsed = (header) => !!collapsedSections[header];
+  const toggleSection = (header) => setCollapsedSections(c => ({ ...c, [header]: !c[header] }));
+
   function handleClick(item) {
     if (item.id === "inventory") return onNav("items");
-    if (item.id === "settings") return onNav("ai-plan");
     onNav(item.id);
   }
 
   function isActive(item) {
     if (item.group === "inv")      return ["items","orders","claims","pickups","edit-item","add-chooser","add-manual","add-ai","ai-setup","ai-photos"].includes(activeView);
     if (item.group === "ded")      return activeView.startsWith("ded");
-    if (item.group === "settings") return activeView === "ai-plan";
     return activeView === item.id;
   }
 
@@ -332,70 +606,162 @@ function Sidebar({ activeView, onNav, aiPlan, onSwitchRole }) {
   }
 
   return (
-    <aside style={{ width: 240, borderRight: "1px solid " + C.fawn, background: C.paper, display: "flex", flexDirection: "column", height: "100%", flexShrink: 0 }}>
-      {/* Role switcher */}
-      <div style={{ padding: "14px 14px 0 14px" }}>
-        <div style={{ display: "flex", padding: 4, borderRadius: 12, background: C.sand, border: "1px solid " + C.fawn }}>
-          <button style={{ flex: 1, padding: "7px 0", borderRadius: 8, fontSize: 12, fontWeight: 800, border: "none", cursor: "pointer", background: C.paper, color: C.ink, fontFamily: F.head, boxShadow: "0 1px 2px rgba(31,29,25,0.05)" }}>Seller</button>
-          <button onClick={onSwitchRole} style={{ flex: 1, padding: "7px 0", borderRadius: 8, fontSize: 12, fontWeight: 700, border: "none", cursor: "pointer", background: "transparent", color: C.ash, fontFamily: F.head }}>Buyer</button>
+    <aside style={{
+      width: collapsed ? 72 : 240,
+      borderRight: "1px solid " + C.fawn,
+      background: C.paper,
+      display: "flex", flexDirection: "column",
+      height: "100%", flexShrink: 0,
+      transition: "width 240ms cubic-bezier(0.4, 0, 0.2, 1)",
+      overflow: "hidden",
+    }}>
+      {/* Role switcher — hidden in collapsed mode (no meaningful icon-only form) */}
+      {!collapsed && (
+        <div style={{ padding: "14px 14px 0 14px" }}>
+          <RoleToggle onSwitchToBuyer={onSwitchRole}/>
         </div>
-      </div>
+      )}
 
-      {/* List new item CTA */}
-      <div style={{ padding: "12px 14px 4px 14px" }}>
-        <button onClick={() => onNav("add-manual")} className="cta-primary" style={{
-          width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
-          padding: "12px 0", borderRadius: 12, border: "none", cursor: "pointer",
-          background: C.green, color: "#fff",
-          fontSize: 13, fontWeight: 800, fontFamily: F.head,
-          boxShadow: "0 2px 0 " + C.greenDeep,
-        }}>
-          <Plus size={15} strokeWidth={2.5}/> List New Item
+      {/* List new item CTA — full label when expanded, icon-only when collapsed */}
+      <div style={{ padding: collapsed ? "14px 12px 4px 12px" : "12px 14px 4px 14px" }}>
+        <button
+          onClick={() => onNav("add-manual")}
+          className="cta-primary"
+          title={collapsed ? "List New Item" : undefined}
+          style={{
+            width: "100%",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
+            padding: collapsed ? "11px 0" : "12px 0",
+            borderRadius: 12, border: "none", cursor: "pointer",
+            background: C.green, color: "#fff",
+            fontSize: 13, fontWeight: 800, fontFamily: F.head,
+            boxShadow: "0 2px 0 " + C.greenDeep,
+          }}
+        >
+          <Plus size={15} strokeWidth={2.5}/>
+          {!collapsed && "List New Item"}
         </button>
       </div>
 
-      {/* Nav sections */}
-      <div style={{ padding: "16px 10px 10px 10px", flex: 1, overflowY: "auto" }}>
-        {sections.map((sec, si) => (
-          <div key={si} style={{ marginBottom: 18 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, paddingLeft: 10, marginBottom: 8 }}>
-              <span style={{ width: 14, height: 2, background: C.smoke, borderRadius: 1 }}/>
-              <p style={{ fontSize: 9, fontWeight: 900, color: C.ash, letterSpacing: "0.14em", fontFamily: F.head, textTransform: "uppercase" }}>{sec.header}</p>
-            </div>
-            {sec.items.map(item => {
-              const act = isActive(item);
-              const ac = accentColor(item);
-              const ab = accentMist(item);
-              const Ic = item.icon;
-              return (
-                <button key={item.id} onClick={() => handleClick(item)} style={{
-                  width: "100%", display: "flex", alignItems: "center", gap: 10,
-                  padding: "9px 10px", borderRadius: 10, border: "none",
-                  cursor: "pointer", marginBottom: 2, textAlign: "left",
-                  background: act ? ab : "transparent",
-                  transition: "background 150ms",
+      {/* Nav sections — collapsible per-section header (when not in rail mode) */}
+      <div style={{ padding: collapsed ? "12px 8px 10px" : "16px 10px 10px 10px", flex: 1, overflowY: "auto" }}>
+        {sections.map((sec, si) => {
+          const col = isCollapsed(sec.header);
+          // Rail mode: replace section header with a thin divider line; always
+          // show all icons (section collapse only matters in full mode).
+          if (collapsed) {
+            return (
+              <div key={si} style={{ marginBottom: 10 }}>
+                {si > 0 && (
+                  <div style={{ height: 1, background: C.fawn, margin: "10px 8px 12px" }}/>
+                )}
+                {sec.items.map(item => {
+                  const act = isActive(item);
+                  const ac = accentColor(item);
+                  const ab = accentMist(item);
+                  const Ic = item.icon;
+                  return (
+                    <SidebarNavItem
+                      key={item.id}
+                      item={item}
+                      active={act}
+                      accent={ac}
+                      accentMist={ab}
+                      Icon={Ic}
+                      onClick={() => handleClick(item)}
+                      showBadge={item.group === "settings" && aiPlan === "free"}
+                      collapsed
+                    />
+                  );
+                })}
+              </div>
+            );
+          }
+          return (
+            <div key={si} style={{ marginBottom: 14 }}>
+              {/* Section header — click to collapse/expand */}
+              <button
+                onClick={() => toggleSection(sec.header)}
+                aria-expanded={!col}
+                style={{
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "8px 10px",
+                  borderRadius: 8,
+                  border: "none",
+                  background: "transparent",
+                  cursor: "pointer",
+                  marginBottom: 6,
+                  textAlign: "left",
+                  transition: "background 150ms ease",
                 }}
-                onMouseEnter={e => { if (!act) e.currentTarget.style.background = C.sand; }}
-                onMouseLeave={e => { if (!act) e.currentTarget.style.background = "transparent"; }}>
-                  <div style={{ width: 28, height: 28, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", background: act ? ac : "transparent" }}>
-                    <Ic size={15} style={{ color: act ? "#fff" : C.mink }} strokeWidth={2.2}/>
-                  </div>
-                  <span style={{ fontSize: 13, fontWeight: act ? 800 : 600, color: act ? ac : C.mink, fontFamily: F.head, flex: 1 }}>{item.label}</span>
-                  {item.group === "settings" && aiPlan === "free" && (
-                    <span style={{ fontSize: 9, fontWeight: 800, padding: "2px 7px", borderRadius: 999, background: C.amberMist, color: C.amberDeep, fontFamily: F.head }}>3/5</span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        ))}
+                onMouseEnter={e => { e.currentTarget.style.background = C.sand; }}
+                onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+              >
+                <ChevronDown
+                  size={14}
+                  strokeWidth={2.6}
+                  style={{
+                    color: C.mink,
+                    flexShrink: 0,
+                    transform: col ? "rotate(-90deg)" : "rotate(0deg)",
+                    transition: "transform 200ms ease",
+                  }}
+                />
+                <p style={{
+                  fontSize: 11,
+                  fontWeight: 900,
+                  color: C.mink,
+                  letterSpacing: "0.16em",
+                  fontFamily: F.head,
+                  textTransform: "uppercase",
+                  flex: 1,
+                }}>
+                  {sec.header}
+                </p>
+                {col && (
+                  <span style={{
+                    fontSize: 9,
+                    fontWeight: 800,
+                    color: C.ash,
+                    fontFamily: F.head,
+                  }}>
+                    {sec.items.length}
+                  </span>
+                )}
+              </button>
+
+              {/* Items (hidden when collapsed) */}
+              {!col && sec.items.map(item => {
+                const act = isActive(item);
+                const ac = accentColor(item);
+                const ab = accentMist(item);
+                const Ic = item.icon;
+                return (
+                  <SidebarNavItem
+                    key={item.id}
+                    item={item}
+                    active={act}
+                    accent={ac}
+                    accentMist={ab}
+                    Icon={Ic}
+                    onClick={() => handleClick(item)}
+                    showBadge={item.group === "settings" && aiPlan === "free"}
+                  />
+                );
+              })}
+            </div>
+          );
+        })}
       </div>
     </aside>
   );
 }
 
 // Avatar with dropdown menu - real user initials and sign-out.
-function SellerUserMenu({ user, onSignout }) {
+function SellerUserMenu({ user, onSignout, onOpenSettings }) {
   const [open, setOpen] = useState(false);
   const initials = user?.name ? initialsOf(user.name) : "?";
   const displayName = user?.name || "Guest";
@@ -451,25 +817,109 @@ function SellerUserMenu({ user, onSignout }) {
   );
 }
 
-function TopNav({ user, onSignout }) {
+// Breadcrumb label for the current view. Inventory sub-views collapse into
+// a single "Inventory" label so the breadcrumb stays clean.
+function labelForView(view) {
+  if (view === "overview")     return "Overview";
+  if (view === "messages")     return "Messages";
+  if (view === "history")      return "History";
+  if (view === "settings")     return "Settings";
+  if (view === "ai-plan")      return "AI plan";
+  if ([
+    "items","orders","claims","pickups",
+    "edit-item","add-chooser","add-manual","add-ai","ai-setup","ai-photos",
+  ].includes(view)) return "Inventory";
+  // Fallback — humanize the view id.
+  return (view || "").charAt(0).toUpperCase() + (view || "").slice(1).replace(/-/g, " ");
+}
+
+function TopNav({ user, onSignout, onOpenSettings, activeView, onToggleSidebar }) {
+  const viewLabel = labelForView(activeView);
   return (
-    <header style={{ height: 64, borderBottom: "1px solid " + C.fawn, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 20px", background: C.paper, flexShrink: 0 }}>
-      {/* Logo - clicks back to DropYard home */}
-      <Link href="/" style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none" }}>
-        <img src={LOGO_SRC} alt="DropYard" style={{ height: 42, width: "auto", display: "block" }}/>
-      </Link>
+    <header style={{
+      height: 64, borderBottom: "1px solid " + C.fawn,
+      display: "grid", gridTemplateColumns: "240px auto 1fr auto",
+      alignItems: "center", padding: "0 18px 0 0", gap: 18,
+      background: C.paper, flexShrink: 0,
+    }}>
+      {/* LOGO ZONE — 240px wide to match the sidebar so the next column
+          aligns with where the sidebar ends. */}
+      <div style={{ display: "flex", alignItems: "center", paddingLeft: 18, borderRight: "1px solid " + C.fawn, height: "100%" }}>
+        <Link href="/" title="DropYard home" style={{ display: "flex", alignItems: "center", flexShrink: 0, textDecoration: "none" }}>
+          <img src={LOGO_SRC} alt="DropYard" style={{ height: 38, width: "auto", display: "block" }}/>
+        </Link>
+      </div>
 
-      {/* Spacer — no drop-state pill, sellers don't need to think about it */}
-      <div/>
-
-      {/* Right: notifications bell + avatar */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <button title="Notifications" style={{ position: "relative", width: 40, height: 40, borderRadius: "50%", border: "1.5px solid " + C.fawn, background: C.paper, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <Bell size={16} style={{ color: C.mink }} strokeWidth={2.2}/>
-          {/* Unread dot — small claret indicator */}
-          <span style={{ position: "absolute", top: 8, right: 8, width: 8, height: 8, borderRadius: "50%", background: C.claret, border: "2px solid " + C.paper }}/>
+      {/* HAMBURGER + BREADCRUMB — starts where the sidebar ends */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+        <button
+          onClick={onToggleSidebar}
+          title="Toggle sidebar"
+          aria-label="Toggle sidebar"
+          style={{
+            width: 38, height: 38, borderRadius: 10,
+            border: "1px solid " + C.fawn, background: C.paper,
+            cursor: "pointer", display: "flex", alignItems: "center",
+            justifyContent: "center", flexShrink: 0,
+            transition: "background 150ms ease, border-color 150ms ease",
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = C.sand; }}
+          onMouseLeave={e => { e.currentTarget.style.background = C.paper; }}
+        >
+          <Menu size={16} style={{ color: C.mink }} strokeWidth={2.2}/>
         </button>
-        <SellerUserMenu user={user} onSignout={onSignout}/>
+        <nav aria-label="Breadcrumb" style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: F.head, fontSize: 14, minWidth: 0 }}>
+          <span style={{ color: C.mink, fontWeight: 600 }}>Seller</span>
+          <span style={{ color: C.smoke, fontWeight: 700 }}>/</span>
+          <span style={{ color: C.ink, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{viewLabel}</span>
+        </nav>
+      </div>
+
+      {/* CENTER — search bar */}
+      <div style={{ display: "flex", justifyContent: "center" }}>
+        <div style={{ position: "relative", maxWidth: 640, width: "100%" }}>
+          <Search size={15} style={{ position: "absolute", left: 16, top: "50%", transform: "translateY(-50%)", color: C.ash, pointerEvents: "none" }} strokeWidth={2.4}/>
+          <input
+            type="text"
+            placeholder="Search items, orders, claims…"
+            style={{
+              width: "100%",
+              padding: "11px 56px 11px 40px",
+              borderRadius: 999,
+              border: "1px solid " + C.fawn,
+              background: C.sand,
+              fontFamily: F.body, fontSize: 13, fontWeight: 500, color: C.ink,
+              outline: "none", boxSizing: "border-box",
+              transition: "background 150ms ease, border-color 150ms ease, box-shadow 150ms ease",
+            }}
+            onFocus={e => { e.currentTarget.style.background = C.paper; e.currentTarget.style.borderColor = C.greenMist; e.currentTarget.style.boxShadow = "0 0 0 3px " + C.greenMist; }}
+            onBlur={e => { e.currentTarget.style.background = C.sand; e.currentTarget.style.borderColor = C.fawn; e.currentTarget.style.boxShadow = "none"; }}
+          />
+          <span style={{
+            position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)",
+            display: "inline-flex", alignItems: "center", justifyContent: "center",
+            padding: "3px 7px", borderRadius: 6,
+            background: C.paper, border: "1px solid " + C.fawn,
+            fontFamily: F.head, fontSize: 10, fontWeight: 800, color: C.ash,
+            letterSpacing: "0.05em", pointerEvents: "none",
+          }}>⌘K</span>
+        </div>
+      </div>
+
+      {/* RIGHT — notifications bell + user menu */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <button title="Notifications" style={{
+          position: "relative", width: 40, height: 40, borderRadius: "50%",
+          border: "1px solid " + C.fawn, background: C.paper,
+          cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+          transition: "background 150ms ease",
+        }}
+        onMouseEnter={e => { e.currentTarget.style.background = C.sand; }}
+        onMouseLeave={e => { e.currentTarget.style.background = C.paper; }}>
+          <Bell size={16} style={{ color: C.mink }} strokeWidth={2.2}/>
+          <span style={{ position: "absolute", top: 9, right: 9, width: 8, height: 8, borderRadius: "50%", background: C.amber, border: "2px solid " + C.paper }}/>
+        </button>
+        <SellerUserMenu user={user} onSignout={onSignout} onOpenSettings={onOpenSettings}/>
       </div>
     </header>
   );
@@ -1864,25 +2314,21 @@ function InventoryTabs({ activeView, onNav, ordersCount = 0, ordersUrgent = 0 })
     { id: "orders", label: "Orders",    view: "orders", count: ordersCount, urgent: ordersUrgent },
   ];
   return (
-    <div className="fade-in" style={{ maxWidth: 1160, margin: "0 auto 24px" }}>
-      {/* Page header with icon + eyebrow */}
-      <div style={{ padding: "28px 0 22px", position: "relative", marginBottom: 10 }}>
-        <div style={{ position: "absolute", top: 30, right: 0, display: "flex", gap: 6, opacity: 0.5 }}>
+    <div className="fade-in" style={{ maxWidth: 1160, margin: "0 auto 14px" }}>
+      {/* Page header with icon */}
+      <div style={{ padding: "14px 0 10px", position: "relative", marginBottom: 4 }}>
+        <div style={{ position: "absolute", top: 18, right: 0, display: "flex", gap: 6, opacity: 0.5 }}>
           <span style={{ width: 5, height: 5, borderRadius: "50%", background: C.amber }}/>
           <span style={{ width: 5, height: 5, borderRadius: "50%", background: C.green }}/>
           <span style={{ width: 5, height: 5, borderRadius: "50%", background: C.claret }}/>
         </div>
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 18 }}>
-          <div style={{ width: 56, height: 56, borderRadius: 18, background: C.greenMist, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 6, boxShadow: "0 2px 0 " + C.fawn }}>
-            <Box size={24} style={{ color: C.greenDeep }} strokeWidth={2.2}/>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
+          <div style={{ width: 48, height: 48, borderRadius: 14, background: C.greenMist, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 2, boxShadow: "0 2px 0 " + C.fawn }}>
+            <Box size={20} style={{ color: C.greenDeep }} strokeWidth={2.2}/>
           </div>
           <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-              <span style={{ width: 22, height: 2.5, background: C.green, borderRadius: 2 }}/>
-              <p style={{ fontFamily: F.head, fontSize: 11, fontWeight: 800, color: C.green, letterSpacing: "0.16em", textTransform: "uppercase" }}>Inventory</p>
-            </div>
-            <h1 style={{ fontFamily: F.head, fontSize: 38, fontWeight: 900, color: C.ink, letterSpacing: "-0.03em", lineHeight: 1.02, marginBottom: 8 }}>{activeView === "orders" ? "Orders" : "My items"}</h1>
-            <p style={{ fontFamily: F.body, fontSize: 15, fontWeight: 500, color: C.mink, lineHeight: 1.55, maxWidth: 560 }}>
+            <h1 style={{ fontFamily: F.head, fontSize: 30, fontWeight: 900, color: C.ink, letterSpacing: "-0.03em", lineHeight: 1.05, marginBottom: 4 }}>{activeView === "orders" ? "Orders" : "My items"}</h1>
+            <p style={{ fontFamily: F.body, fontSize: 14, fontWeight: 500, color: C.mink, lineHeight: 1.45, maxWidth: 560 }}>
               {activeView === "orders"
                 ? "Upcoming pickups you need to handle."
                 : "Everything you have listed, in draft, or pending review."}
@@ -2989,23 +3435,19 @@ function SellerMessagesView({ user = null, accessToken = null }) {
   return (
     <div className="fade-in" style={{ maxWidth: 1160, margin: "0 auto" }}>
       {/* Page header */}
-      <div style={{ padding: "28px 0 22px", position: "relative", marginBottom: 10 }}>
-        <div style={{ position: "absolute", top: 30, right: 0, display: "flex", gap: 6, opacity: 0.5 }}>
+      <div style={{ padding: "14px 0 10px", position: "relative", marginBottom: 4 }}>
+        <div style={{ position: "absolute", top: 18, right: 0, display: "flex", gap: 6, opacity: 0.5 }}>
           <span style={{ width: 5, height: 5, borderRadius: "50%", background: C.amber }}/>
           <span style={{ width: 5, height: 5, borderRadius: "50%", background: C.green }}/>
           <span style={{ width: 5, height: 5, borderRadius: "50%", background: C.claret }}/>
         </div>
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 18 }}>
-          <div style={{ width: 56, height: 56, borderRadius: 18, background: C.aiMist, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 6, boxShadow: "0 2px 0 " + C.fawn }}>
-            <MessageSquare size={24} style={{ color: C.ai }} strokeWidth={2.2}/>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
+          <div style={{ width: 48, height: 48, borderRadius: 14, background: C.aiMist, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 2, boxShadow: "0 2px 0 " + C.fawn }}>
+            <MessageSquare size={20} style={{ color: C.ai }} strokeWidth={2.2}/>
           </div>
           <div style={{ flex: 1 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-              <span style={{ width: 22, height: 2.5, background: C.ai, borderRadius: 2 }}/>
-              <p style={{ fontFamily: F.head, fontSize: 11, fontWeight: 800, color: C.ai, letterSpacing: "0.16em", textTransform: "uppercase" }}>Messages</p>
-            </div>
-            <h1 style={{ fontFamily: F.head, fontSize: 38, fontWeight: 900, color: C.ink, letterSpacing: "-0.03em", lineHeight: 1.02, marginBottom: 8 }}>Conversations</h1>
-            <p style={{ fontFamily: F.body, fontSize: 15, fontWeight: 500, color: C.mink, lineHeight: 1.55, maxWidth: 560 }}>
+            <h1 style={{ fontFamily: F.head, fontSize: 30, fontWeight: 900, color: C.ink, letterSpacing: "-0.03em", lineHeight: 1.05, marginBottom: 4 }}>Conversations</h1>
+            <p style={{ fontFamily: F.body, fontSize: 14, fontWeight: 500, color: C.mink, lineHeight: 1.45, maxWidth: 560 }}>
               {needsAction > 0 ? needsAction + " need" + (needsAction === 1 ? "s" : "") + " your attention · " : ""}
               {unreadCount > 0 ? unreadCount + " unread · " : ""}
               {conversations.length} active thread{conversations.length !== 1 ? "s" : ""}
@@ -3616,23 +4058,19 @@ function SellerHistoryView({ embedded = false, accessToken = null }) {
   return (
     <div className="fade-in" style={{ maxWidth: 1160, margin: "0 auto" }}>
       {!embedded && (
-        <div style={{ padding: "28px 0 22px", position: "relative", marginBottom: 10 }}>
-          <div style={{ position: "absolute", top: 30, right: 0, display: "flex", gap: 6, opacity: 0.5 }}>
+        <div style={{ padding: "14px 0 10px", position: "relative", marginBottom: 4 }}>
+          <div style={{ position: "absolute", top: 18, right: 0, display: "flex", gap: 6, opacity: 0.5 }}>
             <span style={{ width: 5, height: 5, borderRadius: "50%", background: C.amber }}/>
             <span style={{ width: 5, height: 5, borderRadius: "50%", background: C.green }}/>
             <span style={{ width: 5, height: 5, borderRadius: "50%", background: C.claret }}/>
           </div>
-          <div style={{ display: "flex", alignItems: "flex-start", gap: 18 }}>
-            <div style={{ width: 56, height: 56, borderRadius: 18, background: C.amberMist, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 6, boxShadow: "0 2px 0 " + C.fawn }}>
-              <Award size={24} style={{ color: C.amberDeep }} strokeWidth={2.2}/>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
+            <div style={{ width: 48, height: 48, borderRadius: 14, background: C.amberMist, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 2, boxShadow: "0 2px 0 " + C.fawn }}>
+              <Award size={20} style={{ color: C.amberDeep }} strokeWidth={2.2}/>
             </div>
             <div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-                <span style={{ width: 22, height: 2.5, background: C.amberDeep, borderRadius: 2 }}/>
-                <p style={{ fontFamily: F.head, fontSize: 11, fontWeight: 800, color: C.amberDeep, letterSpacing: "0.16em", textTransform: "uppercase" }}>Your history</p>
-              </div>
-              <h1 style={{ fontFamily: F.head, fontSize: 38, fontWeight: 900, color: C.ink, letterSpacing: "-0.03em", lineHeight: 1.02, marginBottom: 8 }}>Sales history</h1>
-              <p style={{ fontFamily: F.body, fontSize: 15, fontWeight: 500, color: C.mink, lineHeight: 1.55, maxWidth: 560 }}>{totalItems} completed sale{totalItems !== 1 ? "s" : ""} across Drops and the Shelf.</p>
+              <h1 style={{ fontFamily: F.head, fontSize: 30, fontWeight: 900, color: C.ink, letterSpacing: "-0.03em", lineHeight: 1.05, marginBottom: 4 }}>Sales history</h1>
+              <p style={{ fontFamily: F.body, fontSize: 14, fontWeight: 500, color: C.mink, lineHeight: 1.45, maxWidth: 560 }}>{totalItems} completed sale{totalItems !== 1 ? "s" : ""} across Drops and the Shelf.</p>
             </div>
           </div>
         </div>
@@ -4847,6 +5285,483 @@ function AIPhotoFlow({ onDone, onBack, aiSettings = {} }) {
   );
 }
 
+/* ============================================================
+   SETTINGS — native-styled, mirrors the InventoryTabs pattern.
+   Two tabs: Profile (info + password) and Subscription (plan + AI waitlist).
+   ============================================================ */
+
+/* Tabs header — same look as InventoryTabs (icon, eyebrow, h1, tab row). */
+function SettingsTabs({ activeTab, onChange }) {
+  const tabs = [
+    { id: "profile",      label: "Profile" },
+    { id: "subscription", label: "Subscription" },
+  ];
+  const isProfile = activeTab === "profile";
+  return (
+    <div className="fade-in" style={{ maxWidth: 1160, margin: "0 auto 14px" }}>
+      <div style={{ padding: "14px 0 10px", position: "relative", marginBottom: 4 }}>
+        <div style={{ position: "absolute", top: 18, right: 0, display: "flex", gap: 6, opacity: 0.5 }}>
+          <span style={{ width: 5, height: 5, borderRadius: "50%", background: C.amber }}/>
+          <span style={{ width: 5, height: 5, borderRadius: "50%", background: C.green }}/>
+          <span style={{ width: 5, height: 5, borderRadius: "50%", background: C.claret }}/>
+        </div>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
+          <div style={{ width: 48, height: 48, borderRadius: 14, background: C.amberMist, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 2, boxShadow: "0 2px 0 " + C.fawn }}>
+            <Settings size={20} style={{ color: C.amberDeep }} strokeWidth={2.2}/>
+          </div>
+          <div>
+            <h1 style={{ fontFamily: F.head, fontSize: 30, fontWeight: 900, color: C.ink, letterSpacing: "-0.03em", lineHeight: 1.05, marginBottom: 4 }}>
+              {isProfile ? "Profile" : "Subscription"}
+            </h1>
+            <p style={{ fontFamily: F.body, fontSize: 14, fontWeight: 500, color: C.mink, lineHeight: 1.45, maxWidth: 560 }}>
+              {isProfile
+                ? "Edit your name and manage your sign-in password."
+                : "Your current plan and upgrades available to your account."}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 8, borderBottom: "1.5px solid " + C.fawn }}>
+        {tabs.map(tab => {
+          const active = activeTab === tab.id;
+          return (
+            <button key={tab.id} onClick={() => onChange(tab.id)} style={{
+              position: "relative", display: "flex", alignItems: "center", gap: 8,
+              padding: "11px 18px 13px", border: "none", cursor: "pointer",
+              background: "transparent",
+              fontFamily: F.head, fontSize: 14, fontWeight: active ? 900 : 700,
+              color: active ? C.ink : C.mink,
+              transition: "color 150ms",
+            }}>
+              {tab.label}
+              {active && <div style={{ position: "absolute", left: 0, right: 0, bottom: -1.5, height: 3, background: C.green, borderRadius: 2 }}/>}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* Field, input, button helpers — keep card markup compact. */
+function SF_Field({ label, helper, children }) {
+  return (
+    <div>
+      <p style={{ fontFamily: F.head, fontSize: 10, fontWeight: 800, color: C.mink, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 6 }}>{label}</p>
+      {children}
+      {helper && <p style={{ fontFamily: F.body, fontSize: 11, color: C.ash, marginTop: 6 }}>{helper}</p>}
+    </div>
+  );
+}
+
+function SF_Input({ style, ...props }) {
+  return (
+    <input
+      {...props}
+      style={{
+        width: "100%", padding: "10px 14px", borderRadius: 10,
+        border: "1.5px solid " + C.fawn, background: C.paper,
+        fontFamily: F.body, fontSize: 14, fontWeight: 500, color: C.ink,
+        outline: "none", boxSizing: "border-box",
+        ...(props.disabled ? { opacity: 0.75, cursor: "not-allowed" } : {}),
+        ...style,
+      }}
+    />
+  );
+}
+
+function SF_PrimaryButton({ disabled, loading, children, ...props }) {
+  return (
+    <button
+      {...props}
+      disabled={disabled}
+      style={{
+        display: "inline-flex", alignItems: "center", gap: 7,
+        padding: "10px 20px", borderRadius: 999, border: "none",
+        cursor: disabled ? "not-allowed" : "pointer",
+        fontFamily: F.head, fontSize: 13, fontWeight: 800,
+        background: disabled ? C.fawn : C.green,
+        color: disabled ? C.ash : "#fff",
+        boxShadow: disabled ? "none" : "0 2px 0 " + C.greenDeep,
+        opacity: loading ? 0.7 : 1,
+        transition: "background 150ms",
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function SF_ErrorBanner({ message }) {
+  return (
+    <div style={{ padding: "10px 12px", borderRadius: 10, background: C.claretMist, border: "1px solid " + C.claret + "40", display: "flex", alignItems: "flex-start", gap: 8 }}>
+      <AlertCircle size={14} style={{ color: C.claret, flexShrink: 0, marginTop: 1 }}/>
+      <p style={{ fontFamily: F.body, fontSize: 12, fontWeight: 600, color: C.claret }}>{message}</p>
+    </div>
+  );
+}
+
+function SF_SavedBadge({ label }) {
+  return (
+    <p style={{ display: "inline-flex", alignItems: "center", gap: 5, fontFamily: F.head, fontSize: 12, fontWeight: 800, color: C.greenDeep }}>
+      <CheckCircle size={13}/> {label}
+    </p>
+  );
+}
+
+/* ───── PROFILE TAB ───── */
+function ProfileTab({ user, onSuccess }) {
+  const { refreshUser } = useAuth();
+
+  // Profile info state
+  const [firstName, setFirstName] = useState(user?.firstName || "");
+  const [lastName, setLastName] = useState(user?.lastName || "");
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileError, setProfileError] = useState("");
+  const [profileSavedAt, setProfileSavedAt] = useState(null);
+
+  // Password state
+  const hasPassword = user?.hasPassword !== false;
+  const [currentPw, setCurrentPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [confirmPw, setConfirmPw] = useState("");
+  const [savingPw, setSavingPw] = useState(false);
+  const [pwError, setPwError] = useState("");
+  const [pwSavedAt, setPwSavedAt] = useState(null);
+
+  useEffect(() => {
+    setFirstName(user?.firstName || "");
+    setLastName(user?.lastName || "");
+  }, [user?.firstName, user?.lastName]);
+
+  const profileDirty =
+    firstName.trim() !== (user?.firstName || "") ||
+    lastName.trim() !== (user?.lastName || "");
+
+  async function submitProfile(e) {
+    e.preventDefault();
+    if (!firstName.trim() || !lastName.trim()) {
+      setProfileError("First and last name are both required.");
+      return;
+    }
+    setSavingProfile(true); setProfileError("");
+    try {
+      await apiRequest("/api/auth/me/profile", {
+        method: "PATCH",
+        body: JSON.stringify({ firstName: firstName.trim(), lastName: lastName.trim() }),
+      });
+      await refreshUser();
+      setProfileSavedAt(Date.now());
+      setTimeout(() => setProfileSavedAt(null), 2400);
+      onSuccess && onSuccess("Profile updated successfully.");
+    } catch (err) {
+      setProfileError(err instanceof Error ? err.message : "Could not save changes.");
+    } finally {
+      setSavingProfile(false);
+    }
+  }
+
+  async function submitPassword(e) {
+    e.preventDefault();
+    if (newPw.length < 8) { setPwError("Password must be at least 8 characters."); return; }
+    if (newPw !== confirmPw) { setPwError("New password and confirmation do not match."); return; }
+    if (hasPassword && !currentPw) { setPwError("Enter your current password."); return; }
+    setSavingPw(true); setPwError("");
+    try {
+      const path = hasPassword ? "/api/auth/me/change-password" : "/api/auth/me/set-password";
+      const body = hasPassword
+        ? { currentPassword: currentPw, newPassword: newPw }
+        : { newPassword: newPw };
+      const data = await apiRequest(path, { method: "POST", body: JSON.stringify(body) });
+      if (data && data.refreshToken) {
+        localStorage.setItem("dy_refresh_token", data.refreshToken);
+      }
+      await refreshUser();
+      setCurrentPw(""); setNewPw(""); setConfirmPw("");
+      setPwSavedAt(Date.now());
+      setTimeout(() => setPwSavedAt(null), 2400);
+      onSuccess && onSuccess(hasPassword ? "Password updated successfully." : "Password set successfully.");
+    } catch (err) {
+      setPwError(err instanceof Error ? err.message : "Could not update password.");
+    } finally {
+      setSavingPw(false);
+    }
+  }
+
+  const memberSince = user?.createdAt
+    ? new Date(user.createdAt).toLocaleDateString(undefined, { month: "long", year: "numeric" })
+    : "—";
+  const roleLabel = user?.role
+    ? (user.role.charAt(0) + user.role.slice(1).toLowerCase())
+    : "—";
+
+  return (
+    <div style={{ maxWidth: 1160, margin: "0 auto", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+      {/* Profile information */}
+      <form onSubmit={submitProfile} style={{ background: C.paper, border: "1px solid " + C.fawn, borderRadius: 16, padding: 24, display: "flex", flexDirection: "column", gap: 18 }}>
+        <h2 style={{ fontFamily: F.head, fontSize: 16, fontWeight: 800, color: C.ink, letterSpacing: "-0.01em" }}>Profile information</h2>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          <SF_Field label="First name">
+            <SF_Input value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="First name" autoComplete="given-name" disabled={savingProfile}/>
+          </SF_Field>
+          <SF_Field label="Last name">
+            <SF_Input value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Last name" autoComplete="family-name" disabled={savingProfile}/>
+          </SF_Field>
+        </div>
+
+        <SF_Field label="Email" helper="To change your email, contact info@dropyard.app.">
+          <SF_Input type="email" value={user?.email || ""} readOnly disabled style={{ background: C.sand, color: C.mink }}/>
+        </SF_Field>
+
+        <div style={{ background: C.sand, border: "1px solid " + C.fawn, borderRadius: 12, padding: "12px 14px", display: "flex", gap: 28 }}>
+          <div>
+            <p style={{ fontFamily: F.head, fontSize: 10, fontWeight: 800, color: C.ash, letterSpacing: "0.14em", textTransform: "uppercase" }}>Member since</p>
+            <p style={{ fontFamily: F.head, fontSize: 13, fontWeight: 700, color: C.ink, marginTop: 2 }}>{memberSince}</p>
+          </div>
+          <div>
+            <p style={{ fontFamily: F.head, fontSize: 10, fontWeight: 800, color: C.ash, letterSpacing: "0.14em", textTransform: "uppercase" }}>Role</p>
+            <p style={{ fontFamily: F.head, fontSize: 13, fontWeight: 700, color: C.ink, marginTop: 2 }}>{roleLabel}</p>
+          </div>
+        </div>
+
+        {profileError && <SF_ErrorBanner message={profileError}/>}
+
+        <div style={{ marginTop: "auto", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, paddingTop: 14, borderTop: "1px solid " + C.fawn }}>
+          {profileSavedAt
+            ? <SF_SavedBadge label="Changes saved"/>
+            : <p style={{ fontFamily: F.body, fontSize: 12, color: C.ash }}>Save when you&apos;re ready.</p>}
+          <SF_PrimaryButton type="submit" disabled={!profileDirty || savingProfile} loading={savingProfile}>
+            {savingProfile ? "Saving..." : "Save changes"}
+          </SF_PrimaryButton>
+        </div>
+      </form>
+
+      {/* Password */}
+      <form onSubmit={submitPassword} style={{ background: C.paper, border: "1px solid " + C.fawn, borderRadius: 16, padding: 24, display: "flex", flexDirection: "column", gap: 18 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <h2 style={{ fontFamily: F.head, fontSize: 16, fontWeight: 800, color: C.ink, letterSpacing: "-0.01em", flex: 1 }}>
+            {hasPassword ? "Change password" : "Set a password"}
+          </h2>
+          {!hasPassword && (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 10px", borderRadius: 999, background: C.amberMist, color: C.amberDeep, fontFamily: F.head, fontSize: 10, fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase" }}>
+              <Shield size={10}/> Google only
+            </span>
+          )}
+        </div>
+
+        {hasPassword && (
+          <SF_Field label="Current password">
+            <SF_Input type="password" value={currentPw} onChange={e => setCurrentPw(e.target.value)} autoComplete="current-password" disabled={savingPw}/>
+          </SF_Field>
+        )}
+
+        <SF_Field label="New password">
+          <SF_Input type="password" value={newPw} onChange={e => setNewPw(e.target.value)} placeholder="At least 8 characters" autoComplete="new-password" disabled={savingPw}/>
+        </SF_Field>
+
+        <SF_Field label="Confirm new password">
+          <SF_Input type="password" value={confirmPw} onChange={e => setConfirmPw(e.target.value)} placeholder="Re-enter new password" autoComplete="new-password" disabled={savingPw}/>
+        </SF_Field>
+
+        {pwError && <SF_ErrorBanner message={pwError}/>}
+
+        <div style={{ marginTop: "auto", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, paddingTop: 14, borderTop: "1px solid " + C.fawn }}>
+          {pwSavedAt
+            ? <SF_SavedBadge label={hasPassword ? "Password updated" : "Password set"}/>
+            : <p style={{ fontFamily: F.body, fontSize: 12, color: C.ash }}>
+                {hasPassword ? "Other devices will be signed out." : "Adds a password so you can sign in with email too."}
+              </p>}
+          <SF_PrimaryButton
+            type="submit"
+            disabled={savingPw || !newPw || !confirmPw || (hasPassword && !currentPw)}
+            loading={savingPw}
+          >
+            {savingPw ? "Saving..." : (hasPassword ? "Update password" : "Set password")}
+          </SF_PrimaryButton>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+/* ───── SUBSCRIPTION TAB ───── */
+function SubscriptionTab({ user, onSuccess }) {
+  const [email, setEmail] = useState(user?.email || "");
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleJoin(e) {
+    e.preventDefault();
+    if (!isValidEmail(email)) { setError("Enter a valid email address."); return; }
+    setSubmitting(true); setError("");
+    try {
+      await submitSubmission({
+        type: "SELLER_AI_WAITLIST",
+        source: "seller-dashboard-subscription",
+        payload: { email: email.trim() },
+      });
+      setSubmitted(true);
+      onSuccess && onSuccess("You're on the AI Seller Agent waitlist!");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save your spot.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const freeFeatures = [
+    "Unlimited listings during weekly Drops",
+    "Run a Moving Sale when you need to",
+    "Direct messaging with buyers",
+    "Pickup scheduling tools",
+    "DropYard fraud protection",
+  ];
+  const aiFeatures = [
+    "Photo-to-listing — AI writes title, description, and price",
+    "Auto-responds to buyer questions",
+    "Negotiates within rules you set",
+    "Schedules pickups within your windows",
+    "WhatsApp updates so you don't live in the app",
+    "No-show handling — re-opens and contacts next buyer",
+  ];
+
+  return (
+    <div style={{ maxWidth: 1160, margin: "0 auto", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+      {/* Current Plan */}
+      <div style={{ background: C.paper, border: "1px solid " + C.fawn, borderRadius: 16, padding: 24, display: "flex", flexDirection: "column", gap: 14 }}>
+        <div>
+          <p style={{ fontFamily: F.head, fontSize: 10, fontWeight: 800, color: C.ash, letterSpacing: "0.14em", textTransform: "uppercase" }}>Current plan</p>
+          <h2 style={{ fontFamily: F.head, fontSize: 24, fontWeight: 900, color: C.ink, letterSpacing: "-0.02em", marginTop: 4 }}>DropYard Free</h2>
+          <p style={{ fontFamily: F.body, fontSize: 13, fontWeight: 500, color: C.mink, lineHeight: 1.5, marginTop: 6 }}>
+            List during weekly Drops, run Moving Sales, and reach neighbours — at no cost.
+          </p>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {freeFeatures.map(f => (
+            <div key={f} style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+              <div style={{ width: 18, height: 18, borderRadius: "50%", background: C.greenMist, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>
+                <Check size={11} style={{ color: C.greenDeep }} strokeWidth={3}/>
+              </div>
+              <span style={{ fontFamily: F.body, fontSize: 13, fontWeight: 500, color: C.ink }}>{f}</span>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ marginTop: "auto", paddingTop: 14, borderTop: "1px solid " + C.fawn }}>
+          <p style={{ fontFamily: F.body, fontSize: 12, color: C.ash }}>You&apos;re on the free plan. No card on file.</p>
+        </div>
+      </div>
+
+      {/* AI Seller Agent */}
+      <div style={{ background: "linear-gradient(135deg, #FAF5FF 0%, " + C.paper + " 60%, " + C.amberMist + " 100%)", border: "1px solid " + C.fawn, borderRadius: 16, padding: 24, display: "flex", flexDirection: "column", gap: 14, position: "relative", overflow: "hidden" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 14 }}>
+          <div>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 10px", borderRadius: 999, background: "#EDE9FE", color: "#5B21B6", fontFamily: F.head, fontSize: 10, fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase" }}>
+              <Sparkles size={10}/> Coming soon
+            </span>
+            <h2 style={{ fontFamily: F.head, fontSize: 24, fontWeight: 900, color: C.ink, letterSpacing: "-0.02em", marginTop: 8 }}>AI Seller Agent</h2>
+            <p style={{ fontFamily: F.body, fontSize: 13, fontWeight: 500, color: C.mink, lineHeight: 1.5, marginTop: 6, maxWidth: 360 }}>
+              Photo-to-listing, buyer Q&amp;A, negotiation, and pickup scheduling — handled for you.
+            </p>
+          </div>
+          <div style={{ textAlign: "right", flexShrink: 0 }}>
+            <p style={{ fontFamily: F.head, fontSize: 10, fontWeight: 800, color: C.ash, letterSpacing: "0.14em", textTransform: "uppercase" }}>From</p>
+            <p style={{ fontFamily: F.head, fontSize: 22, fontWeight: 900, color: C.ink, lineHeight: 1, marginTop: 4 }}>$4.99</p>
+            <p style={{ fontFamily: F.body, fontSize: 11, color: C.ash, marginTop: 2 }}>per month</p>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {aiFeatures.map(f => (
+            <div key={f} style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+              <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#EDE9FE", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>
+                <Check size={11} style={{ color: "#5B21B6" }} strokeWidth={3}/>
+              </div>
+              <span style={{ fontFamily: F.body, fontSize: 13, fontWeight: 500, color: C.ink }}>{f}</span>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ marginTop: "auto", paddingTop: 14, borderTop: "1px solid " + C.fawn }}>
+          {submitted ? (
+            <div style={{ padding: "12px 14px", borderRadius: 12, background: C.greenMist, border: "1px solid " + C.green + "40", display: "flex", alignItems: "flex-start", gap: 10 }}>
+              <CheckCircle size={16} style={{ color: C.greenDeep, flexShrink: 0, marginTop: 1 }}/>
+              <div>
+                <p style={{ fontFamily: F.head, fontSize: 13, fontWeight: 800, color: C.greenDeep }}>You&apos;re on the waitlist!</p>
+                <p style={{ fontFamily: F.body, fontSize: 12, fontWeight: 500, color: C.ink, marginTop: 2 }}>
+                  We&apos;ll email you at <strong>{email}</strong> when it goes live.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <form onSubmit={handleJoin} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <p style={{ fontFamily: F.head, fontSize: 10, fontWeight: 800, color: C.mink, letterSpacing: "0.14em", textTransform: "uppercase" }}>Join the early-access waitlist</p>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={e => { setEmail(e.target.value); if (error) setError(""); }}
+                  placeholder="you@email.com"
+                  disabled={submitting}
+                  style={{ flex: 1, padding: "10px 14px", borderRadius: 10, border: "1.5px solid " + C.fawn, background: C.paper, fontFamily: F.body, fontSize: 13, color: C.ink, outline: "none" }}
+                />
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  style={{ padding: "10px 20px", borderRadius: 999, border: "none", cursor: submitting ? "not-allowed" : "pointer", background: "linear-gradient(135deg, #7C3AED, #6D28D9)", color: "#fff", fontFamily: F.head, fontSize: 13, fontWeight: 800, opacity: submitting ? 0.7 : 1, boxShadow: "0 2px 0 #5B21B6" }}
+                >
+                  {submitting ? "Saving..." : "Join waitlist"}
+                </button>
+              </div>
+              {error && <p style={{ fontFamily: F.body, fontSize: 12, fontWeight: 600, color: C.claret }}>{error}</p>}
+              <p style={{ fontFamily: F.body, fontSize: 11, color: C.ash }}>No card required. We&apos;ll only email when it&apos;s ready.</p>
+            </form>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* Top-of-page success banner — fades in, fades out 2.6s later. */
+function SF_SuccessBanner({ message, onClose }) {
+  useEffect(() => {
+    if (!message) return;
+    const t = setTimeout(onClose, 2600);
+    return () => clearTimeout(t);
+  }, [message, onClose]);
+  if (!message) return null;
+  return (
+    <div className="fade-in" style={{ position: "sticky", top: 0, zIndex: 30, maxWidth: 1160, margin: "0 auto 16px", padding: "12px 16px", borderRadius: 12, background: C.greenMist, border: "1px solid " + C.green + "55", display: "flex", alignItems: "center", gap: 10, boxShadow: "0 6px 20px rgba(48, 132, 36, 0.12)" }}>
+      <div style={{ width: 28, height: 28, borderRadius: "50%", background: C.green, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        <Check size={15} style={{ color: "#fff" }} strokeWidth={3}/>
+      </div>
+      <p style={{ fontFamily: F.head, fontSize: 13.5, fontWeight: 800, color: C.greenDeep, flex: 1 }}>{message}</p>
+      <button onClick={onClose} aria-label="Dismiss" style={{ width: 26, height: 26, borderRadius: "50%", border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: C.greenDeep }}>
+        <X size={14} strokeWidth={2.5}/>
+      </button>
+    </div>
+  );
+}
+
+/* Parent SettingsView — picks active tab and renders the right body. */
+function SettingsView({ user }) {
+  const [activeTab, setActiveTab] = useState("profile");
+  const [toast, setToast] = useState(null);
+  return (
+    <div>
+      <SF_SuccessBanner message={toast} onClose={() => setToast(null)}/>
+      <SettingsTabs activeTab={activeTab} onChange={setActiveTab}/>
+      {activeTab === "profile"      && <ProfileTab user={user} onSuccess={setToast}/>}
+      {activeTab === "subscription" && <SubscriptionTab user={user} onSuccess={setToast}/>}
+    </div>
+  );
+}
+
 export default function DropYardSellerDashboard({
   onSwitchRole = () => alert("In the full product, this switches to the buyer dashboard."),
   user = null,
@@ -4861,6 +5776,7 @@ export default function DropYardSellerDashboard({
   sellerItemsLoading = false,
 } = {}) {
   const [view, setView] = useState("overview");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [aiSettings, setAiSettings] = useState({});
   const [aiPlan, setAiPlan] = useState("free");
   const [aiUsed, setAiUsed] = useState(3);
@@ -4874,9 +5790,15 @@ export default function DropYardSellerDashboard({
     <>
       <GlobalStyle/>
       <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: C.paper, fontFamily: F.body, color: C.ink }}>
-        <TopNav user={user} onSignout={onSignout}/>
+        <TopNav
+          user={user}
+          onSignout={onSignout}
+          onOpenSettings={() => setView("settings")}
+          activeView={view}
+          onToggleSidebar={() => setSidebarCollapsed(c => !c)}
+        />
         <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
-          <Sidebar activeView={view} onNav={setView} aiPlan={aiPlan} onSwitchRole={onSwitchRole}/>
+          <Sidebar activeView={view} onNav={setView} aiPlan={aiPlan} onSwitchRole={onSwitchRole} collapsed={sidebarCollapsed}/>
           <main style={{ flex: 1, overflow: "auto", padding: "20px 28px", background: C.paper }}>
             {view === "overview" && <Overview onNav={setView} aiUsed={aiUsed} user={user} />}
             {view === "items" && <MyItemsView onNav={setView} onEdit={goToEdit} sellerItems={sellerItems} onItemsChange={onItemsChange} sellerItemsLoading={sellerItemsLoading} accessToken={accessToken}/>}
@@ -4885,6 +5807,7 @@ export default function DropYardSellerDashboard({
             {view === "pickups" && <PickupsView onNav={setView} accessToken={accessToken} onChanged={onItemCreated}/>}
             {view === "messages" && <SellerMessagesView user={user} accessToken={accessToken}/>}
             {view === "history" && <SellerHistoryView accessToken={accessToken}/>}
+            {view === "settings" && <SettingsView user={user}/>}
             {view === "edit-item" && <EditItemView onBack={() => setView("items")} editingItem={editingItem} aiSettings={aiSettings} accessToken={accessToken} onItemsChange={onItemsChange}/>}
 
             {view === "add-chooser" && <ManualItemForm onDone={() => setView("items")} onBack={() => setView("items")} onGoToItems={() => setView("items")} onEnhanceAI={() => {setAiEntryPoint("add-manual");setView(aiConfigured ? "add-ai" : "ai-setup")}} aiSettings={aiSettings} accessToken={accessToken} onItemCreated={onItemCreated}/>}
@@ -4896,7 +5819,7 @@ export default function DropYardSellerDashboard({
 
             {view === "ai-plan" && <AIPlanView aiPlan={aiPlan} aiUsed={aiUsed} onUpgrade={() => setAiPlan("pro")} onCancel={() => setAiPlan("free")} onBack={() => setView("overview")} />}
 
-            {!["overview", "items", "claims", "pickups", "messages", "history", "edit-item", "add-chooser", "add-manual", "add-ai", "ai-setup", "ai-photos", "ai-plan"].includes(view) && (
+            {!["overview", "items", "claims", "pickups", "messages", "history", "settings", "edit-item", "add-chooser", "add-manual", "add-ai", "ai-setup", "ai-photos", "ai-plan", "orders"].includes(view) && (
               <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: C.smoke, fontSize: 16, fontFamily: F.body }}>
                 {view.replace(/-/g, " ")} - Coming soon
               </div>

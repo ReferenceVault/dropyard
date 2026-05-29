@@ -4,6 +4,7 @@
 // in isolation. If the preview changes, mirror the change here.
 
 import React, { useState, useEffect } from "react";
+import { submitSubmission, isValidEmail } from "@/lib/submissions";
 
 function MailIcon({ className = "" }) {
   return (
@@ -35,10 +36,8 @@ export default function EarlyAccessSection() {
     return () => clearInterval(interval);
   }, []);
 
-  const handleSubmit = () => {
-    const isValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-
-    if (!isValid) {
+  const handleSubmit = async () => {
+    if (!isValidEmail(email)) {
       setError("Enter a valid email address");
       return;
     }
@@ -46,11 +45,19 @@ export default function EarlyAccessSection() {
     setError("");
     setLoading(true);
 
-    setTimeout(() => {
+    try {
+      await submitSubmission({
+        type: "EARLY_ACCESS_SIGNUP",
+        source: "homepage-early-access",
+        payload: { email: email.trim() },
+      });
       localStorage.setItem("dropyard_email", email);
-      setLoading(false);
       setSubmitted(true);
-    }, 1200);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save your spot. Try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

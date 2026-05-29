@@ -1,7 +1,9 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { submitSubmission, isValidEmail, type SubmissionType } from "@/lib/submissions";
 
 const Icon = {
   Mail: (p: any) => (
@@ -55,15 +57,17 @@ const Icon = {
 };
 
 const TOPICS = [
-  { id: "general",     label: "General question",       subject: "General question",          icon: <Icon.Chat className="h-5 w-5" />,      accent: "green"  as const, hint: "Anything about how DropYard works" },
-  { id: "report",      label: "Report a listing or user", subject: "Report",                  icon: <Icon.Flag className="h-5 w-5" />,      accent: "rose"   as const, hint: "Something that breaks our Guidelines" },
-  { id: "bug",         label: "Report a bug",            subject: "Bug report",               icon: <Icon.Bug className="h-5 w-5" />,       accent: "amber"  as const, hint: "Something on DropYard isn't working" },
-  { id: "feature",     label: "Suggest a feature",       subject: "Feature idea",             icon: <Icon.Bulb className="h-5 w-5" />,      accent: "violet" as const, hint: "Something you wish DropYard had" },
-  { id: "neighbourhood", label: "Suggest a neighbourhood", subject: "Launch suggestion",      icon: <Icon.Map className="h-5 w-5" />,       accent: "amber"  as const, hint: "Where should DropYard go next?" },
-  { id: "partner",     label: "Partnerships",             subject: "Partnership inquiry",     icon: <Icon.Handshake className="h-5 w-5" />, accent: "green"  as const, hint: "Brands, community groups, charities" },
-  { id: "press",       label: "Press & media",            subject: "Press inquiry",           icon: <Icon.Press className="h-5 w-5" />,     accent: "sky"    as const, hint: "Stories, interviews, quotes" },
-  { id: "other",       label: "Something else",           subject: "Hello",                   icon: <Icon.Heart className="h-5 w-5" />,     accent: "rose"   as const, hint: "Just say hi" },
+  { id: "general",     label: "General question",       subject: "General question",          icon: <Icon.Chat className="h-5 w-5" />,      accent: "green"  as const, hint: "Anything about how DropYard works",            type: "CONTACT_GENERAL"       as SubmissionType },
+  { id: "report",      label: "Report a listing or user", subject: "Report",                  icon: <Icon.Flag className="h-5 w-5" />,      accent: "rose"   as const, hint: "Something that breaks our Guidelines",        type: "CONTACT_REPORT"        as SubmissionType },
+  { id: "bug",         label: "Report a bug",            subject: "Bug report",               icon: <Icon.Bug className="h-5 w-5" />,       accent: "amber"  as const, hint: "Something on DropYard isn't working",          type: "CONTACT_BUG"           as SubmissionType },
+  { id: "feature",     label: "Suggest a feature",       subject: "Feature idea",             icon: <Icon.Bulb className="h-5 w-5" />,      accent: "violet" as const, hint: "Something you wish DropYard had",              type: "CONTACT_FEATURE"       as SubmissionType },
+  { id: "neighbourhood", label: "Suggest a neighbourhood", subject: "Launch suggestion",      icon: <Icon.Map className="h-5 w-5" />,       accent: "amber"  as const, hint: "Where should DropYard go next?",               type: "CONTACT_NEIGHBOURHOOD" as SubmissionType },
+  { id: "partner",     label: "Partnerships",             subject: "Partnership inquiry",     icon: <Icon.Handshake className="h-5 w-5" />, accent: "green"  as const, hint: "Brands, community groups, charities",          type: "CONTACT_PARTNER"       as SubmissionType },
+  { id: "press",       label: "Press & media",            subject: "Press inquiry",           icon: <Icon.Press className="h-5 w-5" />,     accent: "sky"    as const, hint: "Stories, interviews, quotes",                  type: "CONTACT_PRESS"         as SubmissionType },
+  { id: "other",       label: "Something else",           subject: "Hello",                   icon: <Icon.Heart className="h-5 w-5" />,     accent: "rose"   as const, hint: "Just say hi",                                  type: "CONTACT_OTHER"         as SubmissionType },
 ];
+
+const VALID_TOPIC_IDS = new Set(TOPICS.map((t) => t.id));
 
 const accentClasses: Record<string, { bg: string; text: string; ring: string; dot: string; border: string }> = {
   green:  { bg: "bg-emerald-50",  text: "text-emerald-700",  ring: "ring-emerald-200",  dot: "bg-emerald-500", border: "border-emerald-200" },
@@ -74,25 +78,68 @@ const accentClasses: Record<string, { bg: string; text: string; ring: string; do
 };
 
 export default function ContactPage() {
+  const searchParams = useSearchParams();
   const [topicId, setTopicId] = useState<string>("general");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
   const [copied, setCopied] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState("");
+
+  // Preselect topic from ?topic=<id> (used by /help-center cards that funnel here).
+  useEffect(() => {
+    const t = searchParams.get("topic");
+    if (t && VALID_TOPIC_IDS.has(t)) setTopicId(t);
+  }, [searchParams]);
+
+  // Reset success state if the user switches topic to write another message.
+  useEffect(() => {
+    setSubmitted(false);
+    setError("");
+  }, [topicId]);
 
   const topic = TOPICS.find((t) => t.id === topicId)!;
 
-  const mailto = (() => {
-    const body = [
-      name ? `From: ${name}` : "",
-      email ? `Reply-to: ${email}` : "",
-      "",
-      message || "",
-    ]
-      .filter(Boolean)
-      .join("\n");
-    return `mailto:info@dropyard.app?subject=${encodeURIComponent(topic.subject)}&body=${encodeURIComponent(body)}`;
-  })();
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!message.trim()) {
+      setError("Please write a message before sending.");
+      return;
+    }
+    if (email && !isValidEmail(email)) {
+      setError("That email address doesn't look right.");
+      return;
+    }
+    setSubmitting(true);
+    setError("");
+    try {
+      await submitSubmission({
+        type: topic.type,
+        source: "contact-page",
+        payload: {
+          topicId: topic.id,
+          subject: topic.subject,
+          name: name.trim() || undefined,
+          email: email.trim() || undefined,
+          message: message.trim(),
+        },
+      });
+      setSubmitted(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not send. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const resetForm = () => {
+    setSubmitted(false);
+    setMessage("");
+    setName("");
+    setEmail("");
+  };
 
   const copyEmail = () => {
     if (typeof navigator !== "undefined" && navigator.clipboard) {
@@ -243,8 +290,8 @@ export default function ContactPage() {
               Pick a topic, write a note.
             </h2>
             <p className="mx-auto mt-4 max-w-2xl text-[15px] text-slate-600 sm:text-[17px]">
-              We&apos;ll open your email app with everything pre-filled. No forms,
-              no tickets — just a thread with a real person.
+              Pick a topic, write a note, and hit send. A real person reads
+              every message — usually within one business day.
             </p>
           </div>
 
@@ -309,49 +356,85 @@ export default function ContactPage() {
                 </p>
               </div>
 
-              <div className="mt-5 space-y-4">
-                <Field label="Your name (optional)">
-                  <input
-                    type="text"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Jamie from Barrhaven"
-                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-[13px] text-slate-700 placeholder-slate-400 focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-200"
-                  />
-                </Field>
+              {submitted ? (
+                <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-6 text-center">
+                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 ring-4 ring-emerald-200">
+                    <Icon.Check className="h-6 w-6" />
+                  </div>
+                  <p className="mt-3 text-[15px] font-bold text-[#0b2f20]">
+                    Message received.
+                  </p>
+                  <p className="mt-1.5 text-[13px] text-slate-600">
+                    {email
+                      ? <>We&apos;ll get back to you at <strong>{email}</strong> within one business day.</>
+                      : <>We&apos;ll read it within one business day. Add a reply-to email next time if you&apos;d like a response.</>}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={resetForm}
+                    className="mt-5 inline-flex items-center gap-1.5 text-[13px] font-semibold text-emerald-700 hover:text-emerald-900"
+                  >
+                    Send another message
+                    <Icon.Arrow className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={handleSubmit}>
+                  <div className="mt-5 space-y-4">
+                    <Field label="Your name (optional)">
+                      <input
+                        type="text"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        placeholder="Jamie from Barrhaven"
+                        disabled={submitting}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-[13px] text-slate-700 placeholder-slate-400 focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-200 disabled:opacity-60"
+                      />
+                    </Field>
 
-                <Field label="Reply-to email (optional)">
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="you@example.com"
-                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-[13px] text-slate-700 placeholder-slate-400 focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-200"
-                  />
-                </Field>
+                    <Field label="Reply-to email (optional)">
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={(e) => { setEmail(e.target.value); if (error) setError(""); }}
+                        placeholder="you@example.com"
+                        disabled={submitting}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-[13px] text-slate-700 placeholder-slate-400 focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-200 disabled:opacity-60"
+                      />
+                    </Field>
 
-                <Field label="Message">
-                  <textarea
-                    value={message}
-                    onChange={(e) => setMessage(e.target.value)}
-                    rows={6}
-                    placeholder="Tell us what's on your mind..."
-                    className="w-full resize-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-[13px] text-slate-700 placeholder-slate-400 focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-200"
-                  />
-                </Field>
-              </div>
+                    <Field label="Message">
+                      <textarea
+                        value={message}
+                        onChange={(e) => { setMessage(e.target.value); if (error) setError(""); }}
+                        rows={6}
+                        placeholder="Tell us what's on your mind..."
+                        disabled={submitting}
+                        className="w-full resize-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-[13px] text-slate-700 placeholder-slate-400 focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-200 disabled:opacity-60"
+                      />
+                    </Field>
+                  </div>
 
-              <a
-                href={mailto}
-                className="mt-6 flex w-full items-center justify-center gap-2 rounded-full bg-[#0f6a44] px-6 py-3.5 text-[13px] font-bold text-white transition hover:bg-[#0b5638] hover:shadow-lg hover:-translate-y-0.5"
-              >
-                <Icon.Send className="h-4 w-4" />
-                Open email
-              </a>
-              <p className="mt-3 text-center text-[11px] text-slate-500">
-                We&apos;ll open your default email app with the subject and
-                message pre-filled.
-              </p>
+                  {error && (
+                    <div className="mt-4 rounded-xl bg-rose-50 border border-rose-200 px-3 py-2">
+                      <p className="text-[12px] text-rose-700 font-medium">{error}</p>
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="mt-6 flex w-full items-center justify-center gap-2 rounded-full bg-[#0f6a44] px-6 py-3.5 text-[13px] font-bold text-white transition hover:bg-[#0b5638] hover:shadow-lg hover:-translate-y-0.5 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:bg-[#0f6a44]"
+                  >
+                    <Icon.Send className="h-4 w-4" />
+                    {submitting ? "Sending..." : "Send message"}
+                  </button>
+                  <p className="mt-3 text-center text-[11px] text-slate-500">
+                    A real person reads every message. We usually reply within
+                    one business day.
+                  </p>
+                </form>
+              )}
             </div>
           </div>
         </div>

@@ -337,8 +337,8 @@ export default function HelpCenterPage() {
                 "What you tried instead",
                 "What you wish had been there",
               ]}
-              ctaLabel="Email a feature idea"
-              ctaSubject="Feature idea"
+              ctaLabel="Tell us your idea"
+              ctaTopicId="feature"
             />
 
             <ContributionCard
@@ -352,7 +352,7 @@ export default function HelpCenterPage() {
                 "Whether you'd help onboard the first few neighbours",
               ]}
               ctaLabel="Suggest a neighbourhood"
-              ctaSubject="Launch suggestion"
+              ctaTopicId="neighbourhood"
             />
 
             <ContributionCard
@@ -380,7 +380,7 @@ export default function HelpCenterPage() {
                 "Your device (phone or computer) and browser",
               ]}
               ctaLabel="Report a bug"
-              ctaSubject="Bug report"
+              ctaTopicId="bug"
             />
 
             <ContributionCard
@@ -394,7 +394,7 @@ export default function HelpCenterPage() {
                 "Other neighbours can see what's possible",
               ]}
               ctaLabel="Share a story"
-              ctaSubject="My DropYard story"
+              ctaTopicId="other"
             />
 
             <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#0b2f20] via-[#0f6a44] to-[#2f8a22] p-7 text-white shadow-lg flex flex-col">
@@ -405,17 +405,15 @@ export default function HelpCenterPage() {
                 </div>
                 <h3 className="mt-4 text-[19px] font-semibold">Any of the above?</h3>
                 <p className="mt-2 text-[13px] text-emerald-100/90 leading-relaxed">
-                  Just write to us. There&apos;s no form to fill out, no ticket to
-                  open. Send anything to{" "}
-                  <strong className="text-white">info@dropyard.app</strong> and a
-                  real person will get back to you.
+                  Tell us anything — a short note is enough. Pick a topic, write
+                  a few lines, and hit send. A real person reads every one.
                 </p>
               </div>
               <a
-                href="mailto:info@dropyard.app"
+                href="/contact"
                 className="relative mt-auto pt-5 inline-flex items-center gap-2 text-[13px] font-semibold text-amber-200 hover:text-amber-100 group"
               >
-                Start an email
+                Start a message
                 <Icon.Arrow className="h-4 w-4 transition-transform group-hover:translate-x-1" />
               </a>
             </div>
@@ -602,7 +600,7 @@ function ContributionCard({
   lead,
   items,
   ctaLabel,
-  ctaSubject,
+  ctaTopicId,
   ctaIsShare = false,
 }: {
   accent: "green" | "amber" | "violet" | "rose" | "sky";
@@ -611,7 +609,7 @@ function ContributionCard({
   lead: string;
   items: string[];
   ctaLabel: string;
-  ctaSubject?: string;
+  ctaTopicId?: string;
   ctaIsShare?: boolean;
 }) {
   const c = accentClasses[accent];
@@ -619,7 +617,7 @@ function ContributionCard({
 
   const href = ctaIsShare
     ? "#"
-    : `mailto:info@dropyard.app?subject=${encodeURIComponent(ctaSubject || "")}`;
+    : `/contact${ctaTopicId ? `?topic=${ctaTopicId}` : ""}`;
 
   const onClick = ctaIsShare
     ? (e: React.MouseEvent) => {
@@ -661,8 +659,8 @@ function ContributionCard({
           </>
         ) : (
           <>
-            <Icon.Mail className="h-4 w-4" />
             {ctaLabel}
+            <Icon.Arrow className="h-4 w-4" />
           </>
         )}
       </a>
