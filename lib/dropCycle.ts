@@ -183,3 +183,74 @@ export function formatDropTime(d: Date): string {
     hour12: true,
   });
 }
+
+// ─────────────────────────────────────────────────────────────────
+// V2 SELLER OVERVIEW HELPERS
+// The seller Overview component derives three coarse phases from the
+// cycle info above:
+//   "between" — anything except LIVE (sellers prepping, post-Drop recap)
+//   "live"    — LIVE phase with > 3 hours of selling time left
+//   "closing" — LIVE phase with ≤ 3 hours left (urgency cue, "last call")
+// Helpers below compute the times + countdowns the Overview needs.
+// ─────────────────────────────────────────────────────────────────
+
+export type SellerOverviewPhase = "between" | "live" | "closing";
+
+/** Sunday 20:00 of the currently-relevant Drop weekend. */
+export function dropCloseMoment(now: Date = new Date()): Date {
+  const info = getDropCycleInfo(now);
+  return getDropCloseSunday(info.currentDropDate);
+}
+
+/** Saturday 08:00 of the next Drop weekend (or the current one if we're already in/past LIVE). */
+export function nextDropMoment(now: Date = new Date()): Date {
+  const info = getDropCycleInfo(now);
+  return new Date(info.currentDropDate);
+}
+
+/** Map the rich DropPhase → coarse seller-Overview phase. */
+export function toSellerOverviewPhase(
+  info: DropCycleInfo,
+  now: Date = new Date(),
+  closingThresholdHours = 3,
+): SellerOverviewPhase {
+  if (info.phase !== "LIVE") return "between";
+  const closeAt = getDropCloseSunday(info.currentDropDate);
+  const msLeft = closeAt.getTime() - now.getTime();
+  if (msLeft <= closingThresholdHours * 60 * 60 * 1000) return "closing";
+  return "live";
+}
+
+/**
+ * Hours elapsed since the previous Drop closed (Sun 8 pm of last week).
+ * Useful for the "fresh recap" window in BetweenHero — we treat the first
+ * ~30h after a Drop closes as "fresh" and lead with the recap.
+ */
+export function hoursSinceLastDropClose(now: Date = new Date()): number {
+  const info = getDropCycleInfo(now);
+  // Last-Drop close = current Drop Saturday - 6 days + 12 hours (Sun 8 pm prior week).
+  const lastClose = new Date(info.currentDropDate);
+  lastClose.setDate(lastClose.getDate() - 6);
+  lastClose.setHours(20, 0, 0, 0);
+  const ms = now.getTime() - lastClose.getTime();
+  return ms / (60 * 60 * 1000);
+}
+
+/**
+ * Compact countdown like the v2 design: "2d 14h", "4h 23m", "12m", "30s".
+ * Differs from the existing DropCycleContext label by omitting seconds
+ * above the minute scale (the Overview doesn't want a ticking second hand).
+ */
+export function formatCompactCountdown(target: Date, now: Date = new Date()): string {
+  const ms = Math.max(0, target.getTime() - now.getTime());
+  if (ms <= 0) return "now";
+  const totalSec = Math.floor(ms / 1000);
+  const days  = Math.floor(totalSec / 86400);
+  const hours = Math.floor((totalSec % 86400) / 3600);
+  const mins  = Math.floor((totalSec % 3600) / 60);
+  const secs  = totalSec % 60;
+  if (days > 0)  return mins > 0 || hours > 0 ? `${days}d ${hours}h` : `${days}d`;
+  if (hours > 0) return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+  if (mins > 0)  return `${mins}m`;
+  return `${secs}s`;
+}

@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import DynamicDropCard from "@/components/previews/DynamicDropCard";
 import { submitSubmission, isValidEmail } from "@/lib/submissions";
+import { apiRequest } from "@/lib/api";
 import DifferentMarketplaceSection from "@/components/DifferentMarketplaceSection";
 import EarlyAccessSection from "@/components/EarlyAccessSection";
 import SellingWaysSection from "@/components/SellingWaysSection";
@@ -145,6 +146,34 @@ const NEIGHBORHOODS = [
   { id: "stittsville", name: "Stittsville", drops: 2, items: 87 },
 ];
 
+// Backend enum -> human label / emoji maps used when adapting /api/items.
+// Kept narrow so the homepage doesn't sprawl; full reverse maps live in the
+// buyer dashboard.
+const CATEGORY_EMOJI_HOME: Record<string, string> = {
+  FURNITURE:   "🛋️",
+  ELECTRONICS: "📱",
+  SPORTS:      "⚽",
+  HOME:        "🏠",
+  CLOTHING:    "👕",
+  BOOKS:       "📚",
+  OTHER:       "📦",
+};
+const CATEGORY_LABEL_HOME: Record<string, string> = {
+  FURNITURE:   "Furniture",
+  ELECTRONICS: "Electronics",
+  SPORTS:      "Sports & Outdoor",
+  HOME:        "Home",
+  CLOTHING:    "Clothing",
+  BOOKS:       "Books & Games",
+  OTHER:       "Other",
+};
+const CONDITION_LABEL_HOME: Record<string, string> = {
+  EXCELLENT: "Excellent",
+  LIKE_NEW:  "Like New",
+  GOOD:      "Good",
+  FAIR:      "Fair",
+};
+
 const FEATURED_ITEMS = [
   { id: 1, title: "IKEA Kallax Shelf Unit", price: 45, originalPrice: 120, image: "📦", category: "Furniture", seller: "Patel Family", neighborhood: "Kanata North", distance: "2.3 km", saves: 12, condition: "Like New" },
   { id: 2, title: "Dyson V8 Cordless Vacuum", price: 180, originalPrice: 450, image: "🔌", category: "Electronics", seller: "Chen Family", neighborhood: "Barrhaven", distance: "4.1 km", saves: 28, condition: "Good" },
@@ -235,10 +264,9 @@ function SearchBar() {
               <button
                 key={n.id}
                 onClick={() => { setSelectedNeighborhood(n.name); setShowDropdown(false); }}
-                className="w-full px-4 py-2 text-left text-[13px] hover:bg-gray-50 flex items-center justify-between"
+                className="w-full px-4 py-2 text-left text-[13px] hover:bg-gray-50"
               >
                 <span>{n.name}</span>
-                <span className="text-[11px] text-gray-400">{n.items} items</span>
               </button>
             ))}
           </div>
@@ -306,38 +334,38 @@ function WaitlistCard({ area, isSelected, onSelect }: {
       whileHover={{ y: -6 }}
       whileTap={{ scale: 0.985 }}
       onClick={() => onSelect(area.name)}
-      className={`group relative h-full overflow-hidden rounded-[24px] border p-5 text-left transition-all duration-300 sm:p-6 ${
+      className={`group relative h-full overflow-hidden rounded-[20px] border p-4 text-left transition-all duration-300 sm:p-5 ${
         isSelected
-          ? "border-amber-300 bg-gradient-to-br from-amber-50 via-white to-orange-50 shadow-[0_18px_45px_rgba(245,158,11,0.16)]"
-          : "border-slate-200/80 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.06)] hover:border-amber-200 hover:shadow-[0_18px_38px_rgba(15,23,42,0.10)]"
+          ? "border-amber-300 bg-gradient-to-br from-amber-50 via-white to-orange-50 shadow-[0_16px_40px_rgba(245,158,11,0.16)]"
+          : "border-slate-200/80 bg-white shadow-[0_8px_26px_rgba(15,23,42,0.06)] hover:border-amber-200 hover:shadow-[0_16px_34px_rgba(15,23,42,0.10)]"
       }`}
     >
       <div className="pointer-events-none absolute inset-0">
-        <div className={`absolute -right-8 -top-8 h-24 w-24 rounded-full blur-2xl transition-opacity duration-300 ${isSelected ? "bg-amber-200/45 opacity-100" : "bg-slate-100 opacity-0 group-hover:opacity-100"}`} />
+        <div className={`absolute -right-8 -top-8 h-20 w-20 rounded-full blur-2xl transition-opacity duration-300 ${isSelected ? "bg-amber-200/45 opacity-100" : "bg-slate-100 opacity-0 group-hover:opacity-100"}`} />
       </div>
-      <div className="relative flex h-full flex-col justify-between gap-4">
+      <div className="relative flex h-full flex-col justify-between gap-3">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h3 className="text-[23px] font-bold tracking-[-0.03em] text-slate-950">{area.name}</h3>
-            <p className="mt-1 text-[13px] text-slate-500">{area.interested} people interested</p>
+            <h3 className="text-[20px] font-bold tracking-[-0.03em] text-slate-950">{area.name}</h3>
+            <p className="mt-0.5 text-[12px] text-slate-500">{area.interested} people interested</p>
           </div>
-          <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ring-1 transition-all ${
+          <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ring-1 transition-all ${
             isSelected
               ? "bg-amber-500 text-white ring-amber-300"
               : "bg-slate-50 text-slate-400 ring-slate-200 group-hover:bg-amber-50 group-hover:text-amber-600 group-hover:ring-amber-200"
           }`}>
-            {isSelected ? <Check className="h-5 w-5" /> : <MapPin className="h-5 w-5" />}
+            {isSelected ? <Check className="h-4 w-4" /> : <MapPin className="h-4 w-4" />}
           </div>
         </div>
         <div>
-          <div className="mb-2 flex items-center justify-between gap-3 text-[13px]">
+          <div className="mb-1.5 flex items-center justify-between gap-3 text-[12px]">
             <span className="font-medium text-slate-500">Demand level</span>
-            <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
-              <TrendingUp className="h-3.5 w-3.5" />
+            <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+              <TrendingUp className="h-3 w-3" />
               {area.trend}
             </span>
           </div>
-          <div className="h-2.5 overflow-hidden rounded-full bg-slate-100">
+          <div className="h-2 overflow-hidden rounded-full bg-slate-100">
             <motion.div
               initial={{ width: 0 }}
               whileInView={{ width: `${pct}%` }}
@@ -392,10 +420,10 @@ function NeighbourhoodWaitlistSection() {
   };
 
   return (
-    <section className="relative overflow-hidden bg-[#f8faf8] py-6 md:py-8">
+    <section className="relative overflow-hidden bg-[#f8faf8] py-5 md:py-7">
       <div className="pointer-events-none absolute inset-0">
-        <div className="absolute left-[-8%] top-14 h-72 w-72 rounded-full bg-amber-100/40 blur-3xl" />
-        <div className="absolute right-[-8%] bottom-10 h-72 w-72 rounded-full bg-emerald-100/35 blur-3xl" />
+        <div className="absolute left-[-8%] top-14 h-64 w-64 rounded-full bg-amber-100/40 blur-3xl" />
+        <div className="absolute right-[-8%] bottom-10 h-64 w-64 rounded-full bg-emerald-100/35 blur-3xl" />
       </div>
       <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <motion.div
@@ -405,25 +433,25 @@ function NeighbourhoodWaitlistSection() {
           transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
           className="mx-auto max-w-4xl text-center"
         >
-          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-[11px] font-semibold text-amber-700 shadow-sm">
-            <MapPin className="h-3.5 w-3.5" />
+          <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-semibold text-amber-700 shadow-sm">
+            <MapPin className="h-3 w-3" />
             Expanding across Ottawa
           </div>
-          <h2 className="text-balance text-[23px] font-bold tracking-[-0.03em] text-slate-950 sm:text-[29px]">
+          <h2 className="text-balance text-[21px] font-bold tracking-[-0.03em] text-slate-950 sm:text-[26px]">
             Not in Barrhaven? <span className="text-amber-600">We&apos;re coming to you.</span>
           </h2>
-          <p className="mx-auto mt-3 max-w-3xl text-[13px] leading-6 text-slate-600 sm:text-[15px]">
+          <p className="mx-auto mt-2 max-w-3xl text-[12px] leading-5 text-slate-600 sm:text-[14px]">
             Join the waitlist for your neighbourhood and be first to know when a local Drop goes live near you.
           </p>
         </motion.div>
 
-        <div className="mt-8 grid gap-6 xl:grid-cols-[1.45fr_0.9fr] xl:items-stretch">
+        <div className="mt-6 grid gap-5 xl:grid-cols-[1.45fr_0.9fr] xl:items-stretch">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, amount: 0.15 }}
             transition={{ duration: 0.5 }}
-            className="relative overflow-hidden rounded-[28px] border border-slate-200/80 bg-white/80 p-3 shadow-[0_18px_45px_rgba(15,23,42,0.06)] backdrop-blur-sm sm:p-4 xl:flex xl:flex-col xl:h-full"
+            className="relative overflow-hidden rounded-[24px] border border-slate-200/80 bg-white/80 p-2.5 shadow-[0_16px_40px_rgba(15,23,42,0.06)] backdrop-blur-sm sm:p-3 xl:flex xl:flex-col xl:h-full"
           >
             <div className="pointer-events-none absolute inset-0">
               <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-emerald-50/70 to-transparent" />
@@ -435,7 +463,7 @@ function NeighbourhoodWaitlistSection() {
               whileInView="show"
               viewport={{ once: true, amount: 0.1 }}
               variants={{ hidden: {}, show: { transition: { staggerChildren: 0.07, delayChildren: 0.08 } } }}
-              className="relative grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-3 xl:flex-1 xl:auto-rows-fr"
+              className="relative grid grid-cols-1 gap-2.5 md:grid-cols-2 2xl:grid-cols-3 xl:flex-1 xl:auto-rows-fr"
             >
               {COMING_SOON_HOODS.map((area) => (
                 <WaitlistCard
@@ -453,64 +481,64 @@ function NeighbourhoodWaitlistSection() {
             whileInView={{ opacity: 1, x: 0 }}
             viewport={{ once: true, amount: 0.2 }}
             transition={{ duration: 0.5, delay: 0.05 }}
-            className="sticky top-8 overflow-hidden rounded-[28px] border border-amber-200/70 bg-gradient-to-br from-amber-50 via-white to-orange-50 p-5 shadow-[0_18px_50px_rgba(245,158,11,0.14)] sm:p-6"
+            className="sticky top-8 overflow-hidden rounded-[24px] border border-amber-200/70 bg-gradient-to-br from-amber-50 via-white to-orange-50 p-4 shadow-[0_16px_44px_rgba(245,158,11,0.14)] sm:p-5"
           >
-            <div className="absolute right-0 top-0 h-36 w-36 rounded-full bg-amber-200/35 blur-3xl" />
+            <div className="absolute right-0 top-0 h-32 w-32 rounded-full bg-amber-200/35 blur-3xl" />
             <div className="relative">
-              <div className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-white text-amber-600 shadow-sm ring-1 ring-amber-200">
-                <Bell className="h-5 w-5" />
+              <div className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-xl bg-white text-amber-600 shadow-sm ring-1 ring-amber-200">
+                <Bell className="h-4 w-4" />
               </div>
-              <h3 className="text-[19px] font-bold tracking-[-0.03em] text-slate-950">
+              <h3 className="text-[17px] font-bold tracking-[-0.03em] text-slate-950">
                 Notify me for {selected?.name}
               </h3>
-              <p className="mt-2 text-[13px] leading-6 text-slate-600">
+              <p className="mt-1.5 text-[12px] leading-5 text-slate-600">
                 Join the waitlist and be first to know when DropYard launches in your neighbourhood.
               </p>
-              <div className="mt-5 rounded-2xl border border-amber-200 bg-white/85 p-3.5">
+              <div className="mt-4 rounded-2xl border border-amber-200 bg-white/85 p-3">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-[11px] font-medium text-slate-500">Current interest</p>
-                    <p className="mt-0.5 text-[17px] font-bold text-slate-950">{selected?.interested} people</p>
+                    <p className="text-[10px] font-medium text-slate-500">Current interest</p>
+                    <p className="mt-0.5 text-[15px] font-bold text-slate-950">{selected?.interested} people</p>
                   </div>
-                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-semibold text-amber-700">
-                    <TrendingUp className="h-3.5 w-3.5" />
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                    <TrendingUp className="h-3 w-3" />
                     {selected?.trend}
                   </span>
                 </div>
               </div>
               {!submitted ? (
-                <form className="mt-6 space-y-4" onSubmit={handleWaitlistSubmit}>
+                <form className="mt-5 space-y-3" onSubmit={handleWaitlistSubmit}>
                   <label className="block">
-                    <span className="mb-2 block text-[13px] font-semibold text-slate-700">Email address</span>
+                    <span className="mb-1.5 block text-[12px] font-semibold text-slate-700">Email address</span>
                     <input
                       type="email"
                       value={email}
                       onChange={(e) => { setEmail(e.target.value); if (error) setError(""); }}
                       placeholder="you@email.com"
                       disabled={submitting}
-                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 text-[15px] text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-amber-300 focus:ring-4 focus:ring-amber-100 disabled:opacity-60"
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-[14px] text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-amber-300 focus:ring-4 focus:ring-amber-100 disabled:opacity-60"
                     />
                   </label>
                   {error && (
-                    <p className="text-[13px] text-rose-600">{error}</p>
+                    <p className="text-[12px] text-rose-600">{error}</p>
                   )}
                   <button
                     type="submit"
                     disabled={submitting}
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 py-4 text-[15px] font-semibold text-white transition hover:bg-slate-800 disabled:opacity-60"
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 py-3 text-[14px] font-semibold text-white transition hover:bg-slate-800 disabled:opacity-60"
                   >
                     {submitting ? "Saving your spot..." : "Notify Me"}
-                    {!submitting && <ArrowRight className="h-4 w-4" />}
+                    {!submitting && <ArrowRight className="h-3.5 w-3.5" />}
                   </button>
                 </form>
               ) : (
-                <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-center">
-                  <CheckCircle className="mx-auto mb-2 h-7 w-7 text-emerald-500" />
-                  <p className="font-semibold text-slate-900">You&apos;re on the {selected?.name} waitlist!</p>
-                  <p className="mt-1 text-[13px] text-slate-600">We&apos;ll email you at {email} when the {selected?.name} Drop goes live.</p>
+                <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-center">
+                  <CheckCircle className="mx-auto mb-1.5 h-6 w-6 text-emerald-500" />
+                  <p className="text-[13px] font-semibold text-slate-900">You&apos;re on the {selected?.name} waitlist!</p>
+                  <p className="mt-1 text-[12px] text-slate-600">We&apos;ll email you at {email} when the {selected?.name} Drop goes live.</p>
                 </div>
               )}
-              <p className="mt-4 text-[13px] leading-6 text-slate-500">
+              <p className="mt-3 text-[12px] leading-5 text-slate-500">
                 You&apos;ll only get launch updates for <span className="font-semibold text-slate-700">{selected?.name}</span>.
               </p>
             </div>
@@ -782,6 +810,43 @@ function HomePage({
   goSellerAuth: (mode?: "signup" | "login") => void;
   goMovingAuth: (mode?: "signup" | "login") => void;
 }) {
+  // Live "Featured This Week" — fetches the 4 most recent items from the
+  // public /api/items endpoint. Falls back to FEATURED_ITEMS demo data while
+  // loading or if the request fails (so the marketing page never looks empty).
+  const [featuredItems, setFeaturedItems] = useState<typeof FEATURED_ITEMS>(FEATURED_ITEMS);
+  useEffect(() => {
+    let cancelled = false;
+    apiRequest<{ items: Array<Record<string, unknown>> }>("/api/items?limit=4")
+      .then((data) => {
+        if (cancelled) return;
+        const list = Array.isArray(data?.items) ? data.items : [];
+        if (list.length === 0) return; // keep demo fallback when marketplace is empty
+        const adapted = list.map((api, idx) => {
+          const seller = (api.seller as Record<string, unknown>) || {};
+          const count = (api._count as Record<string, unknown>) || {};
+          const price = Number(api.price) || 0;
+          const original = Number(api.originalPrice) > price
+            ? Number(api.originalPrice)
+            : Math.round(price * 1.6); // synthetic anchor so the discount badge still reads
+          return {
+            id:            (api.id as string | number) ?? idx + 1,
+            title:         (api.title as string) || "Item",
+            price,
+            originalPrice: original,
+            image:         CATEGORY_EMOJI_HOME[(api.category as string) || "OTHER"] || "📦",
+            category:      CATEGORY_LABEL_HOME[(api.category as string) || "OTHER"] || "Other",
+            seller:        (seller.name as string) || "Neighbour",
+            neighborhood:  (seller.neighborhood as string) || "Nearby",
+            distance:      "Nearby",
+            saves:         Number(count.watchlist) || 0,
+            condition:     CONDITION_LABEL_HOME[(api.condition as string) || "GOOD"] || "Used - Good",
+          } as typeof FEATURED_ITEMS[number];
+        });
+        setFeaturedItems(adapted);
+      })
+      .catch(() => { /* keep demo fallback on network blip */ });
+    return () => { cancelled = true; };
+  }, []);
   const testimonials = [
     {
       id: 1,
@@ -867,7 +932,7 @@ function HomePage({
             </button>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {FEATURED_ITEMS.map((item) => <ItemCard key={item.id} item={item} />)}
+            {featuredItems.map((item) => <ItemCard key={item.id} item={item} />)}
           </div>
           <div className="text-center mt-10">
             <button

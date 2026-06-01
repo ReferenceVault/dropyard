@@ -12,17 +12,26 @@ import {
   Zap,
   CheckCircle2,
 } from "lucide-react";
+import { apiRequest } from "@/lib/api";
+import { getDropCycleInfo } from "@/lib/dropCycle";
 
-const previewItems = [
-  { id: 1, name: "IKEA Kallax Shelf", price: 45, icon: "🪑", watchers: 6 },
-  { id: 2, name: "Dyson V8 Vacuum", price: 180, icon: "🔌", watchers: 9 },
-  { id: 3, name: "KitchenAid Mixer", price: 120, icon: "🍳", watchers: 3 },
-];
-
-const liveItems = [
-  { id: 1, name: "IKEA Kallax Shelf", price: 45, icon: "🪑", status: "available", label: "Claim Now" },
-  { id: 2, name: "Dyson V8 Vacuum", price: 180, icon: "🔌", status: "claimed", label: "Just Claimed" },
-  { id: 3, name: "KitchenAid Mixer", price: 120, icon: "🍳", status: "available", label: "Grab It" },
+// Public marketing card — every number on it now comes from the live drop
+// cycle + `/api/items`. The DEMO_* arrays below are only a fallback used when
+// the marketplace has no items at all (e.g. first deploy), so the card still
+// renders something instead of going blank.
+const CATEGORY_EMOJI = {
+  FURNITURE:   "🛋️",
+  ELECTRONICS: "📱",
+  SPORTS:      "⚽",
+  HOME:        "🏠",
+  CLOTHING:    "👕",
+  BOOKS:       "📚",
+  OTHER:       "📦",
+};
+const DEMO_PREVIEW_ITEMS = [
+  { id: "d1", name: "Sample listing",      price: 0, icon: "📦", watchers: 0 },
+  { id: "d2", name: "Sample listing",      price: 0, icon: "📦", watchers: 0 },
+  { id: "d3", name: "Sample listing",      price: 0, icon: "📦", watchers: 0 },
 ];
 
 function formatDuration(ms) {
@@ -101,17 +110,72 @@ function LiveRow({ item, index }) {
 }
 
 export default function DynamicDropCard() {
-  const [targetTime] = useState(() => Date.now() + (((5 * 24 + 5) * 60 + 10) * 60 * 1000));
-  const [now, setNow] = useState(Date.now());
-
+  // Tick every second so the countdown updates smoothly. The drop cycle helper
+  // is pure (no DB call) so re-computing per tick is fine.
+  const [now, setNow] = useState(() => new Date());
   useEffect(() => {
-    const interval = setInterval(() => setNow(Date.now()), 1000);
+    const interval = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(interval);
   }, []);
 
-  const remaining = Math.max(targetTime - now, 0);
-  const isLive = remaining <= 0;
+  // Real drop cycle — Mon-Wed SUBMISSION, Thu-Fri PREVIEW, Sat 8am-Sun 8pm LIVE,
+  // Sun 8pm-Mon midnight CLOSED. The card surfaces two states ("countdown" vs
+  // "live"); other phases land in "countdown" pointing at the next live moment.
+  const dropInfo = useMemo(() => getDropCycleInfo(now), [now]);
+  const isLive = dropInfo.phase === "LIVE";
+  const remaining = Math.max(dropInfo.nextEventAt.getTime() - now.getTime(), 0);
   const time = useMemo(() => formatDuration(remaining), [remaining]);
+
+  // Live items + stats pulled from /api/items. Total + unique sellers compute
+  // off the same payload (we ask for 12 so the per-seller count is meaningful
+  // even though the card only renders 3).
+  const [liveItems, setLiveItems] = useState(DEMO_PREVIEW_ITEMS);
+  const [previewItems, setPreviewItems] = useState(DEMO_PREVIEW_ITEMS);
+  const [totalCount, setTotalCount] = useState(null);
+  const [sellersCount, setSellersCount] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    apiRequest("/api/items?limit=12")
+      .then((data) => {
+        if (cancelled) return;
+        const list = Array.isArray(data?.items) ? data.items : [];
+        if (list.length === 0) return;
+        // Cheap "watcher" proxy until we surface the real count from
+        // /api/items — _count.watchlist is included on every item.
+        const adapted = list.slice(0, 3).map((api) => ({
+          id:       api.id,
+          name:     api.title || "Item",
+          price:    Number(api.price) || 0,
+          icon:     CATEGORY_EMOJI[api.category] || "📦",
+          watchers: Number(api._count?.watchlist) || 0,
+          claimed:  api.status === "CLAIMED" || api.status === "SOLD",
+        }));
+        const liveList = adapted.map((it) => ({
+          ...it,
+          status: it.claimed ? "claimed" : "available",
+          label:  it.claimed ? "Just Claimed" : "Claim Now",
+        }));
+        setPreviewItems(adapted);
+        setLiveItems(liveList);
+        setTotalCount(typeof data?.total === "number" ? data.total : list.length);
+        const sellerIds = new Set(list.map((i) => i.seller?.id).filter(Boolean));
+        setSellersCount(sellerIds.size);
+      })
+      .catch(() => { /* keep demo fallback */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  // "Waiting" during the countdown = total watchlist saves across the items
+  // we know about. Easy to compute from previewItems' watchers field.
+  const waitingCount = useMemo(
+    () => previewItems.reduce((acc, it) => acc + (it.watchers || 0), 0),
+    [previewItems]
+  );
+  // "Claimed" while live = items with claimed === true.
+  const claimedCount = useMemo(
+    () => liveItems.filter((it) => it.claimed).length,
+    [liveItems]
+  );
 
   return (
     <div className="w-full max-w-sm ml-auto rounded-2xl bg-white shadow-xl ring-1 ring-slate-200/80 overflow-hidden">
@@ -133,7 +197,7 @@ export default function DynamicDropCard() {
                 </span>
               )}
             </div>
-            <h2 className="text-base font-bold leading-tight">Barrhaven Launch Drop</h2>
+            <h2 className="text-base font-bold leading-tight">Barrhaven {isLive ? "Live Drop" : "Drop"}</h2>
             <p className="mt-0.5 text-xs text-emerald-100">
               {isLive ? "Jump in before items are gone." : `Live in ${time.days}d ${time.hours}h ${time.minutes}m`}
             </p>
@@ -163,12 +227,14 @@ export default function DynamicDropCard() {
         </div>
       </div>
 
-      {/* Stats */}
+      {/* Stats — live from /api/items. The em-dash fallback only shows in the
+          unlikely case that the API call failed AND we have no demo data; the
+          card otherwise renders honest counts. */}
       <div className="grid grid-cols-3 border-b border-slate-100 bg-slate-50">
         {[
-          { icon: Package, value: "150+", label: isLive ? "Items Live" : "Dropping", color: "text-slate-900" },
-          { icon: ShoppingBag, value: "42", label: isLive ? "Claimed" : "Waiting", color: isLive ? "text-emerald-600" : "text-amber-500" },
-          { icon: Store, value: "24", label: "Sellers", color: "text-amber-500" },
+          { icon: Package,    value: totalCount  == null ? "—" : (isLive ? String(totalCount) : `${totalCount}+`), label: isLive ? "Items Live" : "Dropping", color: "text-slate-900" },
+          { icon: ShoppingBag, value: (isLive ? claimedCount : waitingCount) || 0,                                  label: isLive ? "Claimed" : "Watching", color: isLive ? "text-emerald-600" : "text-amber-500" },
+          { icon: Store,      value: sellersCount == null ? "—" : sellersCount,                                     label: "Sellers", color: "text-amber-500" },
         ].map(({ icon: Icon, value, label, color }) => (
           <div key={label} className="border-r last:border-r-0 border-slate-200 py-3 text-center">
             <Icon className="mx-auto h-3.5 w-3.5 text-slate-400" />
