@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { DropYardLogo, DropYardWordmark } from "../page";
 import DropYardSellerDashboard from "@/components/previews/DropYard_SellerDashboard";
 import DropYardBuyerDashboard from "@/components/previews/DropYard_BuyerDashboard";
@@ -65,6 +66,7 @@ import {
 import { DashboardProvider, useDashboard } from "@/context/DashboardContext";
 import { DropCycleProvider, useDropCycle } from "@/context/DropCycleContext";
 import { useAuth } from "@/context/AuthContext";
+import { useSocketEvent } from "@/context/SocketContext";
 import { apiRequest, uploadItemPhoto } from "@/lib/api";
 
 // ── API item type (matches backend response) ──────────────────
@@ -117,7 +119,35 @@ type BuyerTab =
   | "messages"
   | "history";
 
+// Lightweight guard component. Hooks here stay stable across renders, and the
+// authed content below is mounted only after `user` is truthy — so its own
+// (much larger) hook order is also stable. Mirrors the `app/admin/(authed)`
+// pattern. NOTE: an early return inside the AuthedBuyerContent function would
+// violate the Rules of Hooks (the dozens of hooks below would be skipped on
+// the loading render, then start firing on the next), so the guard MUST live
+// in this wrapper, not inline.
 function BuyerDashboardContent() {
+  const router = useRouter();
+  const { user, loading } = useAuth();
+  useEffect(() => {
+    if (!loading && !user) {
+      router.replace("/join?mode=signin");
+    }
+  }, [loading, user, router]);
+  if (loading || !user) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-[#f7faf8]">
+        <div className="flex items-center gap-3 text-slate-500">
+          <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+          <p className="text-sm font-medium">Checking access…</p>
+        </div>
+      </div>
+    );
+  }
+  return <AuthedBuyerContent />;
+}
+
+function AuthedBuyerContent() {
   // Guard against SSR hydration mismatch: the v1 preview dashboards render
   // user-dependent content (name, initials) inside UserMenu. On SSR, user is null
   // so it shows "?" / "Account"; on client, auth context populates and shows
@@ -333,6 +363,19 @@ function BuyerDashboardContent() {
       .catch(() => {})
       .finally(() => setSellerItemsLoading(false));
   }, [mode, accessToken, activeSellerTab]);
+
+  // Real-time: when a buyer claim is confirmed (item → CLAIMED), cancelled
+  // (item → LIVE again), or picked up (item → SOLD), the seller's My Items
+  // status pills need to update without waiting for a tab switch. Same goes
+  // for `claim:new` when an item transitions to having a pending claim.
+  const refetchSellerItemsIfSeller = () => {
+    if (mode !== "seller" || !accessToken) return;
+    apiRequest<{ items: ApiItem[] }>("/api/items/mine", { token: accessToken })
+      .then(({ items }) => setSellerItems(items))
+      .catch(() => {});
+  };
+  useSocketEvent("claim:new",     () => refetchSellerItemsIfSeller());
+  useSocketEvent("claim:updated", () => refetchSellerItemsIfSeller());
 
   // Fetch browse items
   useEffect(() => {
