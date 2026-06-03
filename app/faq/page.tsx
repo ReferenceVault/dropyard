@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { dropOpenDay, dropOpenHourLong, dropCloseDay, dropCloseHourLong } from "@/lib/dropCycle";
 
 const LAST_UPDATED = "May 27, 2026";
 
@@ -186,8 +187,8 @@ const categories: Category[] = [
         a: (
           <>
             <p>
-              Every <strong>Saturday 8:00 AM through Sunday 6:00 PM</strong> —
-              that&apos;s a 34-hour window where the week&apos;s new listings are
+              Every <strong>{dropOpenDay()} {dropOpenHourLong()} through {dropCloseDay()} {dropCloseHourLong()}</strong> —
+              that&apos;s a 36-hour window where the week&apos;s new listings are
               live alongside everything already on the Shelf.
             </p>
             <p className="mt-3">
@@ -276,7 +277,7 @@ const categories: Category[] = [
                   If you want your item to debut Saturday morning alongside the
                   rest of the week&apos;s new listings — the equivalent of saving
                   it up for the big yard sale day. Won&apos;t be visible until
-                  8:00 AM Saturday.
+                  {" "}{dropOpenHourLong()} {dropOpenDay()}.
                 </p>
               </div>
               <div className="rounded-xl border-2 border-amber-200 bg-amber-50/60 p-4">

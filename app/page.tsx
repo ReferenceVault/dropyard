@@ -279,38 +279,9 @@ function SearchBar() {
   );
 }
 
-// ============================================================================
-// DROP COUNTDOWN
-// ============================================================================
-function DropCountdown() {
-  const [time, setTime] = useState({ hours: 23, minutes: 45, seconds: 32 });
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setTime((prev) => {
-        let { hours, minutes, seconds } = prev;
-        seconds--;
-        if (seconds < 0) { seconds = 59; minutes--; }
-        if (minutes < 0) { minutes = 59; hours--; }
-        if (hours < 0) { hours = 47; minutes = 59; seconds = 59; }
-        return { hours, minutes, seconds };
-      });
-    }, 1000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const pad = (n: number) => String(n).padStart(2, "0");
-
-  return (
-    <div className="flex items-center gap-1.5 font-mono text-[13px]">
-      <span className="bg-emerald-900/60 px-1.5 py-0.5 rounded text-white font-bold">{pad(time.hours)}</span>
-      <span className="text-emerald-300 font-bold">:</span>
-      <span className="bg-emerald-900/60 px-1.5 py-0.5 rounded text-white font-bold">{pad(time.minutes)}</span>
-      <span className="text-emerald-300 font-bold">:</span>
-      <span className="bg-emerald-900/60 px-1.5 py-0.5 rounded text-white font-bold">{pad(time.seconds)}</span>
-    </div>
-  );
-}
+// (DropCountdown removed 2026-06-03 — it was a fake hardcoded H:M:S timer that
+// looped at 47h, never imported or rendered anywhere. The live homepage drop
+// countdown lives in <DynamicDropCard> which derives from getDropCycleInfo.)
 
 const COMING_SOON_HOODS = [
   { name: "Kanata", interested: 84, trend: "+12 this week" },

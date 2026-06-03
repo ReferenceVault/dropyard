@@ -1,7 +1,12 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import {
+  getDropCycleInfo,
+  nextDropMoment,
+  dropCloseMoment,
+} from "@/lib/dropCycle";
 import {
   Search, Heart, Clock, MapPin, Package, ChevronRight,
   TrendingDown, DollarSign, Shield, Eye,
@@ -43,18 +48,31 @@ export default function ForBuyersPage() {
   const router = useRouter();
   const go = () => router.push("/join?mode=signup");
 
-  const [cd, setCd] = useState({ h: 23, m: 44, s: 59 });
+  // Real phase-aware countdown. During LIVE phase, counts down to drop close
+  // (Sunday 8 PM) and labels itself "Drop ends in". Any other phase counts
+  // down to drop open (Saturday 8 AM) and labels itself "Drop opens in".
+  // SSR-safe: `now` starts null so first server + client render match (zeros).
+  const [now, setNow] = useState<Date | null>(null);
   useEffect(() => {
-    const t = setInterval(() => setCd((p) => {
-      let { h, m, s } = p;
-      s--;
-      if (s < 0) { s = 59; m--; }
-      if (m < 0) { m = 59; h--; }
-      if (h < 0) h = 23;
-      return { h, m, s };
-    }), 1000);
-    return () => clearInterval(t);
+    setNow(new Date());
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
   }, []);
+  const { totalSec, countdownLabel } = useMemo(() => {
+    if (!now) return { totalSec: 0, countdownLabel: "Drop opens in" };
+    const info = getDropCycleInfo(now);
+    const isLive = info.phase === "LIVE";
+    const target = isLive ? dropCloseMoment(now) : nextDropMoment(now);
+    return {
+      totalSec: Math.max(0, Math.floor((target.getTime() - now.getTime()) / 1000)),
+      countdownLabel: isLive ? "Drop ends in" : "Drop opens in",
+    };
+  }, [now]);
+  const cd = {
+    h: Math.floor(totalSec / 3600),
+    m: Math.floor((totalSec % 3600) / 60),
+    s: totalSec % 60,
+  };
 
   return (
     <div className="min-h-full flex flex-col">
@@ -167,7 +185,7 @@ export default function ForBuyersPage() {
           {/* Live countdown — now with unit labels */}
           <div style={{ display: "inline-flex", alignItems: "center", gap: 12, padding: "8px 18px", borderRadius: 14, backgroundColor: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", backdropFilter: "blur(8px)" }}>
             <Clock size={14} style={{ color: C.gAccent }} />
-            <span style={{ fontSize: 9, fontWeight: 800, color: "rgba(255,255,255,0.65)", textTransform: "uppercase", letterSpacing: "0.15em" }}>Drop ends in</span>
+            <span style={{ fontSize: 9, fontWeight: 800, color: "rgba(255,255,255,0.65)", textTransform: "uppercase", letterSpacing: "0.15em" }}>{countdownLabel}</span>
             <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
               {[
                 { v: pad(cd.h), label: "Hrs" },

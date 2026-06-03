@@ -19,10 +19,13 @@
 
 | # | Page / Surface | Test cases | Manual | Regression | A11y | Security | Code | Bugs | Status |
 |---|---|---|---|---|---|---|---|---|---|
-| A1 | `/join` — signup + login + role pick | TC-A1, A2, A3 | ☐ | ☐ | ☐ | ☐ | ☐ | 0 | Not Started |
-| A2 | `/admin/login` | TC-A4 | ☐ | ☐ | ☐ | ☐ | ☐ | 0 | Not Started |
-| A3 | Session refresh / JWT expiry | TC-A5 | ☐ | ☐ | — | ☐ | ☐ | 0 | Not Started |
-| A4 | API: `/api/auth` (signup, login, refresh, /me, password) | TC-A6 | ☐ | ☐ | — | ☐ | ☐ | 0 | Not Started |
+| A1 | `/join` — signup + login + role pick | TC-A1, A2, A3 | ✅ | ☐ | ☐ | ✅ | ✅ | 0 | Passed |
+| A2 | `/admin/login` | TC-A4 | ✅ | ☐ | ☐ | ✅ | ✅ | 0 | Passed |
+| A3 | Session refresh / JWT expiry | TC-A5 | ✅ | ☐ | — | ✅ | ✅ | 0 | Passed |
+| A4 | API: `/api/auth` (signup, signin, refresh, /me, password) | TC-A6 | ✅ | ☐ | — | ✅ | ☐ | 0 | Passed |
+| A5 | `/forgot-password` — request reset link | TC-A7 | ✅ | ☐ | ☐ | ✅ | ✅ | 0 | Passed |
+| A6 | `/reset-password?token=...` — consume link | TC-A8 | ✅ | ☐ | ☐ | ✅ | ✅ | 0 | Passed |
+| A7 | Remember Me — refresh-token TTL | TC-A9 | ✅ | ☐ | — | ✅ | ✅ | 0 | Passed |
 
 ## Wave B — Seller core
 
@@ -114,13 +117,13 @@
 
 | Wave | Total rows | Passed | In progress | Blocked | Not started |
 |---|---|---|---|---|---|
-| A — Foundation | 4 | 0 | 0 | 0 | 4 |
+| A — Foundation | 7 | 7 | 0 | 0 | 0 |
 | B — Seller | 15 | 0 | 0 | 0 | 15 |
 | C — Buyer | 13 | 0 | 0 | 0 | 13 |
 | D — Admin | 8 | 0 | 0 | 0 | 8 |
 | E — Public | 13 | 0 | 0 | 0 | 13 |
 | F — Cross-cutting | 10 | 0 | 0 | 0 | 10 |
-| **Total** | **63** | **0** | **0** | **0** | **63** |
+| **Total** | **66** | **7** | **0** | **0** | **59** |
 
 ## How to use this matrix
 

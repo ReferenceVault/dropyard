@@ -1,6 +1,22 @@
 "use client";
 
 import { useState, useEffect, useReducer, useRef } from "react";
+import { useMemo } from "react";
+import {
+  dropOpenHour, dropOpenHourBadge, dropOpenDay, dropOpenFull,
+  nextDropMoment, dropCloseMoment,
+  formatCompactCountdown,
+} from "@/lib/dropCycle";
+
+function useDropOpenCountdownString() {
+  const [now, setNow] = useState(null);
+  useEffect(() => {
+    setNow(new Date());
+    const id = setInterval(() => setNow(new Date()), 60 * 1000);
+    return () => clearInterval(id);
+  }, []);
+  return now ? formatCompactCountdown(nextDropMoment(now), now) : "";
+}
 import {
   Search, Heart, Clock, MapPin, Package, ChevronRight, ChevronDown, ChevronUp,
   Check, X, User, ShoppingBag, MessageSquare, Sparkles, Truck, Calendar,
@@ -392,22 +408,23 @@ function PageTitle({ eyebrow, title, subtitle, action, eyebrowBg, eyebrowColor, 
    ============================================================ */
 function AnticipationBand({ onRemindMe, reminded }) {
   const { isMobile } = useViewport();
-  // Animated countdown — same tick mechanism as WelcomeBand
-  // Demo starts at 2d 14h 23m 47s
-  const [t, setT] = useState({ d: 2, h: 14, m: 23, s: 47 });
+  // Real countdown to next drop open (SSR-safe: null until mount).
+  const [now, setNow] = useState(null);
   useEffect(() => {
-    const tick = setInterval(() => {
-      setT(prev => {
-        let { d, h, m, s } = prev;
-        if (s > 0) s--;
-        else if (m > 0) { m--; s = 59; }
-        else if (h > 0) { h--; m = 59; s = 59; }
-        else if (d > 0) { d--; h = 23; m = 59; s = 59; }
-        return { d, h, m, s };
-      });
-    }, 1000);
-    return () => clearInterval(tick);
+    setNow(new Date());
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
   }, []);
+  const totalSec = useMemo(() => {
+    if (!now) return 0;
+    return Math.max(0, Math.floor((nextDropMoment(now).getTime() - now.getTime()) / 1000));
+  }, [now]);
+  const t = {
+    d: Math.floor(totalSec / 86400),
+    h: Math.floor((totalSec % 86400) / 3600),
+    m: Math.floor((totalSec % 3600) / 60),
+    s: totalSec % 60,
+  };
   const pad = (n) => n < 10 ? "0" + n : "" + n;
 
   // Mock 5 neighbour avatars — different cast than WelcomeBand for variety
@@ -468,10 +485,10 @@ function AnticipationBand({ onRemindMe, reminded }) {
           <h1 style={{ fontFamily: F.head, fontSize: 22, fontWeight: 900, color: C.ink, letterSpacing: "-0.025em", lineHeight: 1.2, marginBottom: 10 }}>
             The next Drop lands{" "}
             <span style={{ position: "relative", display: "inline-block" }}>
-              Saturday
+              {dropOpenDay()}
               <span style={{ position: "absolute", left: 0, right: 0, bottom: -2, height: 3, background: C.amberDeep, borderRadius: 2, opacity: 0.85 }}/>
             </span>
-            {" "}at 10 AM
+            {" "}at {dropOpenHour()}
           </h1>
 
           {/* Body — concise, with bold stat */}
@@ -530,20 +547,22 @@ function AnticipationBand({ onRemindMe, reminded }) {
    ============================================================ */
 function WelcomeBand() {
   const { isMobile } = useViewport();
-  // Animated countdown — for design demo, decrement from 19:49:32
-  const [t, setT] = useState({ h: 19, m: 49, s: 32 });
+  // Real countdown to drop close. SSR-safe.
+  const [now, setNow] = useState(null);
   useEffect(() => {
-    const tick = setInterval(() => {
-      setT(prev => {
-        let { h, m, s } = prev;
-        if (s > 0) s--;
-        else if (m > 0) { m--; s = 59; }
-        else if (h > 0) { h--; m = 59; s = 59; }
-        return { h, m, s };
-      });
-    }, 1000);
-    return () => clearInterval(tick);
+    setNow(new Date());
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
   }, []);
+  const totalSec = useMemo(() => {
+    if (!now) return 0;
+    return Math.max(0, Math.floor((dropCloseMoment(now).getTime() - now.getTime()) / 1000));
+  }, [now]);
+  const t = {
+    h: Math.floor(totalSec / 3600),
+    m: Math.floor((totalSec % 3600) / 60),
+    s: totalSec % 60,
+  };
   const pad = (n) => n < 10 ? "0" + n : "" + n;
 
   const neighbours = [
@@ -1240,10 +1259,10 @@ function PreviewItemDetail({ item, onBack, savedPreview, togglePreview }) {
             <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at center, transparent 40%, " + C.amber + "12 100%)", pointerEvents: "none" }}/>
             <span style={{ fontSize: 160, filter: "saturate(0.85)", opacity: 0.92 }}>{item.img}</span>
 
-            {/* SAT 10AM banner — bigger version of the card badge */}
+            {/* {dropOpenDay(true).toUpperCase()} {dropOpenHourBadge()} banner — bigger version of the card badge */}
             <div style={{ position: "absolute", top: 18, left: 18, padding: "8px 14px", borderRadius: 999, background: C.amber, color: "#fff", fontFamily: F.head, fontSize: 12, fontWeight: 900, letterSpacing: "0.1em", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 3px 10px " + C.amber + "55" }}>
               <Clock size={12} strokeWidth={2.6}/>
-              DROPS SATURDAY 10AM
+              DROPS {dropOpenDay().toUpperCase()} {dropOpenHourBadge()}
             </div>
           </div>
 
@@ -1253,7 +1272,7 @@ function PreviewItemDetail({ item, onBack, savedPreview, togglePreview }) {
             <div>
               <p style={{ fontFamily: F.head, fontSize: 13, fontWeight: 800, color: C.ink, marginBottom: 3 }}>This is a Sneak Peek</p>
               <p style={{ fontFamily: F.body, fontSize: 12, fontWeight: 500, color: C.mink, lineHeight: 1.5 }}>
-                The item isn't claimable yet. Save it now and we'll notify you the moment Saturday's Drop opens at 10 AM — first-come, first-served once it goes live.
+                The item isn't claimable yet. Save it now and we'll notify you the moment {dropOpenDay()}'s Drop opens at {dropOpenHour()} — first-come, first-served once it goes live.
               </p>
             </div>
           </div>
@@ -1280,7 +1299,7 @@ function PreviewItemDetail({ item, onBack, savedPreview, togglePreview }) {
               </div>
             </div>
             <p style={{ fontFamily: F.body, fontSize: 12, fontWeight: 500, color: C.ash, fontStyle: "italic", marginTop: 14, lineHeight: 1.5 }}>
-              Final details, photos, condition notes and exact price will be posted Saturday by 10 AM.
+              Final details, photos, condition notes and exact price will be posted {dropOpenDay()} by {dropOpenHour()}.
             </p>
           </div>
         </div>
@@ -1327,7 +1346,7 @@ function PreviewItemDetail({ item, onBack, savedPreview, togglePreview }) {
                   <p style={{ fontFamily: F.head, fontSize: 13, fontWeight: 800, color: C.ink }}>You're on the list</p>
                 </div>
                 <p style={{ fontFamily: F.body, fontSize: 12, fontWeight: 500, color: C.mink, lineHeight: 1.55 }}>
-                  We'll send you a notification Saturday at <b style={{ color: C.ink, fontWeight: 800 }}>10 AM</b> when this goes live. Open the app fast — Drops are first-come, first-served.
+                  We'll send you a notification {dropOpenDay()} at <b style={{ color: C.ink, fontWeight: 800 }}>{dropOpenHour()}</b> when this goes live. Open the app fast — Drops are first-come, first-served.
                 </p>
 
               </div>
@@ -1399,7 +1418,7 @@ function SneakPeekListPage({ savedPreview, togglePreview, onPreviewItem, onBack 
           </button>
         </div>
         <p style={{ fontFamily: F.body, fontSize: 13, fontWeight: 500, color: C.mink, margin: 0 }}>
-          Drop opens <b style={{ color: C.ink, fontWeight: 800 }}>Saturday at 10 AM</b>
+          Drop opens <b style={{ color: C.ink, fontWeight: 800 }}>{dropOpenFull()}</b>
         </p>
       </div>
 
@@ -1426,7 +1445,7 @@ function SneakPeekListPage({ savedPreview, togglePreview, onPreviewItem, onBack 
                   <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at center, transparent 40%, " + C.amber + "12 100%)" }}/>
                   <span style={{ fontSize: 60, filter: "saturate(0.85)", opacity: 0.92 }}>{item.img}</span>
                   <div style={{ position: "absolute", top: 10, left: 10, padding: "4px 9px", borderRadius: 999, background: C.amber, color: "#fff", fontFamily: F.head, fontSize: 10, fontWeight: 900, letterSpacing: "0.08em", display: "flex", alignItems: "center", gap: 4, boxShadow: "0 2px 6px " + C.amber + "50" }}>
-                    <Clock size={10} strokeWidth={2.6}/> SAT 10AM
+                    <Clock size={10} strokeWidth={2.6}/> {dropOpenDay(true).toUpperCase()} {dropOpenHourBadge()}
                   </div>
                   <button onClick={(e) => { e.stopPropagation(); togglePreview(item.id); }} style={{ position: "absolute", top: 8, right: 8, width: 32, height: 32, borderRadius: "50%", border: "none", background: isSaved ? C.amber : "rgba(255,255,255,0.92)", color: isSaved ? "#fff" : C.ink, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", boxShadow: "0 2px 6px rgba(31,29,25,0.15)" }}>
                     <Heart size={15} strokeWidth={2.4} fill={isSaved ? "#fff" : "none"}/>
@@ -1459,7 +1478,7 @@ function PreviewStrip({ savedPreview, togglePreview, onPreviewItem, onSeeAllPrev
   // Each card represents an item dropping Saturday. Buyers save items 
   // (not sellers) to a watchlist so they wake up knowing exactly what to claim.
   //
-  // Visual language: amber "SAT 10AM" badge + soft lock overlay on photos to
+  // Visual language: amber "{dropOpenDay(true).toUpperCase()} {dropOpenHourBadge()}" badge + soft lock overlay on photos to
   // signal these are not-yet-live previews, distinct from live item cards.
 
   return (
@@ -1519,7 +1538,7 @@ function PreviewStrip({ savedPreview, togglePreview, onPreviewItem, onSeeAllPrev
                 {/* The emoji/photo */}
                 <span style={{ fontSize: 54, filter: "saturate(0.85)", opacity: 0.92 }}>{item.img}</span>
 
-                {/* SAT 10AM badge — top left */}
+                {/* {dropOpenDay(true).toUpperCase()} {dropOpenHourBadge()} badge — top left */}
                 <div style={{
                   position: "absolute",
                   top: 10,
@@ -1538,7 +1557,7 @@ function PreviewStrip({ savedPreview, togglePreview, onPreviewItem, onSeeAllPrev
                   boxShadow: "0 2px 6px " + C.amber + "50",
                 }}>
                   <Clock size={10} strokeWidth={2.6}/>
-                  SAT 10AM
+                  {dropOpenDay(true).toUpperCase()} {dropOpenHourBadge()}
                 </div>
 
                 {/* Save icon — top right */}
@@ -3931,6 +3950,7 @@ function SellWithAICta({ onSwitchRole }) {
    DISCOVER — Between Drops state
    ============================================================ */
 function DiscoverPage({ savedIds, onToggleSave, onSelect, onClaimNow, state, reminded, onRemindMe, savedPreview, togglePreview, onSwitchRole, onPreviewItem, onSeeAllPreviews, claimedIds, purchasedIds }) {
+  const dropOpenCountdown = useDropOpenCountdownString();
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [cat, setCat] = useState("All");
@@ -4078,7 +4098,7 @@ function DiscoverPage({ savedIds, onToggleSave, onSelect, onClaimNow, state, rem
                 <span style={{ position: "relative", width: 8, height: 8, borderRadius: "50%", background: C.amber }}/>
               </span>
               <span style={{ fontFamily: F.body, fontSize: 13, fontWeight: 500, color: C.mink }}>
-                Saturday's Drop opens in <b style={{ color: C.ink, fontWeight: 800 }}>2d 14h</b>
+                {dropOpenDay()}'s Drop opens in <b style={{ color: C.ink, fontWeight: 800 }}>{dropOpenCountdown || "..."}</b>
               </span>
             </span>
             <span style={{ color: C.smoke, fontSize: 12 }}>·</span>

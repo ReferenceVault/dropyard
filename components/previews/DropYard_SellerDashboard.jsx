@@ -12,6 +12,9 @@ import {
   toSellerOverviewPhase,
   hoursSinceLastDropClose,
   formatCompactCountdown,
+  dropOpenDay,
+  dropOpenHour,
+  dropOpenHourCompact,
 } from "@/lib/dropCycle";
 import { submitSubmission, isValidEmail } from "@/lib/submissions";
 import {
@@ -1849,10 +1852,10 @@ function ShareSheet({ items, onClose }) {
     ctaLine  = "Claim now — first to tap gets it.";
   } else if (onlyDrop) {
     headline = "I'm bringing " + itemCount + " items to this Saturday's Drop 🛍️";
-    ctaLine  = "Browse + save them now. Claims open Saturday 8am — set a reminder.";
+    ctaLine  = `Browse + save them now. Claims open ${dropOpenDay()} ${dropOpenHourCompact()} — set a reminder.`;
   } else {
     headline = "I've got " + shelfItems.length + " on the Shelf + " + dropItems.length + " coming to Saturday's Drop 🛍️";
-    ctaLine  = "🟢 Shelf items: claim now\n🟡 Drop items: save them now, claim opens Saturday 8am";
+    ctaLine  = `🟢 Shelf items: claim now\n🟡 Drop items: save them now, claim opens ${dropOpenDay()} ${dropOpenHourCompact()}`;
   }
 
   const shareText =
@@ -3065,7 +3068,20 @@ function AddItemsChooser({ onManual, onAI, onBack }) {
   );
 }
 
+/** SSR-safe live countdown to next drop open. "" on first render, then ticks
+ *  per minute. Used inside ManualItemForm's "Next Drop ... away" pill below. */
+function useDropOpenCountdownString() {
+  const [now, setNow] = useState(null);
+  useEffect(() => {
+    setNow(new Date());
+    const id = setInterval(() => setNow(new Date()), 60 * 1000);
+    return () => clearInterval(id);
+  }, []);
+  return now ? formatCompactCountdown(nextDropMoment(now), now) : "";
+}
+
 function ManualItemForm({ onDone, onBack, onGoToItems, onEnhanceAI, aiSettings = {}, accessToken = null, onItemCreated = null }) {
+  const dropOpenCountdown = useDropOpenCountdownString();
   const { isMobile } = useViewport();
   const cats = ["Furniture", "Electronics", "Appliances & Kitchen", "Clothing & Accessories", "Kids & Baby", "Sports & Outdoor", "Tools & Garden", "Home Décor", "Books, Games & Hobbies", "Collectibles & Antiques", "Other"];
   const conds = ["New", "Used - Like New", "Used - Good", "Used - Fair"];
@@ -3611,7 +3627,7 @@ function ManualItemForm({ onDone, onBack, onGoToItems, onEnhanceAI, aiSettings =
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
               <p style={{ fontFamily: F.head, fontSize: 13, fontWeight: 800, color: C.ink }}>When should this go live?</p>
               <div style={{ display: "flex", alignItems: "center", gap: 6, fontFamily: F.body, fontSize: 11, fontWeight: 600, color: C.mink }}>
-                <Calendar size={11}/> Next Drop: Saturday 10 am (2d 14h away)
+                <Calendar size={11}/> Next Drop: {dropOpenDay()} {dropOpenHour()}{dropOpenCountdown ? ` (${dropOpenCountdown} away)` : ""}
               </div>
             </div>
 
@@ -3631,7 +3647,7 @@ function ManualItemForm({ onDone, onBack, onGoToItems, onEnhanceAI, aiSettings =
                     <p style={{ fontFamily: F.head, fontSize: 14, fontWeight: 800, color: C.ink }}>Queue for the next Drop</p>
                     <span style={{ fontFamily: F.head, fontSize: 9, fontWeight: 900, padding: "2px 7px", borderRadius: 999, background: C.green, color: "#fff", letterSpacing: "0.06em" }}>RECOMMENDED</span>
                   </div>
-                  <p style={{ fontFamily: F.body, fontSize: 12, fontWeight: 500, color: C.mink, lineHeight: 1.5 }}>Goes live Saturday at 10 am alongside 90+ other sellers — higher visibility, event-driven traffic.</p>
+                  <p style={{ fontFamily: F.body, fontSize: 12, fontWeight: 500, color: C.mink, lineHeight: 1.5 }}>Goes live {dropOpenDay()} at {dropOpenHour()} alongside 90+ other sellers — higher visibility, event-driven traffic.</p>
                 </div>
               </button>
 
@@ -7932,7 +7948,7 @@ function AIPhotoFlow({ onDone, onBack, aiSettings = {} }) {
               <div className="fade-in" style={{ padding: "12px 16px", borderRadius: 14, background: C.sand, border: "1.5px solid " + C.fawn, marginBottom: 12, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <Calendar size={13} style={{ color: C.mink }}/>
-                  <p style={{ fontFamily: F.body, fontSize: 12, fontWeight: 600, color: C.mink }}>Set the destination for each listing on its card. Next Drop is Saturday 10 am.</p>
+                  <p style={{ fontFamily: F.body, fontSize: 12, fontWeight: 600, color: C.mink }}>Set the destination for each listing on its card. Next Drop is {dropOpenDay()} {dropOpenHour()}.</p>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: "auto" }}>
                   {dropCount > 0 && (
@@ -8758,6 +8774,204 @@ function SettingsPickup({ user, onSuccess }) {
   );
 }
 
+/* ============================================================
+   SELLER ONBOARDING MODAL
+   Shown when a BUYER (or user with sellerOnboardingDone=false) clicks
+   "List New Item" or any other listing entry point. Collects the
+   minimum profile a seller needs (neighborhood, postal, pickup address,
+   payment methods) and posts to POST /api/auth/me/seller-onboarding,
+   which flips role→BOTH and sellerOnboardingDone=true.
+
+   Replaces the old Moving Sale registration flow as the buyer→seller
+   upgrade path. Server-side gate at POST /api/items enforces the same
+   check, so this UI is the primary mechanism but not the only one.
+   ============================================================ */
+function SellerOnboardingModal({ user, accessToken, onClose, onSuccess }) {
+  const [neighborhood, setNeighborhood] = useState(user?.neighborhood ?? "");
+  const [postalCode, setPostalCode]     = useState(user?.postalCode ?? "");
+  const [pickupAddress, setPickupAddress] = useState(user?.defaultPickupAddress ?? "");
+  const [methods, setMethods] = useState(() => {
+    const initial = Array.isArray(user?.acceptedPaymentMethods) && user.acceptedPaymentMethods.length > 0
+      ? user.acceptedPaymentMethods
+      : ["CASH", "ETRANSFER"];
+    return new Set(initial);
+  });
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const toggleMethod = (m) => {
+    setMethods(prev => {
+      const next = new Set(prev);
+      if (next.has(m)) next.delete(m); else next.add(m);
+      return next;
+    });
+  };
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setError("");
+    if (!neighborhood.trim()) { setError("Neighborhood is required."); return; }
+    if (postalCode.trim().length < 3) { setError("Enter a valid postal code."); return; }
+    if (pickupAddress.trim().length < 5) { setError("Enter a pickup address."); return; }
+    if (methods.size === 0) { setError("Choose at least one payment method."); return; }
+    setSubmitting(true);
+    try {
+      await apiRequest("/api/auth/me/seller-onboarding", {
+        method: "POST",
+        token:  accessToken ?? undefined,
+        body: JSON.stringify({
+          neighborhood:           neighborhood.trim(),
+          postalCode:             postalCode.trim(),
+          defaultPickupAddress:   pickupAddress.trim(),
+          acceptedPaymentMethods: Array.from(methods),
+        }),
+      });
+      onSuccess();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      style={{
+        position: "fixed", inset: 0, zIndex: 9999,
+        background: "rgba(11,47,32,0.55)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        padding: 16, overflow: "auto",
+      }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        style={{
+          background: C.paper, borderRadius: 18,
+          maxWidth: 520, width: "100%", padding: 28,
+          boxShadow: "0 30px 80px rgba(11,47,32,0.20)",
+          maxHeight: "90vh", overflowY: "auto",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+          <span style={{ width: 22, height: 2.5, background: C.green, borderRadius: 2 }}/>
+          <span style={{ fontFamily: F.head, fontSize: 11, fontWeight: 800, color: C.green, letterSpacing: "0.16em", textTransform: "uppercase" }}>
+            Become a seller
+          </span>
+        </div>
+        <h2 style={{ fontFamily: F.head, fontSize: 26, fontWeight: 900, color: C.ink, letterSpacing: "-0.02em", marginBottom: 8 }}>
+          Complete your seller profile
+        </h2>
+        <p style={{ fontFamily: F.body, fontSize: 14, color: C.mink, marginBottom: 20, lineHeight: 1.55 }}>
+          We need a few details before you can list items. Buyers in your neighborhood will see this when they consider claiming your items.
+        </p>
+
+        {error && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", marginBottom: 14, borderRadius: 12, background: C.claretMist, border: "1px solid " + C.claret + "30", color: C.claret, fontFamily: F.body, fontSize: 13 }}>
+            <AlertCircle size={15}/>{error}
+          </div>
+        )}
+
+        <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <Field label="Neighborhood">
+            <input
+              type="text" value={neighborhood} onChange={e => setNeighborhood(e.target.value)}
+              placeholder="e.g. Barrhaven"
+              required
+              style={fieldInput}
+            />
+          </Field>
+          <Field label="Postal code">
+            <input
+              type="text" value={postalCode} onChange={e => setPostalCode(e.target.value.toUpperCase())}
+              placeholder="K2J"
+              required maxLength={10}
+              style={fieldInput}
+            />
+          </Field>
+          <Field label="Default pickup address">
+            <input
+              type="text" value={pickupAddress} onChange={e => setPickupAddress(e.target.value)}
+              placeholder="123 Example St, Ottawa"
+              required
+              style={fieldInput}
+            />
+          </Field>
+          <Field label="Accepted payment methods">
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              {["CASH", "ETRANSFER"].map(m => (
+                <button
+                  key={m} type="button"
+                  onClick={() => toggleMethod(m)}
+                  style={{
+                    padding: "10px 16px", borderRadius: 999,
+                    border: "1.5px solid " + (methods.has(m) ? C.green : C.fawn),
+                    background: methods.has(m) ? C.greenMist : C.paper,
+                    color: methods.has(m) ? C.greenDeep : C.mink,
+                    fontFamily: F.head, fontSize: 13, fontWeight: 700,
+                    cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6,
+                  }}
+                >
+                  {methods.has(m) && <Check size={13} strokeWidth={3}/>}
+                  {m === "CASH" ? "Cash" : "E-transfer"}
+                </button>
+              ))}
+            </div>
+          </Field>
+
+          <div style={{ display: "flex", gap: 10, marginTop: 12, justifyContent: "flex-end" }}>
+            <button
+              type="button" onClick={onClose} disabled={submitting}
+              style={{
+                padding: "11px 20px", borderRadius: 12, border: "1.5px solid " + C.fawn,
+                background: C.paper, color: C.mink, fontFamily: F.head, fontSize: 13, fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit" disabled={submitting}
+              style={{
+                padding: "11px 22px", borderRadius: 12, border: "none",
+                background: submitting ? C.greenMist : C.green,
+                color: submitting ? C.greenDeep : "#fff",
+                fontFamily: F.head, fontSize: 13, fontWeight: 800,
+                cursor: submitting ? "not-allowed" : "pointer",
+                display: "inline-flex", alignItems: "center", gap: 6,
+                boxShadow: submitting ? "none" : "0 2px 0 " + C.greenDeep,
+              }}
+            >
+              {submitting && <Loader2 size={14} className="animate-spin"/>}
+              {submitting ? "Saving…" : "Save & continue"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, children }) {
+  return (
+    <label style={{ display: "block" }}>
+      <span style={{ display: "block", fontFamily: F.head, fontSize: 12, fontWeight: 800, color: C.ink, letterSpacing: "0.04em", textTransform: "uppercase", marginBottom: 6 }}>
+        {label}
+      </span>
+      {children}
+    </label>
+  );
+}
+
+const fieldInput = {
+  width: "100%", padding: "11px 14px",
+  borderRadius: 12, border: "1.5px solid " + C.fawn,
+  background: C.paper, color: C.ink,
+  fontFamily: F.body, fontSize: 14,
+  outline: "none",
+};
+
 export default function DropYardSellerDashboard({
   onSwitchRole = () => alert("In the full product, this switches to the buyer dashboard."),
   user = null,
@@ -8770,6 +8984,10 @@ export default function DropYardSellerDashboard({
   sellerItems = null,
   onItemsChange = null,
   sellerItemsLoading = false,
+  // Refresh the user object after seller onboarding succeeds, so role/
+  // sellerOnboardingDone update everywhere. Provided by /buyer/page.tsx
+  // (which has access to AuthContext.refreshUser).
+  onUserChanged = null,
 } = {}) {
   const { isMobile } = useViewport();
   const [view, setView] = useState("overview");
@@ -8780,6 +8998,22 @@ export default function DropYardSellerDashboard({
   const [editingItem, setEditingItem] = useState(null);
   const [aiEntryPoint, setAiEntryPoint] = useState("overview");
   const aiConfigured = !!aiSettings.priceFloor;
+
+  // Seller-onboarding gate: any nav to a listing flow checks whether the user
+  // is already a seller. If not, we pop the onboarding modal and remember
+  // where they were trying to go, then navigate there after success.
+  const LISTING_VIEWS = new Set(["add-manual", "add-chooser", "add-ai", "ai-setup", "ai-photos"]);
+  const needsSellerOnboarding = !!user && (user.role === "BUYER" || !user.sellerOnboardingDone);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [pendingNav, setPendingNav] = useState(null);
+  const safeNav = (target) => {
+    if (LISTING_VIEWS.has(target) && needsSellerOnboarding) {
+      setPendingNav(target);
+      setShowOnboarding(true);
+      return;
+    }
+    setView(target);
+  };
 
   function goToEdit(item) { setEditingItem(item); setView("edit-item"); }
   function goToView(item) { setEditingItem(item); setView("item-detail"); }
@@ -8798,11 +9032,11 @@ export default function DropYardSellerDashboard({
         <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
           {/* Desktop sidebar — replaced by MobileBottomNav on small screens. */}
           {!isMobile && (
-            <Sidebar activeView={view} onNav={setView} aiPlan={aiPlan} onSwitchRole={onSwitchRole} collapsed={sidebarCollapsed}/>
+            <Sidebar activeView={view} onNav={safeNav} aiPlan={aiPlan} onSwitchRole={onSwitchRole} collapsed={sidebarCollapsed}/>
           )}
           <main style={{ flex: 1, overflow: "auto", padding: isMobile ? "16px 16px calc(76px + env(safe-area-inset-bottom, 0))" : "20px 28px", background: C.paper }}>
-            {view === "overview" && <Overview onNav={setView} user={user} sellerItems={sellerItems} accessToken={accessToken}/>}
-            {view === "items" && <MyItemsView onNav={setView} onEdit={goToEdit} onView={goToView} sellerItems={sellerItems} onItemsChange={onItemsChange} sellerItemsLoading={sellerItemsLoading} accessToken={accessToken}/>}
+            {view === "overview" && <Overview onNav={safeNav} user={user} sellerItems={sellerItems} accessToken={accessToken}/>}
+            {view === "items" && <MyItemsView onNav={safeNav} onEdit={goToEdit} onView={goToView} sellerItems={sellerItems} onItemsChange={onItemsChange} sellerItemsLoading={sellerItemsLoading} accessToken={accessToken}/>}
             {view === "item-detail" && <ItemDetailView item={editingItem} onBack={() => setView("items")} onEdit={() => setView("edit-item")} accessToken={accessToken}/>}
             {view === "orders" && <OrdersView onNav={setView} accessToken={accessToken} onClaimsChanged={onItemCreated}/>}
             {view === "claims" && <ClaimsView onNav={setView} accessToken={accessToken} onClaimsChanged={onItemCreated}/>}
@@ -8828,8 +9062,26 @@ export default function DropYardSellerDashboard({
             )}
           </main>
         </div>
-        {isMobile && <MobileBottomNav activeView={view} onNav={setView}/>}
+        {isMobile && <MobileBottomNav activeView={view} onNav={safeNav}/>}
       </div>
+      {showOnboarding && (
+        <SellerOnboardingModal
+          user={user}
+          accessToken={accessToken}
+          onClose={() => { setShowOnboarding(false); setPendingNav(null); }}
+          onSuccess={async () => {
+            // Refresh user object in the parent so role + sellerOnboardingDone
+            // update across the tree. Then navigate to the originally-requested
+            // view (likely "add-manual"). If refresh fails, we still navigate —
+            // the server-side gate on POST /api/items is the backstop.
+            try { if (typeof onUserChanged === "function") await onUserChanged(); } catch { /* non-fatal */ }
+            const target = pendingNav;
+            setShowOnboarding(false);
+            setPendingNav(null);
+            if (target) setView(target);
+          }}
+        />
+      )}
     </>
   );
 }

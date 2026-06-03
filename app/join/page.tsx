@@ -23,8 +23,17 @@ import { useAuth } from "@/context/AuthContext";
 function JoinPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { signin, signup, signInWithGoogle } = useAuth();
+  const { signin, signup, signInWithGoogle, user, loading: authLoading } = useAuth();
   const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? "";
+
+  // Symmetric to BuyerDashboardContent's unauthed-user guard: if an already
+  // signed-in user lands on /join (back button, deep link, or stale tab),
+  // bounce them to their dashboard instead of showing the auth form.
+  useEffect(() => {
+    if (!authLoading && user) {
+      router.replace(user.role === "ADMIN" ? "/admin" : "/buyer");
+    }
+  }, [authLoading, user, router]);
 
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
@@ -45,7 +54,9 @@ function JoinPageContent() {
       setLoading(true);
       try {
         const user = await signInWithGoogle(tokenResponse.access_token);
-        router.push(user.role === "ADMIN" ? "/admin" : "/buyer");
+        // Replace, not push — so the back button from the dashboard skips past
+        // /join instead of landing the now-authenticated user back here.
+        router.replace(user.role === "ADMIN" ? "/admin" : "/buyer");
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : "Google sign-in failed");
       } finally {
@@ -105,8 +116,10 @@ function JoinPageContent() {
     try {
       const user = authMode === "signup"
         ? await signup(firstName.trim(), lastName.trim(), normalizedEmail, password)
-        : await signin(normalizedEmail, password);
-      router.push(user.role === "ADMIN" ? "/admin" : "/buyer");
+        : await signin(normalizedEmail, password, rememberMe);
+      // Replace, not push — so the back button from the dashboard skips past
+      // /join instead of landing the now-authenticated user back here.
+      router.replace(user.role === "ADMIN" ? "/admin" : "/buyer");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -299,9 +312,9 @@ function JoinPageContent() {
                   />
                   <span className="text-sm text-gray-600">Remember me</span>
                 </label>
-                <button type="button" className="text-sm text-emerald-600 font-medium hover:underline">
+                <Link href="/forgot-password" className="text-sm text-emerald-600 font-medium hover:underline">
                   Forgot password?
-                </button>
+                </Link>
               </div>
             ) : (
               <div className="flex items-start gap-2">

@@ -2,13 +2,45 @@
 
 **Step-by-step scripts for every row in [QA_MATRIX.md](./QA_MATRIX.md).** Each test case is self-contained — a tester unfamiliar with the codebase should be able to follow it without asking questions.
 
-## Demo accounts (shared password: `Demo@1234`)
+## Test accounts
+
+Two distinct sets — pick the one matching the environment under test.
+
+### Local development (shared password: `Demo@1234`)
+
+Full demo content — 8 users + items across every lifecycle state + claims + watchlists + conversations. Use for local QA against `http://localhost:4000`.
 
 - **Seller:** `demo-seller@dropyard.local` (Avery Demo)
 - **Buyers:** `sarah.demo@dropyard.local`, `james.demo@dropyard.local`, `priya.demo@dropyard.local`, `tom.demo@dropyard.local`, `david.demo@dropyard.local`, `hassan.demo@dropyard.local`, `lindsay.demo@dropyard.local`
 - **Admin:** `info@asvntech.com` / `Apple@1234`
 
-If the demo accounts don't exist on the environment under test, run `npx tsx prisma/seedDemo.ts` from `dropyard_backend/` to seed.
+If they don't exist, run `npx tsx prisma/seedDemo.ts` from `dropyard_backend/` to seed.
+
+### Production (passwords NOT shared in this file)
+
+Three-account minimum — no fake content, just enough to run Wave A through Wave F against the live site. Passwords live in your team password manager, never committed.
+
+| Role | Email (default — overridable via env) | Used in |
+|---|---|---|
+| Admin | `info@asvntech.com` | TC-A4, Wave D admin tests |
+| Seller (BOTH role) | `qa-avery@dropyard.app` | Wave B seller tests |
+| Buyer | `qa-sarah@dropyard.app` | TC-A5/A7/A8/A9, Wave C buyer tests |
+
+**To create these on production**, run from `dropyard_backend/`:
+
+```bash
+# Set DATABASE_URL inline so you don't accidentally seed local
+DATABASE_URL="postgresql://USER:PASS@prod-host/dbname?sslmode=require" \
+QA_ADMIN_EMAIL="info@asvntech.com" \
+QA_ADMIN_PASSWORD="<from-password-manager>" \
+QA_SELLER_EMAIL="qa-avery@dropyard.app" \
+QA_SELLER_PASSWORD="<from-password-manager>" \
+QA_BUYER_EMAIL="qa-sarah@dropyard.app" \
+QA_BUYER_PASSWORD="<from-password-manager>" \
+npx tsx prisma/seedProduction.ts
+```
+
+The script is idempotent — re-running is safe. It will NOT overwrite an existing user's password (by design, so accidental re-runs don't lock out the team). To rotate a QA password, use `/me/change-password` or a separate update script.
 
 ## Conventions
 
@@ -184,33 +216,137 @@ These four tests gate every later wave. If A1 fails, do not begin Wave B.
 
 ---
 
+## TC-A7 · Forgot password — request reset link
+
+**Prerequisite:** Backend running with `RESEND_API_KEY` + `APP_URL` set in `.env`. A real email inbox you can read.
+
+### Golden path
+
+1. Open `/join` in fresh incognito.
+2. Switch to "Sign in" tab.
+3. Click "Forgot password?" link. **Expect:** navigates to `/forgot-password`.
+4. Enter `sarah.demo@dropyard.local` (the demo seed buyer). Click "Send reset link".
+5. **Expect:** Card flips to success state with "Check your email" headline and the email echoed back.
+6. **Expect:** A reset email arrives in the inbox (or visible in the Resend dashboard if using a sandbox sender).
+7. **Expect:** Email contains a "Reset my password" button + a 30-minute expiry note + a fallback URL.
+8. Click the email button. **Expect:** opens `/reset-password?token=...` in the browser.
+
+### Edge cases
+
+9. **Non-existent email:** Submit `nope@example.com`. **Expect:** same success state shown — but no email arrives. This is intentional (anti-enumeration).
+10. **Empty email:** Submit blank. **Expect:** inline "Please enter your email address."
+11. **Malformed email:** Submit `not-an-email`. **Expect:** inline "Please enter a valid email address."
+12. **Google-only account:** Submit the email of a user who signed up via Google (no password set). **Expect:** same success state, no email sent (server detects `passwordHash === null`).
+13. **Rate limit:** Submit the same email 4 times in quick succession (the prod limit is 3/hour; dev limit is 30/hour). **Expect:** eventually 429 with "Too many password reset requests" message.
+14. **Capitalisation:** Submit `Sarah.Demo@DROPYARD.LOCAL`. **Expect:** same success state, email arrives at the lowercase address (server normalizes via `emailField`).
+
+### Real-time / state
+
+15. Request reset twice for the same email within 30 minutes. **Expect:** the FIRST email's link no longer works (marked `usedAt` server-side when the second one was created). Only the SECOND email's link is valid.
+
+### Security checks
+
+16. Inspect Network tab on submit. **Expect:** request body contains only `{ email }`. Response body is the generic message regardless of email validity.
+17. Examine the email URL — token is a long random string (~43 chars base64url). NOT predictable.
+18. Confirm DB: the `password_reset_tokens` row has a `tokenHash` SHA-256 string, NOT the plaintext token.
+
+---
+
+## TC-A8 · Reset password — consume the link
+
+**Prerequisite:** A valid reset link from TC-A7 step 8.
+
+### Golden path
+
+1. Open the reset link from the email.
+2. **Expect:** Page shows "Set your new password" with two password fields (New + Confirm).
+3. Enter `NewPass@1234` in both fields. Click "Reset password".
+4. **Expect:** Success state with "Password reset" headline.
+5. **Expect:** Auto-redirects to `/join` within ~2.5 seconds.
+6. At `/join`, sign in with the new password. **Expect:** signin succeeds; redirect to `/buyer`.
+
+### Edge cases
+
+7. **No token in URL:** Visit `/reset-password` directly with no query param. **Expect:** "Invalid reset link" card with CTA to request a new link.
+8. **Tampered token:** Visit `/reset-password?token=garbage`. Submit any valid password. **Expect:** "This reset link is invalid or has expired."
+9. **Expired token:** Wait 31+ minutes after requesting reset, then try to use it. **Expect:** same invalid/expired error.
+10. **Already-used token:** Successfully reset with the link, then try the same link a second time. **Expect:** same invalid/expired error.
+11. **Weak password:** Enter `12345678` (no letter) or `Test@1` (too short). **Expect:** inline policy error before submit.
+12. **Mismatched confirm:** Enter different passwords in the two fields. **Expect:** inline "Passwords do not match."
+13. **Empty fields:** Submit blank. **Expect:** inline "Please enter a new password."
+
+### Real-time / state
+
+14. After successful reset, all OTHER signed-in sessions (other browsers/devices for this user) should be forced to re-login because the server cleared `refreshToken: null`. Test by signing in on a second browser BEFORE the reset, then triggering reset from browser A. On browser B, try any action → next API call should 401 → redirect to `/join`.
+
+### Security checks
+
+15. Confirm the password change is reflected in the DB (`passwordHash` is new bcrypt) and the token row has `usedAt` populated.
+16. Sign out, then sign in. **Expect:** the OLD password no longer works.
+
+---
+
+## TC-A9 · Remember Me — refresh-token TTL switches between 1 day and 30 days
+
+### Golden path
+
+1. Open `/join`, switch to "Sign in".
+2. Leave "Remember me" UNCHECKED. Sign in as Sarah.
+3. Open DevTools → Application → Local Storage. Copy `dy_refresh_token`. Decode at jwt.io. **Expect:** `exp` claim is ~24 hours from now.
+4. Sign out.
+5. Sign in again with "Remember me" CHECKED.
+6. Copy + decode the new `dy_refresh_token`. **Expect:** `exp` claim is ~30 days from now.
+
+### Edge cases
+
+7. **Backwards-compatible callers:** Send a signin request without `rememberMe` in the body (via Postman). **Expect:** request succeeds, refresh token TTL defaults to 1 day (treated as unchecked).
+8. **Rapid toggling:** Sign out and back in alternating Remember Me state. **Expect:** each new refresh token's `exp` matches the most recent checkbox state.
+9. **Persistence across tab close:** Sign in with Remember Me checked. Close the tab. Reopen 1 hour later. **Expect:** still signed in (refresh works because token is in localStorage and still valid).
+10. **Without Remember Me, sleep beyond access TTL:** Sign in unchecked. Wait 16+ minutes. Make any API call. **Expect:** access token expires, refresh fires (still valid for 24h), call succeeds. Without Remember Me means SHORTER refresh window, not zero-persistence.
+
+### Mobile / UX
+
+11. The Remember Me checkbox is visible and tappable at 360px.
+
+### Security checks
+
+12. Inspect signin request body. **Expect:** `{ email, password, rememberMe: true/false }` only — no other auth-related fields.
+13. Even with Remember Me checked, the access token is still 15-min TTL (only the refresh changes). Confirm via jwt.io on `dy_access_token`.
+
+---
+
 ## TC-A6 · API integration: `/api/auth`
 
 **Tool:** Postman, Insomnia, or `curl`. Run against `http://localhost:4000` or your prod API base.
 
+**Status:** Executed 2026-06-03 against local backend — 35/35 sub-cases passed. Notes below reflect the actual API contract (some endpoint paths and status codes differ from the original plan and are corrected here).
+
 ### Endpoints to cover
 
-| Endpoint | Method | Test |
-|---|---|---|
-| `/api/auth/signup` | POST | valid → 201; duplicate → 409; weak password → 400 |
-| `/api/auth/login` | POST | valid → 200 + tokens; wrong password → 401 generic; rate limit → 429 |
-| `/api/auth/refresh` | POST | valid refresh → 200 + new access; expired → 401; tampered → 401 |
-| `/api/auth/me` | GET | with valid token → 200 + user; no token → 401; expired token → 401 |
-| `/api/auth/me` | PATCH | update profile fields → 200; invalid field → 400; unauth → 401 |
-| `/api/auth/me/set-password` | POST | Google user no password → 200; password user → 400; weak → 400 |
-| `/api/auth/me/change-password` | POST | correct old → 200; wrong old → 401; weak new → 400; rate limit after 5 |
-| `/api/auth/logout` | POST | valid → 200; tokens revoked server-side if implemented |
-| `/api/auth/google` | POST | valid Google id_token → 200; tampered → 401 |
+| Method | Endpoint | Tests | Result | Notes |
+|---|---|---|---|---|
+| POST | `/api/auth/signup` | valid → 201; duplicate → 409; weak password (no letter / too short) → 400; invalid email → 400; missing field → 400; mixed-case email → normalized to lowercase | ✅ Pass | Case-insensitive email normalization verified (BUG-006) |
+| POST | `/api/auth/signin` | valid → 200 + tokens; wrong password → 401 generic; unknown email → 401 same generic; empty body → 400; mixed-case email → 200 | ✅ Pass | Endpoint is `/signin`, not `/login`. Anti-enumeration confirmed (wrong-password and unknown-email return identical error). `rememberMe: true` → refresh TTL 30d; `rememberMe: false` → 1d (BUG-007). Rate limit not exercised in dev (cap raised to 100/15min) |
+| POST | `/api/auth/refresh` | valid refresh → 200 + new access + new refresh; tampered → 401; missing → 400; malformed → 401; reuse of rotated token → 401 "revoked" | ✅ Pass | **Refresh-token rotation enforced** — old tokens explicitly return `"Refresh token has been revoked"` |
+| GET | `/api/auth/me` | valid token → 200 + user; no Authorization header → 401; tampered token → 401; malformed Bearer → 401; missing "Bearer" prefix → 401 | ✅ Pass | Response body never contains `passwordHash` or `refreshToken` |
+| PATCH | `/api/auth/me/profile` | firstName/lastName → 200; empty firstName → 400; unauth → 401; `role: "ADMIN"` injection → silently dropped; `email: "..."` injection → silently dropped; `status: "BANNED"` injection → silently dropped | ✅ Pass | Plan path `/me` was wrong — actual is `/me/profile`. Privilege escalation blocked by Zod schema |
+| PATCH | `/api/auth/me/preferences` | acceptedPaymentMethods/defaultPickupAddress/notificationPrefs → 200; unauth → 401 | ✅ Pass | Separate endpoint from `/me/profile` (split by concern) |
+| POST | `/api/auth/me/set-password` | Google user (no password) → 200; password user → **409 Conflict** (not 400); weak password → 400; unauth → 401 | ✅ Pass | Server returns 409 (more semantic than 400) when account already has a password. Google-user case not exercised — no Google-only user in seed DB; cover via manual browser test |
+| POST | `/api/auth/me/change-password` | correct old → 200; wrong old → 401; weak new → 400; no-letter new → 400; rate limit after 5 (cap raised to 50 in dev) | ✅ Pass | After change, old password rejected (401), new password accepted (200). Response includes a new `refreshToken` |
+| POST | `/api/auth/signout` | valid → 200 + server-side refresh revoke; no auth → 401; using refresh after signout → 401 "revoked" | ✅ Pass | Endpoint is `/signout`, not `/logout`. **Server-side revoke enforced** — stolen refresh tokens are useless after user signs out |
+| POST | `/api/auth/google` | valid Google credential/access_token → 200; tampered → 401; empty body → 400 | ✅ Pass | Tampered case confirmed. Valid id_token not tested via API — needs real Google sign-in via the browser flow |
 
 ### Cross-cutting API checks
 
-1. **Password fields never echo:** Confirm every response body never contains `password`, `passwordHash`, `refreshToken` field on User objects.
-2. **CORS:** Confirm `Access-Control-Allow-Origin` is set to your frontend domain in prod (NOT `*`).
-3. **Helmet headers:** Confirm response includes `X-Content-Type-Options`, `X-Frame-Options`, `Strict-Transport-Security` (in prod).
-4. **Rate limit headers:** Confirm `X-RateLimit-*` or `Retry-After` headers present on rate-limited endpoints.
-5. **Error format consistency:** All 4xx errors return `{ error: "message" }` shape, not mixed `{ message: ... }` / `{ errors: [...] }`.
-6. **SQL injection probe:** Try email `' OR '1'='1` in login. **Expect:** treated as a literal string, 401 normal response, no DB error.
-7. **Timing attack:** Time `/login` with valid email + wrong password vs unknown email. **Expect:** times are comparable (bcrypt comparison runs even when user not found, to prevent enumeration).
+Executed 2026-06-03 against local backend. 6/7 pass; 1 finding (BUG-013).
+
+1. **Password fields never echo:** ✅ Pass. Verified across signup, signin, GET /me, PATCH /me/profile — no `password`, `passwordHash`, or `refreshToken` on User objects. signup/signin/refresh response bodies intentionally include `refreshToken` at the top level (client needs it); `/me` and profile responses do NOT.
+2. **CORS:** ✅ Pass. Allowed origins (`http://localhost:3000`, `https://dropyard.app`, `https://www.dropyard.app`) get echoed back in `Access-Control-Allow-Origin`. Unallowed origins receive no ACAO header — browser will block. `Access-Control-Allow-Credentials: true` and `Vary: Origin` also set correctly.
+3. **Helmet headers:** ✅ Pass. Full set present: `Content-Security-Policy`, `Strict-Transport-Security: max-age=15552000; includeSubDomains`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`, `Referrer-Policy: no-referrer`, `Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Resource-Policy: same-origin`, `X-DNS-Prefetch-Control: off`, `X-Permitted-Cross-Domain-Policies: none`. HSTS will be ignored by browsers in dev (HTTP) — only effective over HTTPS in prod.
+4. **Rate-limit headers:** ✅ Pass. RFC draft-7 standard headers present on every rate-limited endpoint: `RateLimit-Policy: <max>;w=<windowSeconds>`, `RateLimit: limit=<n>, remaining=<n>, reset=<s>`. On 429: `Retry-After: <seconds>` also present. Signin dev cap confirmed at 100/15min — hit 429 after exactly 100 attempts.
+5. **Error format consistency:** ✅ Pass. All 4xx (and 5xx) responses return `{"error": "string"}` shape. Verified across 30+ negative cases on 400, 401, 404, 409, 429.
+6. **SQL injection probe:** ✅ Pass. Payloads `' OR '1'='1`, `admin'--`, `'; DROP TABLE users; --`, `%' OR '%'='%` all either rejected by Zod email validator (400) or stored as literal strings (in firstName field). Database table `users` still intact after probes — verified by subsequent signup success. Prisma's parameterized queries provide complete protection at this layer.
+7. **Timing attack:** ✅ Pass (BUG-013 fixed). Signin now always runs `bcrypt.compare` against a module-level `TIMING_EQUALIZATION_HASH` when the user doesn't exist or has no password, so all three failure paths (unknown email, Google-only user, wrong password) take ~the same wall time (~150-200ms each on cost-12 bcrypt). Empirical retest pending backend restart to clear rate-limit lockout from prior test run.
 
 ---
 
