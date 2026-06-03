@@ -4,6 +4,7 @@
 // isolation. If the preview changes, mirror the change here.
 
 import React, { useState, useEffect } from "react";
+import { dropOpenDay, dropOpenHour } from "@/lib/dropCycle";
 
 const dropFeatures = [
   "Free for sellers — core DropYard experience",
@@ -125,7 +126,7 @@ export default function SellingWaysSection() {
             <h3 className="text-[29px] font-black text-[#0b2f20]">Weekly Drop</h3>
 
             <p className="mt-2 text-[#2f8a22] font-semibold">
-              Saturday 8 AM. Everyone shows up.
+              {dropOpenDay()} {dropOpenHour()}. Everyone shows up.
             </p>
 
             <p className="mt-4 text-slate-600 leading-relaxed">

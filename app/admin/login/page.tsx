@@ -7,17 +7,19 @@ import { useAuth } from "@/context/AuthContext";
 
 export default function AdminLoginPage() {
   const router = useRouter();
-  const { signin, user, loading: authLoading } = useAuth();
+  const { signin, clearAuth, user, loading: authLoading } = useAuth();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
-  // If already signed in as admin, jump straight to /admin
+  // Symmetric guard mirroring /join: any signed-in user landing on
+  // /admin/login (back button, deep link, stale tab) gets bounced to their
+  // dashboard. Admins go to /admin; everyone else to /buyer.
   useEffect(() => {
-    if (!authLoading && user && user.role === "ADMIN") {
-      router.replace("/admin");
+    if (!authLoading && user) {
+      router.replace(user.role === "ADMIN" ? "/admin" : "/buyer");
     }
   }, [user, authLoading, router]);
 
@@ -28,6 +30,12 @@ export default function AdminLoginPage() {
     try {
       const signedIn = await signin(email, password);
       if (signedIn.role !== "ADMIN") {
+        // Don't leave non-admin tokens in localStorage — signing them in
+        // here would let them navigate to /buyer in the same tab while the
+        // admin form rejected them, which is confusing. clearAuth wipes
+        // local state without the redirect that signout() triggers, so the
+        // error message below stays visible on the form.
+        clearAuth();
         setError("This account doesn't have admin access.");
         return;
       }

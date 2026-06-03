@@ -110,10 +110,15 @@ function LiveRow({ item, index }) {
 }
 
 export default function DynamicDropCard() {
-  // Tick every second so the countdown updates smoothly. The drop cycle helper
-  // is pure (no DB call) so re-computing per tick is fine.
-  const [now, setNow] = useState(() => new Date());
+  // `now` is intentionally null on the first render so SSR and the initial
+  // client render produce identical markup (no hydration mismatch). The
+  // useEffect below seeds it to `new Date()` immediately after mount and
+  // ticks every second after that. While null, downstream computed values
+  // fall back to placeholder zeros — a sub-frame flicker that's visually
+  // imperceptible vs the alternative of throwing on hydration.
+  const [now, setNow] = useState(null);
   useEffect(() => {
+    setNow(new Date());
     const interval = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(interval);
   }, []);
@@ -121,9 +126,11 @@ export default function DynamicDropCard() {
   // Real drop cycle — Mon-Wed SUBMISSION, Thu-Fri PREVIEW, Sat 8am-Sun 8pm LIVE,
   // Sun 8pm-Mon midnight CLOSED. The card surfaces two states ("countdown" vs
   // "live"); other phases land in "countdown" pointing at the next live moment.
-  const dropInfo = useMemo(() => getDropCycleInfo(now), [now]);
-  const isLive = dropInfo.phase === "LIVE";
-  const remaining = Math.max(dropInfo.nextEventAt.getTime() - now.getTime(), 0);
+  const dropInfo = useMemo(() => (now ? getDropCycleInfo(now) : null), [now]);
+  const isLive = dropInfo?.phase === "LIVE";
+  const remaining = dropInfo && now
+    ? Math.max(dropInfo.nextEventAt.getTime() - now.getTime(), 0)
+    : 0;
   const time = useMemo(() => formatDuration(remaining), [remaining]);
 
   // Live items + stats pulled from /api/items. Total + unique sellers compute

@@ -5,6 +5,7 @@
 // Visual + copy is byte-for-byte identical to the preview.
 
 import React, { useState } from "react";
+import { dropOpenDay, dropOpenHourCompact } from "@/lib/dropCycle";
 
 const C = {
   gLightBg: "#ECFDF5",
@@ -73,7 +74,7 @@ function WeeklyTimelineExperience({ onStartSelling, onBrowseDrop }) {
     {
       step: "03",
       title: "Live Drop Begins",
-      time: "Saturday 8am",
+      time: `${dropOpenDay()} ${dropOpenHourCompact()}`,
       color: "#F08A00",
       bg: "#FFF7ED",
       icon: "🔔",

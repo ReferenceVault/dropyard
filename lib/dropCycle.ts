@@ -8,6 +8,77 @@
  * Sun 8pm:  Drop closes
  */
 
+// ─────────────────────────────────────────────────────────────────
+// CANONICAL DROP TIMING
+// Single source of truth for what time the Drop opens and closes.
+// EVERY surface that displays the drop time (dashboards, marketing
+// pages, FAQ, emails) MUST read from these constants or the format
+// helpers below. Adding a new "Saturday 8 AM" anywhere is a bug.
+// ─────────────────────────────────────────────────────────────────
+
+/** Day the Drop opens (0 = Sunday, 6 = Saturday). */
+export const DROP_OPEN_DAY  = 6;
+/** Hour the Drop opens, 24-hour. 8 = 8 AM. */
+export const DROP_OPEN_HOUR = 8;
+/** Day the Drop closes. */
+export const DROP_CLOSE_DAY  = 0;
+/** Hour the Drop closes. 20 = 8 PM. */
+export const DROP_CLOSE_HOUR = 20;
+
+const DAYS_FULL  = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const DAYS_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function formatHour12(h24: number, style: "AM" | "am" | "a.m." | "amSpaced"): string {
+  const display = h24 > 12 ? h24 - 12 : h24 === 0 ? 12 : h24;
+  const isPM = h24 >= 12 && h24 < 24;
+  switch (style) {
+    case "AM":       return `${display} ${isPM ? "PM" : "AM"}`;
+    case "am":       return `${display}${isPM ? "pm" : "am"}`;
+    case "a.m.":     return `${display} ${isPM ? "p.m." : "a.m."}`;
+    case "amSpaced": return `${display} ${isPM ? "pm" : "am"}`;
+  }
+}
+
+/** "8 AM" — banner / headline style. */
+export function dropOpenHour(): string { return formatHour12(DROP_OPEN_HOUR, "AM"); }
+/** "8am" — compact lowercase, no space. */
+export function dropOpenHourCompact(): string { return formatHour12(DROP_OPEN_HOUR, "am"); }
+/** "8 am" — lowercase with space (marketing copy). */
+export function dropOpenHourLowerSpaced(): string { return formatHour12(DROP_OPEN_HOUR, "amSpaced"); }
+/** "8 a.m." — dotted. */
+export function dropOpenHourDotted(): string { return formatHour12(DROP_OPEN_HOUR, "a.m."); }
+/** "8AM" — no space + uppercase for compact badges. */
+export function dropOpenHourBadge(): string {
+  return formatHour12(DROP_OPEN_HOUR, "AM").replace(" ", "");
+}
+
+/** "Saturday" (default) / "Sat" (short). */
+export function dropOpenDay(short = false): string {
+  return short ? DAYS_SHORT[DROP_OPEN_DAY] : DAYS_FULL[DROP_OPEN_DAY];
+}
+
+/** "Saturday at 8 AM" — banner-headline composite. */
+export function dropOpenFull(): string {
+  return `${dropOpenDay()} at ${dropOpenHour()}`;
+}
+
+/** "8:00 AM" — explicit minute style for FAQ / legal copy. */
+export function dropOpenHourLong(): string {
+  return dropOpenHour().replace(" ", ":00 ");
+}
+
+/** "6:00 PM" — close hour explicit minute style. */
+export function dropCloseHourLong(): string {
+  return dropCloseHour().replace(" ", ":00 ");
+}
+
+/** "8 PM" close-hour label. */
+export function dropCloseHour(): string { return formatHour12(DROP_CLOSE_HOUR, "AM"); }
+/** "Sunday" close-day label. */
+export function dropCloseDay(short = false): string {
+  return short ? DAYS_SHORT[DROP_CLOSE_DAY] : DAYS_FULL[DROP_CLOSE_DAY];
+}
+
 export type DropPhase =
   | "SUBMISSION"   // Mon 00:00 - Wed 23:59
   | "PREVIEW"      // Thu 00:00 - Sat 07:59
@@ -36,25 +107,26 @@ export interface DropCycleInfo {
   dayNames: string[];
 }
 
-/** Get the Saturday 8am of the current Drop (or next Drop if we're in CLOSED phase) */
+/** Get the Drop-opening moment (Saturday 8am by default) of the current
+ *  Drop, or next Drop if we're past close on Sunday. */
 function getCurrentDropSaturday(ref: Date): Date {
   const d = new Date(ref);
   const day = d.getDay();
   const hour = d.getHours();
 
-  // Sunday after 8pm: next week's Saturday
-  if (day === 0 && hour >= 20) {
+  // Past the close moment (Sunday 8pm by default): next week's open day.
+  if (day === DROP_CLOSE_DAY && hour >= DROP_CLOSE_HOUR) {
     d.setDate(d.getDate() + 6);
-    d.setHours(8, 0, 0, 0);
+    d.setHours(DROP_OPEN_HOUR, 0, 0, 0);
     return d;
   }
 
-  if (day === 0) {
-    d.setDate(d.getDate() - 1); // yesterday = Saturday
-  } else if (day < 6) {
-    d.setDate(d.getDate() + (6 - day)); // this week's Saturday
+  if (day === DROP_CLOSE_DAY) {
+    d.setDate(d.getDate() - 1); // yesterday = open day
+  } else if (day < DROP_OPEN_DAY) {
+    d.setDate(d.getDate() + (DROP_OPEN_DAY - day)); // this week's open day
   }
-  d.setHours(8, 0, 0, 0);
+  d.setHours(DROP_OPEN_HOUR, 0, 0, 0);
   return d;
 }
 
@@ -74,11 +146,11 @@ function getPreviewThursday(sat: Date): Date {
   return thu;
 }
 
-/** Get Sunday 20:00 (8pm - Drop closes) */
+/** Get the Drop-close moment (Sunday 8pm by default) given the open Saturday */
 function getDropCloseSunday(sat: Date): Date {
   const sun = new Date(sat);
   sun.setDate(sun.getDate() + 1);
-  sun.setHours(20, 0, 0, 0);
+  sun.setHours(DROP_CLOSE_HOUR, 0, 0, 0);
   return sun;
 }
 
@@ -128,7 +200,7 @@ export function getDropCycleInfo(now: Date = new Date()): DropCycleInfo {
     },
     PREVIEW: {
       label: "Preview mode",
-      description: "Browse and save items. Claiming opens Saturday 8am!",
+      description: `Browse and save items. Claiming opens ${dropOpenDay()} ${dropOpenHourCompact()}!`,
       canList: false,
       canBrowse: true,
       canClaim: false,
@@ -228,10 +300,10 @@ export function toSellerOverviewPhase(
  */
 export function hoursSinceLastDropClose(now: Date = new Date()): number {
   const info = getDropCycleInfo(now);
-  // Last-Drop close = current Drop Saturday - 6 days + 12 hours (Sun 8 pm prior week).
+  // Last-Drop close = current Drop Saturday - 6 days + ${DROP_CLOSE_HOUR}h (prior week's close).
   const lastClose = new Date(info.currentDropDate);
   lastClose.setDate(lastClose.getDate() - 6);
-  lastClose.setHours(20, 0, 0, 0);
+  lastClose.setHours(DROP_CLOSE_HOUR, 0, 0, 0);
   const ms = now.getTime() - lastClose.getTime();
   return ms / (60 * 60 * 1000);
 }

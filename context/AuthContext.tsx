@@ -17,11 +17,17 @@ export interface AuthUser {
   email: string;
   phone?: string;
   role: string;
+  /** Moderation status. Frontend force-signs-out a user whose status flips
+   *  to SUSPENDED or BANNED mid-session. */
+  status?: "ACTIVE" | "SUSPENDED" | "BANNED";
   postalCode?: string;
   neighborhood?: string;
   zone?: string;
   buyerOnboardingDone: boolean;
   sellerOnboardingDone: boolean;
+  /** ISO date when the user verified their email. Null = unverified. Shown
+   *  as a banner on the dashboard. No features are gated on this yet. */
+  verifiedAt?: string | null;
   // True when the user has a passwordHash set. Used by Settings to choose
   // between "Set password" and "Change password".
   hasPassword?: boolean;
@@ -42,11 +48,15 @@ interface AuthContextValue extends AuthState {
     password: string,
     phone?: string
   ) => Promise<AuthUser>;
-  signin: (email: string, password: string) => Promise<AuthUser>;
+  signin: (email: string, password: string, rememberMe?: boolean) => Promise<AuthUser>;
   /** Google Identity Services JWT (`credential` from GoogleLogin) */
   signInWithGoogle: (credential: string) => Promise<AuthUser>;
   signout: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  /** Wipe local auth state without server call or redirect. Used when a
+   *  signin succeeded but the user shouldn't actually be kept logged in
+   *  (e.g. non-admin user submitting the admin login form). */
+  clearAuth: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -70,6 +80,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     apiRequest<{ user: AuthUser }>('/api/auth/me', { token })
       .then(({ user }) => {
+        // If the user was suspended/banned mid-session, the server returns 403
+        // (caught below). But also defensive-check here in case /me returns
+        // a status field on a still-200 path (e.g. caching layer in front).
+        if (user.status === 'SUSPENDED' || user.status === 'BANNED') {
+          localStorage.removeItem(ACCESS_TOKEN_KEY);
+          localStorage.removeItem(REFRESH_TOKEN_KEY);
+          setState({ user: null, accessToken: null, loading: false });
+          if (typeof window !== 'undefined') {
+            window.location.href = '/join';
+          }
+          return;
+        }
         // Token may have been silently refreshed — read current value from storage
         const freshToken = localStorage.getItem(ACCESS_TOKEN_KEY) ?? token;
         setState({ user, accessToken: freshToken, loading: false });
@@ -98,10 +120,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return data.user;
   }, []);
 
-  const signin = useCallback(async (email: string, password: string): Promise<AuthUser> => {
+  const signin = useCallback(async (email: string, password: string, rememberMe = false): Promise<AuthUser> => {
     const data = await apiRequest<{ user: AuthUser; accessToken: string; refreshToken: string }>(
       '/api/auth/signin',
-      { method: 'POST', body: JSON.stringify({ email, password }) }
+      { method: 'POST', body: JSON.stringify({ email, password, rememberMe }) }
     );
     localStorage.setItem(ACCESS_TOKEN_KEY, data.accessToken);
     localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
@@ -130,8 +152,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signout = useCallback(async () => {
     const token = localStorage.getItem(ACCESS_TOKEN_KEY);
+    // Fire-and-forget the backend invalidation. Awaiting it would block the
+    // redirect when the API is slow / unreachable, leaving the user looking
+    // at a dead "Sign out" click. Local state and tokens get cleared either
+    // way, so they're effectively logged out from the user's perspective.
     if (token) {
-      await apiRequest('/api/auth/signout', { method: 'POST', token }).catch(() => {});
+      apiRequest('/api/auth/signout', { method: 'POST', token }).catch(() => {});
     }
     localStorage.removeItem(ACCESS_TOKEN_KEY);
     localStorage.removeItem(REFRESH_TOKEN_KEY);
@@ -143,8 +169,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     window.location.href = target;
   }, []);
 
+  const clearAuth = useCallback(() => {
+    localStorage.removeItem(ACCESS_TOKEN_KEY);
+    localStorage.removeItem(REFRESH_TOKEN_KEY);
+    setState({ user: null, accessToken: null, loading: false });
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ ...state, signup, signin, signInWithGoogle, signout, refreshUser }}>
+    <AuthContext.Provider value={{ ...state, signup, signin, signInWithGoogle, signout, refreshUser, clearAuth }}>
       {children}
     </AuthContext.Provider>
   );

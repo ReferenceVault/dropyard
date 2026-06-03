@@ -4,6 +4,7 @@
 // isolation. If the preview changes, mirror the change here.
 
 import React from "react";
+import { dropOpenDay, dropOpenHourCompact } from "@/lib/dropCycle";
 
 function CheckIcon({ className = "" }) {
   return (
@@ -74,7 +75,7 @@ export default function ShopWaysSection() {
               <h3 className="mt-6 text-[23px] font-bold text-[#0b2f20]">The Drop</h3>
 
               <p className="mt-3 text-[#0b2f20]/70 text-[13px] max-w-md">
-                Fresh items go live Saturday 8am. Browse, claim, and pick up — all within 48 hours.
+                Fresh items go live {dropOpenDay()} {dropOpenHourCompact()}. Browse, claim, and pick up — all within 48 hours.
               </p>
 
               {/* FEATURES */}

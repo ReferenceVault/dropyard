@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { DropYardLogo, DropYardWordmark } from "../page";
 import DropYardSellerDashboard from "@/components/previews/DropYard_SellerDashboard";
 import DropYardBuyerDashboard from "@/components/previews/DropYard_BuyerDashboard";
+import { EmailVerifyBanner } from "@/components/EmailVerifyBanner";
 import {
   LayoutDashboard,
   Package,
@@ -96,7 +97,11 @@ const CONDITION_MAP: Record<string, string> = {
   "Like New": "LIKE_NEW", Excellent: "EXCELLENT", Good: "GOOD", Fair: "FAIR",
 };
 import { CATEGORIES } from "@/lib/constants";
-import { formatDropDate, formatDropTime } from "@/lib/dropCycle";
+import {
+  formatDropDate, formatDropTime,
+  dropOpenDay,
+  dropOpenHourCompact,
+} from "@/lib/dropCycle";
 import { MOCK_ITEMS, type MockItem } from "@/lib/mockData";
 
 // Seller tabs
@@ -131,7 +136,7 @@ function BuyerDashboardContent() {
   const { user, loading } = useAuth();
   useEffect(() => {
     if (!loading && !user) {
-      router.replace("/join?mode=signin");
+      router.replace("/join");
     }
   }, [loading, user, router]);
   if (loading || !user) {
@@ -500,16 +505,20 @@ function AuthedBuyerContent() {
   if ((mode as string) === "seller") {
     if (!mounted) return <div className="min-h-screen bg-slate-50" />;
     return (
-      <DropYardSellerDashboard
-        onSwitchRole={() => setMode("buyer")}
-        user={user as any}
-        onSignout={signout as any}
-        accessToken={accessToken as any}
-        onItemCreated={refreshSellerItems as any}
-        sellerItems={sellerItems as any}
-        onItemsChange={setSellerItems as any}
-        sellerItemsLoading={sellerItemsLoading as any}
-      />
+      <>
+        <EmailVerifyBanner />
+        <DropYardSellerDashboard
+          onSwitchRole={() => setMode("buyer")}
+          user={user as any}
+          onSignout={signout as any}
+          accessToken={accessToken as any}
+          onItemCreated={refreshSellerItems as any}
+          sellerItems={sellerItems as any}
+          onItemsChange={setSellerItems as any}
+          sellerItemsLoading={sellerItemsLoading as any}
+          onUserChanged={refreshUser as any}
+        />
+      </>
     );
   }
 
@@ -517,7 +526,12 @@ function AuthedBuyerContent() {
   // Its TopBar "Switch to Seller" button and Sell-with-AI CTA flip to seller mode.
   if ((mode as string) === "buyer") {
     if (!mounted) return <div className="min-h-screen bg-slate-50" />;
-    return <DropYardBuyerDashboard onSwitchRole={() => setMode("seller")} user={user as any} onSignout={signout as any} accessToken={accessToken as any} />;
+    return (
+      <>
+        <EmailVerifyBanner />
+        <DropYardBuyerDashboard onSwitchRole={() => setMode("seller")} user={user as any} onSignout={signout as any} accessToken={accessToken as any} />
+      </>
+    );
   }
 
   return (
@@ -1451,7 +1465,7 @@ function AuthedBuyerContent() {
                                     disabled
                                     className="mt-auto w-full px-4 py-2 bg-gray-100 text-gray-400 text-sm font-medium rounded-xl cursor-not-allowed"
                                   >
-                                    {item.status === "LIVE" ? "Already claimed" : "Drops Saturday 8am"}
+                                    {item.status === "LIVE" ? "Already claimed" : `Drops ${dropOpenDay()} ${dropOpenHourCompact()}`}
                                   </button>
                                 )
                               )}
@@ -2576,7 +2590,7 @@ function ItemCard({
               disabled
               className="mt-auto w-full px-4 py-2 bg-gray-100 text-gray-400 text-sm font-medium rounded-xl cursor-not-allowed"
             >
-              Drops Saturday 8am
+              Drops {dropOpenDay()} {dropOpenHourCompact()}
             </button>
           )
         )}
@@ -3373,7 +3387,7 @@ function SellWithAITab() {
             <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
               <span style={{ fontSize: 12, fontWeight: 600, color: "#777", alignSelf: "center" }}>List to:</span>
               {[
-                { id: "drop",  l: "Saturday's Drop", d: "Goes live Sat 8am", active: true,  c: AI_C.gPrimary, bg: AI_C.gLightBg, e: "🎯" },
+                { id: "drop",  l: `${dropOpenDay()}'s Drop`, d: `Goes live ${dropOpenDay(true)} ${dropOpenHourCompact()}`, active: true,  c: AI_C.gPrimary, bg: AI_C.gLightBg, e: "🎯" },
                 { id: "shelf", l: "The Shelf",        d: "Available now",     active: false, c: AI_C.oPrimary, bg: AI_C.oLightBg, e: "📚" },
               ].map((d) => (
                 <button key={d.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px", borderRadius: 10, border: `2px solid ${d.active ? d.c : "#e5e7eb"}`, backgroundColor: d.active ? d.bg : "#fff", cursor: "pointer" }}>
@@ -4338,34 +4352,19 @@ function MovingSaleRegistration() {
                 <AlertCircle size={14} />{submitError}
               </p>
             )}
+            {/*
+              Moving Sale submission disabled in this phase. Backend route is
+              commented out at app.ts and the buyer→seller upgrade path now
+              goes through POST /api/auth/me/seller-onboarding (called from a
+              new flow when the user clicks "List an item"). Rebuild Moving
+              Sale properly in next phase.
+            */}
             <button
-              disabled={submitting}
-              onClick={async () => {
-                setSubmitError('');
-                setSubmitting(true);
-                try {
-                  await apiRequest('/api/moving-sale', {
-                    method: 'POST',
-                    token: accessToken ?? undefined,
-                    body: JSON.stringify({
-                      ...formData,
-                      sellerType: SELLER_TYPE_MAP[formData.sellerType as string] ?? 'INDIVIDUAL',
-                    }),
-                  });
-                  await refreshUser();
-                  setSubmitted(true);
-                } catch (err: unknown) {
-                  setSubmitError(err instanceof Error ? err.message : 'Submission failed');
-                } finally {
-                  setSubmitting(false);
-                }
-              }}
-              className="flex items-center gap-2 px-7 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-xl font-semibold hover:from-amber-600 hover:to-amber-700 disabled:opacity-60 shadow-md shadow-amber-500/20 transition-all"
+              disabled
+              title="Moving Sale registration is temporarily disabled — coming back in the next phase"
+              className="flex items-center gap-2 px-7 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-xl font-semibold opacity-60 cursor-not-allowed shadow-md shadow-amber-500/20"
             >
-              {submitting
-                ? <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Submitting…</>
-                : <><Sparkles size={18} />Submit Application</>
-              }
+              <Sparkles size={18} />Coming soon
             </button>
           </div>
         )}

@@ -23,8 +23,17 @@ import { useAuth } from "@/context/AuthContext";
 function JoinPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { signin, signup, signInWithGoogle } = useAuth();
+  const { signin, signup, signInWithGoogle, user, loading: authLoading } = useAuth();
   const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? "";
+
+  // Symmetric to BuyerDashboardContent's unauthed-user guard: if an already
+  // signed-in user lands on /join (back button, deep link, or stale tab),
+  // bounce them to their dashboard instead of showing the auth form.
+  useEffect(() => {
+    if (!authLoading && user) {
+      router.replace(user.role === "ADMIN" ? "/admin" : "/buyer");
+    }
+  }, [authLoading, user, router]);
 
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
@@ -33,6 +42,7 @@ function JoinPageContent() {
   const [lastName, setLastName] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -44,7 +54,9 @@ function JoinPageContent() {
       setLoading(true);
       try {
         const user = await signInWithGoogle(tokenResponse.access_token);
-        router.push(user.role === "ADMIN" ? "/admin" : "/buyer");
+        // Replace, not push — so the back button from the dashboard skips past
+        // /join instead of landing the now-authenticated user back here.
+        router.replace(user.role === "ADMIN" ? "/admin" : "/buyer");
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : "Google sign-in failed");
       } finally {
@@ -65,12 +77,49 @@ function JoinPageContent() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    if (authMode === "signup" && !agreedToTerms) {
+      setError("Please accept the Terms of Service and Privacy Policy to continue.");
+      return;
+    }
+    // Normalize at the submit boundary — trim whitespace, lowercase so the
+    // value we send matches what the server stores (server also normalizes
+    // via Zod transform; both sides agree).
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) {
+      setError("Please enter your email address.");
+      return;
+    }
+    // Pragmatic email regex — catches obvious malformed input ("not-an-email",
+    // "user@", "@host.com", "user@host") without trying to be RFC 5322 exact.
+    // The server runs Zod's stricter check as the source of truth.
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      setError("Please enter a valid email address (e.g. you@example.com).");
+      return;
+    }
+    if (!password) {
+      setError("Please enter your password.");
+      return;
+    }
+    // Signin: any non-empty password is fine (existing accounts may predate
+    // the stronger rule). Signup enforces the new complexity rule.
+    if (authMode === "signup") {
+      if (password.length < 8) {
+        setError("Password must be at least 8 characters long.");
+        return;
+      }
+      if (!/[a-zA-Z]/.test(password) || !/\d/.test(password)) {
+        setError("Password must include at least one letter and one number.");
+        return;
+      }
+    }
     setLoading(true);
     try {
       const user = authMode === "signup"
-        ? await signup(firstName.trim(), lastName.trim(), email, password)
-        : await signin(email, password);
-      router.push(user.role === "ADMIN" ? "/admin" : "/buyer");
+        ? await signup(firstName.trim(), lastName.trim(), normalizedEmail, password)
+        : await signin(normalizedEmail, password, rememberMe);
+      // Replace, not push — so the back button from the dashboard skips past
+      // /join instead of landing the now-authenticated user back here.
+      router.replace(user.role === "ADMIN" ? "/admin" : "/buyer");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -146,7 +195,7 @@ function JoinPageContent() {
           {/* Tabs */}
           <div className="flex gap-2 mb-8">
             <button
-              onClick={() => { setAuthMode("signin"); setError(""); }}
+              onClick={() => { setAuthMode("signin"); setError(""); setAgreedToTerms(false); }}
               className={`flex-1 py-3 rounded-xl font-semibold text-sm transition-colors ${
                 authMode === "signin"
                   ? "bg-emerald-600 text-white"
@@ -156,7 +205,7 @@ function JoinPageContent() {
               Sign In
             </button>
             <button
-              onClick={() => { setAuthMode("signup"); setError(""); }}
+              onClick={() => { setAuthMode("signup"); setError(""); setAgreedToTerms(false); }}
               className={`flex-1 py-3 rounded-xl font-semibold text-sm transition-colors ${
                 authMode === "signup"
                   ? "bg-emerald-600 text-white"
@@ -220,6 +269,8 @@ function JoinPageContent() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@example.com"
+                  required
+                  autoComplete="email"
                   className="w-full pl-11 pr-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all"
                 />
               </div>
@@ -233,7 +284,10 @@ function JoinPageContent() {
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder={authMode === "signin" ? "••••••••" : "Create a password (8+ characters)"}
+                  placeholder={authMode === "signin" ? "••••••••" : "8+ characters, letter and number"}
+                  required
+                  minLength={authMode === "signup" ? 8 : 1}
+                  autoComplete={authMode === "signin" ? "current-password" : "new-password"}
                   className="w-full pl-11 pr-12 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all"
                 />
                 <button
@@ -258,22 +312,36 @@ function JoinPageContent() {
                   />
                   <span className="text-sm text-gray-600">Remember me</span>
                 </label>
-                <button type="button" className="text-sm text-emerald-600 font-medium hover:underline">
+                <Link href="/forgot-password" className="text-sm text-emerald-600 font-medium hover:underline">
                   Forgot password?
-                </button>
+                </Link>
               </div>
             ) : (
               <div className="flex items-start gap-2">
-                <input type="checkbox" id="terms" className="w-4 h-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 mt-0.5" />
+                <input
+                  type="checkbox"
+                  id="terms"
+                  checked={agreedToTerms}
+                  onChange={(e) => setAgreedToTerms(e.target.checked)}
+                  required
+                  className="w-4 h-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 mt-0.5"
+                />
                 <label htmlFor="terms" className="text-sm text-gray-600">
-                  I agree to the <span className="text-emerald-600 font-medium cursor-pointer">Terms of Service</span> and <span className="text-emerald-600 font-medium cursor-pointer">Privacy Policy</span>
+                  I agree to the{" "}
+                  <Link href="/community-guidelines" target="_blank" rel="noopener noreferrer" className="text-emerald-600 font-medium hover:underline">
+                    Terms of Service
+                  </Link>
+                  {" "}and{" "}
+                  <Link href="/privacy-policy" target="_blank" rel="noopener noreferrer" className="text-emerald-600 font-medium hover:underline">
+                    Privacy Policy
+                  </Link>
                 </label>
               </div>
             )}
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || (authMode === "signup" && !agreedToTerms)}
               className="w-full py-4 rounded-xl font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
             >
               {loading && <Loader2 size={18} className="animate-spin" />}

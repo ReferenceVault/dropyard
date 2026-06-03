@@ -6,6 +6,26 @@ import { apiRequest } from "@/lib/api";
 import { useSocketEvent } from "@/context/SocketContext";
 import { useAuth } from "@/context/AuthContext";
 import {
+  DROP_OPEN_DAY, DROP_OPEN_HOUR, DROP_CLOSE_DAY, DROP_CLOSE_HOUR,
+  dropOpenHour, dropOpenHourCompact, dropOpenHourBadge,
+  dropOpenDay, dropOpenFull,
+  nextDropMoment, dropCloseMoment,
+  formatCompactCountdown,
+} from "@/lib/dropCycle";
+
+/** Shared SSR-safe live countdown to the next drop open. Returns "" on the
+ *  first server + client render to avoid hydration mismatch, then ticks per
+ *  minute (the compact format only changes at minute boundaries). */
+function useDropOpenCountdownString() {
+  const [now, setNow] = useState(null);
+  useEffect(() => {
+    setNow(new Date());
+    const id = setInterval(() => setNow(new Date()), 60 * 1000);
+    return () => clearInterval(id);
+  }, []);
+  return now ? formatCompactCountdown(nextDropMoment(now), now) : "";
+}
+import {
   Search, Heart, Clock, MapPin, Package, ChevronRight, ChevronDown, ChevronUp, SlidersHorizontal,
   Check, X, User, ShoppingBag, MessageSquare, Sparkles, Truck, Calendar,
   Star, Shield, Send, ArrowRight, ArrowLeft, Home, Tag, Bell, MessageCircle,
@@ -302,15 +322,19 @@ function GlobalStyle() {
 /* ============================================================
    TOP BAR
    ============================================================ */
-// Drop schedule: Live from Saturday 10:00 AM to Sunday 6:00 PM (local time).
-// Between drops at all other times. This is computed from the system clock so
-// the UI flips automatically across the weekend without any manual toggle.
+// Drop schedule: derived from lib/dropCycle.ts constants — DO NOT hardcode
+// the day/hour here. The window is from DROP_OPEN_DAY at DROP_OPEN_HOUR
+// through Sunday 6pm local time. Between drops at all other times. This is
+// computed from the system clock so the UI flips automatically across the
+// weekend without any manual toggle.
 function computeDropState() {
   const now = new Date();
-  const day = now.getDay();   // 0 = Sunday, 6 = Saturday
+  const day = now.getDay();
   const hour = now.getHours();
-  if (day === 6 && hour >= 10) return "live";  // Saturday 10am onward
-  if (day === 0 && hour < 18)  return "live";  // Sunday before 6pm
+  // Canonical drop window derived from lib/dropCycle.ts constants. No magic
+  // numbers — changing the open/close hour propagates here automatically.
+  if (day === DROP_OPEN_DAY  && hour >= DROP_OPEN_HOUR)  return "live";
+  if (day === DROP_CLOSE_DAY && hour <  DROP_CLOSE_HOUR) return "live";
   return "between";
 }
 
@@ -564,12 +588,22 @@ function TopBar({ page, setPage, savedCount, claimsCount, onSwitchRole, onReset,
 /* ============================================================
    PAGE TITLE - shared header for non-discover pages
    ============================================================ */
-function PageTitle({ eyebrow, title, subtitle, action, eyebrowBg, eyebrowColor, icon: IconComp, iconBg, iconColor }) {
+function PageTitle({ eyebrow, title, subtitle, action, eyebrowBg, eyebrowColor, icon: IconComp, iconBg, iconColor, onBack }) {
   const { isMobile } = useViewport();
   return (
-    <div style={{ padding: isMobile ? "16px 0 16px" : "36px 0 28px", marginBottom: isMobile ? 12 : 20, position: "relative" }}>
+    <div style={{ padding: isMobile ? "0 0 8px" : "4px 0 16px", marginBottom: isMobile ? 8 : 12, position: "relative" }}>
+      {onBack && (
+        <button
+          onClick={onBack}
+          style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 999, border: "1.5px solid " + C.fawn, background: C.paper, cursor: "pointer", fontFamily: F.head, fontSize: 13, fontWeight: 700, color: C.mink, marginBottom: isMobile ? 8 : 10 }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = C.sand; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = C.paper; }}
+        >
+          <ArrowLeft size={14}/> Back to Discover
+        </button>
+      )}
       {!isMobile && (
-        <div style={{ position: "absolute", top: 38, right: 0, display: "flex", gap: 6, opacity: 0.5 }}>
+        <div style={{ position: "absolute", top: 8, right: 0, display: "flex", gap: 6, opacity: 0.5 }}>
           <span style={{ width: 5, height: 5, borderRadius: "50%", background: C.amber }}/>
           <span style={{ width: 5, height: 5, borderRadius: "50%", background: C.green }}/>
           <span style={{ width: 5, height: 5, borderRadius: "50%", background: C.claret }}/>
@@ -605,22 +639,27 @@ function PageTitle({ eyebrow, title, subtitle, action, eyebrowBg, eyebrowColor, 
    subtitle, "Remind me" CTA. Lighter outline (12% amber).
    ============================================================ */
 function AnticipationBand({ onRemindMe, reminded }) {
-  // Animated countdown — same tick mechanism as WelcomeBand
-  // Demo starts at 2d 14h 23m 47s
-  const [t, setT] = useState({ d: 2, h: 14, m: 23, s: 47 });
+  // Real countdown to the next drop-open moment (Saturday 8 AM by default).
+  // `now` starts null on first render so SSR + initial client hydration produce
+  // identical "0d 0h 0m 0s" markup; useEffect seeds the real value after mount
+  // and ticks per second from there. Same SSR-safe pattern as DynamicDropCard.
+  const [now, setNow] = useState(null);
   useEffect(() => {
-    const tick = setInterval(() => {
-      setT(prev => {
-        let { d, h, m, s } = prev;
-        if (s > 0) s--;
-        else if (m > 0) { m--; s = 59; }
-        else if (h > 0) { h--; m = 59; s = 59; }
-        else if (d > 0) { d--; h = 23; m = 59; s = 59; }
-        return { d, h, m, s };
-      });
-    }, 1000);
-    return () => clearInterval(tick);
+    setNow(new Date());
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
   }, []);
+  const totalSec = useMemo(() => {
+    if (!now) return 0;
+    const target = nextDropMoment(now);
+    return Math.max(0, Math.floor((target.getTime() - now.getTime()) / 1000));
+  }, [now]);
+  const t = {
+    d: Math.floor(totalSec / 86400),
+    h: Math.floor((totalSec % 86400) / 3600),
+    m: Math.floor((totalSec % 3600) / 60),
+    s: totalSec % 60,
+  };
   const pad = (n) => n < 10 ? "0" + n : "" + n;
 
   // Mock 5 neighbour avatars — different cast than WelcomeBand for variety
@@ -673,10 +712,10 @@ function AnticipationBand({ onRemindMe, reminded }) {
           <h1 style={{ fontFamily: F.head, fontSize: 22, fontWeight: 900, color: C.ink, letterSpacing: "-0.025em", lineHeight: 1.2, marginBottom: 10 }}>
             The next Drop lands{" "}
             <span style={{ position: "relative", display: "inline-block" }}>
-              Saturday
+              {dropOpenDay()}
               <span style={{ position: "absolute", left: 0, right: 0, bottom: -2, height: 3, background: C.amberDeep, borderRadius: 2, opacity: 0.85 }}/>
             </span>
-            {" "}at 10 AM
+            {" "}at {dropOpenHour()}
           </h1>
 
           {/* Body — concise, with bold stat */}
@@ -734,20 +773,24 @@ function AnticipationBand({ onRemindMe, reminded }) {
    underline on "Barrhaven", avatar stack, countdown panel.
    ============================================================ */
 function WelcomeBand() {
-  // Animated countdown — for design demo, decrement from 19:49:32
-  const [t, setT] = useState({ h: 19, m: 49, s: 32 });
+  // Real countdown to Drop close (Sunday 8 PM by default). SSR-safe — `now`
+  // starts null so server and client first render produce the same markup.
+  const [now, setNow] = useState(null);
   useEffect(() => {
-    const tick = setInterval(() => {
-      setT(prev => {
-        let { h, m, s } = prev;
-        if (s > 0) s--;
-        else if (m > 0) { m--; s = 59; }
-        else if (h > 0) { h--; m = 59; s = 59; }
-        return { h, m, s };
-      });
-    }, 1000);
-    return () => clearInterval(tick);
+    setNow(new Date());
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
   }, []);
+  const totalSec = useMemo(() => {
+    if (!now) return 0;
+    const target = dropCloseMoment(now);
+    return Math.max(0, Math.floor((target.getTime() - now.getTime()) / 1000));
+  }, [now]);
+  const t = {
+    h: Math.floor(totalSec / 3600),
+    m: Math.floor((totalSec % 3600) / 60),
+    s: totalSec % 60,
+  };
   const pad = (n) => n < 10 ? "0" + n : "" + n;
 
   const neighbours = [
@@ -1426,10 +1469,10 @@ function PreviewItemDetail({ item, onBack, savedPreview, togglePreview }) {
             <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at center, transparent 40%, " + C.amber + "12 100%)", pointerEvents: "none" }}/>
             <span style={{ fontSize: 160, filter: "saturate(0.85)", opacity: 0.92 }}>{item.img}</span>
 
-            {/* SAT 10AM banner — bigger version of the card badge */}
+            {/* Drop-day banner — bigger version of the card badge */}
             <div style={{ position: "absolute", top: 18, left: 18, padding: "8px 14px", borderRadius: 999, background: C.amber, color: "#fff", fontFamily: F.head, fontSize: 12, fontWeight: 900, letterSpacing: "0.1em", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 3px 10px " + C.amber + "55" }}>
               <Clock size={12} strokeWidth={2.6}/>
-              DROPS SATURDAY 10AM
+              DROPS {dropOpenDay().toUpperCase()} {dropOpenHourBadge()}
             </div>
           </div>
 
@@ -1439,7 +1482,7 @@ function PreviewItemDetail({ item, onBack, savedPreview, togglePreview }) {
             <div>
               <p style={{ fontFamily: F.head, fontSize: 13, fontWeight: 800, color: C.ink, marginBottom: 3 }}>This is a Sneak Peek</p>
               <p style={{ fontFamily: F.body, fontSize: 12, fontWeight: 500, color: C.mink, lineHeight: 1.5 }}>
-                The item isn't claimable yet. Save it now and we'll notify you the moment Saturday's Drop opens at 10 AM — first-come, first-served once it goes live.
+                The item isn't claimable yet. Save it now and we'll notify you the moment {dropOpenDay()}'s Drop opens at {dropOpenHour()} — first-come, first-served once it goes live.
               </p>
             </div>
           </div>
@@ -1466,7 +1509,7 @@ function PreviewItemDetail({ item, onBack, savedPreview, togglePreview }) {
               </div>
             </div>
             <p style={{ fontFamily: F.body, fontSize: 12, fontWeight: 500, color: C.ash, fontStyle: "italic", marginTop: 14, lineHeight: 1.5 }}>
-              Final details, photos, condition notes and exact price will be posted Saturday by 10 AM.
+              Final details, photos, condition notes and exact price will be posted {dropOpenDay()} by {dropOpenHour()}.
             </p>
           </div>
         </div>
@@ -1513,7 +1556,7 @@ function PreviewItemDetail({ item, onBack, savedPreview, togglePreview }) {
                   <p style={{ fontFamily: F.head, fontSize: 13, fontWeight: 800, color: C.ink }}>You're on the list</p>
                 </div>
                 <p style={{ fontFamily: F.body, fontSize: 12, fontWeight: 500, color: C.mink, lineHeight: 1.55 }}>
-                  We'll send you a notification Saturday at <b style={{ color: C.ink, fontWeight: 800 }}>10 AM</b> when this goes live. Open the app fast — Drops are first-come, first-served.
+                  We'll send you a notification {dropOpenDay()} at <b style={{ color: C.ink, fontWeight: 800 }}>{dropOpenHour()}</b> when this goes live. Open the app fast — Drops are first-come, first-served.
                 </p>
 
               </div>
@@ -1585,7 +1628,7 @@ function SneakPeekListPage({ savedPreview, togglePreview, onPreviewItem, onBack 
           </button>
         </div>
         <p style={{ fontFamily: F.body, fontSize: 13, fontWeight: 500, color: C.mink, margin: 0 }}>
-          Drop opens <b style={{ color: C.ink, fontWeight: 800 }}>Saturday at 10 AM</b>
+          Drop opens <b style={{ color: C.ink, fontWeight: 800 }}>{dropOpenFull()}</b>
         </p>
       </div>
 
@@ -1619,7 +1662,7 @@ function SneakPeekListPage({ savedPreview, togglePreview, onPreviewItem, onBack 
                   <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at center, transparent 40%, " + C.amber + "12 100%)" }}/>
                   <span style={{ fontSize: 60, filter: "saturate(0.85)", opacity: 0.92 }}>{item.img}</span>
                   <div style={{ position: "absolute", top: 10, left: 10, padding: "4px 9px", borderRadius: 999, background: C.amber, color: "#fff", fontFamily: F.head, fontSize: 10, fontWeight: 900, letterSpacing: "0.08em", display: "flex", alignItems: "center", gap: 4, boxShadow: "0 2px 6px " + C.amber + "50" }}>
-                    <Clock size={10} strokeWidth={2.6}/> SAT 10AM
+                    <Clock size={10} strokeWidth={2.6}/> {dropOpenDay(true).toUpperCase()} {dropOpenHourBadge()}
                   </div>
                   <button onClick={(e) => { e.stopPropagation(); togglePreview(item.id); }} style={{ position: "absolute", top: 8, right: 8, width: 32, height: 32, borderRadius: "50%", border: "none", background: isSaved ? C.amber : "rgba(255,255,255,0.92)", color: isSaved ? "#fff" : C.ink, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", boxShadow: "0 2px 6px rgba(31,29,25,0.15)" }}>
                     <Heart size={15} strokeWidth={2.4} fill={isSaved ? "#fff" : "none"}/>
@@ -1652,7 +1695,7 @@ function PreviewStrip({ savedPreview, togglePreview, onPreviewItem, onSeeAllPrev
   // Each card represents an item dropping Saturday. Buyers save items 
   // (not sellers) to a watchlist so they wake up knowing exactly what to claim.
   //
-  // Visual language: amber "SAT 10AM" badge + soft lock overlay on photos to
+  // Visual language: amber "SAT 8AM" badge + soft lock overlay on photos to
   // signal these are not-yet-live previews, distinct from live item cards.
 
   return (
@@ -1712,7 +1755,7 @@ function PreviewStrip({ savedPreview, togglePreview, onPreviewItem, onSeeAllPrev
                 {/* The emoji/photo */}
                 <span style={{ fontSize: 54, filter: "saturate(0.85)", opacity: 0.92 }}>{item.img}</span>
 
-                {/* SAT 10AM badge — top left */}
+                {/* SAT 8AM badge — top left */}
                 <div style={{
                   position: "absolute",
                   top: 10,
@@ -1731,7 +1774,7 @@ function PreviewStrip({ savedPreview, togglePreview, onPreviewItem, onSeeAllPrev
                   boxShadow: "0 2px 6px " + C.amber + "50",
                 }}>
                   <Clock size={10} strokeWidth={2.6}/>
-                  SAT 10AM
+                  {dropOpenDay(true).toUpperCase()} {dropOpenHourBadge()}
                 </div>
 
                 {/* Save icon — top right */}
@@ -2850,12 +2893,12 @@ function RegularSellerProfile({ sellerName, onBack, onSelect, onClaimNow, savedI
 /* ============================================================
    SAVED PAGE
    ============================================================ */
-function SavedPage({ savedIds, onSelect, onClaimNow, onToggleSave, onBrowse, claimedIds = new Set(), purchasedIds = new Set(), itemsSource = null }) {
+function SavedPage({ savedIds, onSelect, onClaimNow, onToggleSave, onBrowse, onBack, claimedIds = new Set(), purchasedIds = new Set(), itemsSource = null }) {
   const source = Array.isArray(itemsSource) ? itemsSource : allItems;
   const items = source.filter(i => savedIds.has(i.id));
   return (
     <>
-      <PageTitle eyebrow="Your saves" eyebrowColor={C.claret} title="Saved items" subtitle={items.length + " item" + (items.length !== 1 ? "s" : "") + " you're watching"} icon={Heart} iconBg={C.claretMist} iconColor={C.claret}/>
+      <PageTitle onBack={onBack} eyebrow="Your saves" eyebrowColor={C.claret} title="Saved items" subtitle={items.length + " item" + (items.length !== 1 ? "s" : "") + " you're watching"} icon={Heart} iconBg={C.claretMist} iconColor={C.claret}/>
       {items.length === 0 ? (
         <EmptyState illustration={<EmptySavedIllustration/>} title="Nothing saved yet" message="Tap the heart on items you’re interested in — they’ll gather here so you can claim them when the Drop opens." cta="Browse Discover" onCtaClick={onBrowse} accent={C.amber}/>
       ) : (
@@ -2870,7 +2913,7 @@ function SavedPage({ savedIds, onSelect, onClaimNow, onToggleSave, onBrowse, cla
 /* ============================================================
    CLAIMS PAGE
    ============================================================ */
-function ClaimsPage({ claims, setClaims, onBrowse, onGoToMessages, onOpenThread = null, highlightId = null, onClearHighlight = null, accessToken = null }) {
+function ClaimsPage({ claims, setClaims, onBrowse, onBack, onGoToMessages, onOpenThread = null, highlightId = null, onClearHighlight = null, accessToken = null }) {
   const { isMobile: __isMobile } = useViewport();
   // Clear the highlight after a brief flash so the row settles.
   useEffect(() => {
@@ -2970,7 +3013,7 @@ function ClaimsPage({ claims, setClaims, onBrowse, onGoToMessages, onOpenThread 
 
   return (
     <>
-      <PageTitle eyebrow="Your claims" eyebrowColor={C.green} title="Pickups & offers" subtitle={claims.length + " active claim" + (claims.length !== 1 ? "s" : "")} icon={ShoppingBag} iconBg={C.greenMist} iconColor={C.greenDeep}/>
+      <PageTitle onBack={onBack} eyebrow="Your claims" eyebrowColor={C.green} title="Pickups & offers" subtitle={claims.length + " active claim" + (claims.length !== 1 ? "s" : "")} icon={ShoppingBag} iconBg={C.greenMist} iconColor={C.greenDeep}/>
 
       {/* Success toast */}
       {toast && (
@@ -3257,7 +3300,7 @@ const DEMO_BUYER_CONVERSATIONS = [
     },
 ];
 
-function MessagesPage({ user = null, accessToken = null, claims = [], onAcceptCounter = null, onDeclineCounter = null, openThreadId = null, onConsumeOpenThread = null }) {
+function MessagesPage({ user = null, accessToken = null, claims = [], onAcceptCounter = null, onDeclineCounter = null, openThreadId = null, onConsumeOpenThread = null, onBack = null }) {
   const { isMobile } = useViewport();
   const usingBackend = !!accessToken;
   const myId = user?.id || null;
@@ -3572,7 +3615,7 @@ function MessagesPage({ user = null, accessToken = null, claims = [], onAcceptCo
 
   return (
     <>
-      <PageTitle eyebrow="Messages" eyebrowColor={C.ai} title="Conversations" subtitle={unreadCount > 0 ? (unreadCount + " unread · " + conversations.length + " active thread" + (conversations.length !== 1 ? "s" : "")) : (conversations.length + " active thread" + (conversations.length !== 1 ? "s" : ""))} icon={MessageSquare} iconBg={C.aiMist} iconColor={C.ai}/>
+      <PageTitle onBack={onBack} eyebrow="Messages" eyebrowColor={C.ai} title="Conversations" subtitle={unreadCount > 0 ? (unreadCount + " unread · " + conversations.length + " active thread" + (conversations.length !== 1 ? "s" : "")) : (conversations.length + " active thread" + (conversations.length !== 1 ? "s" : ""))} icon={MessageSquare} iconBg={C.aiMist} iconColor={C.ai}/>
 
       {/* Error toast */}
       {errorMsg && (
@@ -3803,7 +3846,7 @@ function MessagesPage({ user = null, accessToken = null, claims = [], onAcceptCo
 /* ============================================================
    HISTORY PAGE
    ============================================================ */
-function HistoryPage({ highlightId = null, onClearHighlight = null, onOpenThread = null, accessToken = null }) {
+function HistoryPage({ highlightId = null, onClearHighlight = null, onOpenThread = null, accessToken = null, onBack = null }) {
   const { isMobile: __isMobile } = useViewport();
   useEffect(() => {
     if (!highlightId || !onClearHighlight) return;
@@ -3960,7 +4003,7 @@ function HistoryPage({ highlightId = null, onClearHighlight = null, onOpenThread
 
   return (
     <>
-      <PageTitle eyebrow="Your history" eyebrowColor={C.amberDeep} title="Purchase history" subtitle={totalItems + " completed pickup" + (totalItems !== 1 ? "s" : "") + " across all channels"} icon={Award} iconBg={C.amberMist} iconColor={C.amberDeep}/>
+      <PageTitle onBack={onBack} eyebrow="Your history" eyebrowColor={C.amberDeep} title="Purchase history" subtitle={totalItems + " completed pickup" + (totalItems !== 1 ? "s" : "") + " across all channels"} icon={Award} iconBg={C.amberMist} iconColor={C.amberDeep}/>
 
       {/* Stats grid */}
       <div style={{ display: "grid", gridTemplateColumns: __isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: __isMobile ? 10 : 14, marginBottom: __isMobile ? 16 : 22 }}>
@@ -4166,6 +4209,7 @@ function DiscoverPage({ savedIds, onToggleSave, onSelect, onClaimNow, state, rem
   const [cat, setCat] = useState("All");
   const [sort, setSort] = useState("newest");
   const [panelOpen, setPanelOpen] = useState(false);
+  const dropOpenCountdown = useDropOpenCountdownString();
 
   // Show the cardboard-box skeleton on the initial backend load — empty
   // network states should not look like "the marketplace is empty".
@@ -4304,7 +4348,7 @@ function DiscoverPage({ savedIds, onToggleSave, onSelect, onClaimNow, state, rem
                 <span style={{ position: "relative", width: 8, height: 8, borderRadius: "50%", background: C.amber }}/>
               </span>
               <span style={{ fontFamily: F.body, fontSize: 13, fontWeight: 500, color: C.mink }}>
-                Saturday's Drop opens in <b style={{ color: C.ink, fontWeight: 800 }}>2d 14h</b>
+                {dropOpenDay()}'s Drop opens in <b style={{ color: C.ink, fontWeight: 800 }}>{dropOpenCountdown || "..."}</b>
               </span>
             </span>
             <span style={{ color: C.smoke, fontSize: 12 }}>·</span>
@@ -4694,7 +4738,7 @@ export default function DropYardBuyerDashboard({
   const [toast, setToast] = useState(null);
   // Drop state is derived from the system clock (see computeDropState).
   // We re-check every 60 seconds so the UI flips automatically the moment
-  // the Drop opens (Sat 10am) and closes (Sun 6pm), without any manual toggle.
+  // the Drop opens (Sat 8am) and closes (Sun 6pm), without any manual toggle.
   const [dropState, setDropState] = useState(() => computeDropState());
   useEffect(() => {
     const tick = setInterval(() => setDropState(computeDropState()), 60 * 1000);
@@ -4775,7 +4819,7 @@ export default function DropYardBuyerDashboard({
     }
   };
   const togglePreview = (i) => setSavedPreview(prev => { const n = new Set(prev); if (n.has(i)) n.delete(i); else n.add(i); return n; });
-  const handleRemindMe = () => { setReminded(true); setToast("We'll ping you Saturday at 10 am."); };
+  const handleRemindMe = () => { setReminded(true); setToast(`We'll ping you ${dropOpenDay()} at ${dropOpenHour()}.`); };
 
   const handleClaimComplete = async (item, slot) => {
     const parts = slot ? slot.split(" ") : [];
@@ -4858,10 +4902,10 @@ export default function DropYardBuyerDashboard({
                 <SneakPeekListPage savedPreview={savedPreview} togglePreview={togglePreview} onPreviewItem={setViewingPreview} onBack={() => setShowSneakList(false)}/>
               )}
               {page === "discover" && !viewingPreview && !showSneakList && <DiscoverPage savedIds={savedIds} onToggleSave={toggleSave} onSelect={setViewingItem} onClaimNow={setClaimItem} state={dropState} reminded={reminded} onRemindMe={handleRemindMe} savedPreview={savedPreview} togglePreview={togglePreview} onSwitchRole={onSwitchRole} onPreviewItem={setViewingPreview} onSeeAllPreviews={() => setShowSneakList(true)} claimedIds={claimedIds} purchasedIds={purchasedIds} itemsSource={itemsForUI} itemsLoading={itemsLoading}/>}
-              {page === "saved"    && <SavedPage savedIds={savedIds} onSelect={setViewingItem} onClaimNow={setClaimItem} onToggleSave={toggleSave} onBrowse={() => setPage("discover")} claimedIds={claimedIds} purchasedIds={purchasedIds} itemsSource={itemsForUI}/>}
-              {page === "claims"   && <ClaimsPage claims={claims} setClaims={setClaims} onBrowse={() => setPage("discover")} onGoToMessages={() => setPage("messages")} onOpenThread={(itemTitle) => openMessageThread(itemTitle)} highlightId={highlightId} onClearHighlight={() => setHighlightId(null)} accessToken={accessToken}/>}
-              {page === "messages" && <MessagesPage user={user} accessToken={accessToken} claims={claims} onAcceptCounter={handleAcceptCounterByItemTitle} onDeclineCounter={handleDeclineCounterByItemTitle} openThreadId={openThreadId} onConsumeOpenThread={() => setOpenThreadId(null)}/>}
-              {page === "history"  && <HistoryPage highlightId={highlightId} onClearHighlight={() => setHighlightId(null)} onOpenThread={(itemTitle) => openMessageThread(itemTitle)} accessToken={accessToken}/>}
+              {page === "saved"    && <SavedPage savedIds={savedIds} onSelect={setViewingItem} onClaimNow={setClaimItem} onToggleSave={toggleSave} onBrowse={() => setPage("discover")} onBack={() => setPage("discover")} claimedIds={claimedIds} purchasedIds={purchasedIds} itemsSource={itemsForUI}/>}
+              {page === "claims"   && <ClaimsPage claims={claims} setClaims={setClaims} onBrowse={() => setPage("discover")} onBack={() => setPage("discover")} onGoToMessages={() => setPage("messages")} onOpenThread={(itemTitle) => openMessageThread(itemTitle)} highlightId={highlightId} onClearHighlight={() => setHighlightId(null)} accessToken={accessToken}/>}
+              {page === "messages" && <MessagesPage user={user} accessToken={accessToken} claims={claims} onAcceptCounter={handleAcceptCounterByItemTitle} onDeclineCounter={handleDeclineCounterByItemTitle} openThreadId={openThreadId} onConsumeOpenThread={() => setOpenThreadId(null)} onBack={() => setPage("discover")}/>}
+              {page === "history"  && <HistoryPage highlightId={highlightId} onClearHighlight={() => setHighlightId(null)} onOpenThread={(itemTitle) => openMessageThread(itemTitle)} accessToken={accessToken} onBack={() => setPage("discover")}/>}
               {page === "settings" && <SettingsPage user={user}/>}
             </>
           )}
