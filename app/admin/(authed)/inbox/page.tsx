@@ -440,12 +440,39 @@ function SubmissionDetailPanel({
   const [saving, setSaving] = useState<null | "status" | "notes">(null);
   const [error, setError] = useState("");
   const [showPayload, setShowPayload] = useState(false);
+  const [showDirectReply, setShowDirectReply] = useState(false);
+  const [replyBody, setReplyBody] = useState("");
+  const [sendingReply, setSendingReply] = useState(false);
+  const [replySent, setReplySent] = useState(false);
 
   // Reset notes when switching submissions
   useEffect(() => {
     setNotes(submission.internalNotes ?? "");
     setError("");
+    setShowDirectReply(false);
+    setReplyBody("");
+    setReplySent(false);
   }, [submission.id, submission.internalNotes]);
+
+  const sendDirectReply = async () => {
+    if (!accessToken || !replyBody.trim()) return;
+    setSendingReply(true);
+    setError("");
+    try {
+      await apiRequest(`/api/admin/submissions/${submission.id}/reply`, {
+        method: "POST",
+        token: accessToken,
+        body: JSON.stringify({ message: replyBody.trim() }),
+      });
+      setReplySent(true);
+      setReplyBody("");
+      setShowDirectReply(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to send reply");
+    } finally {
+      setSendingReply(false);
+    }
+  };
 
   // Close on Escape
   useEffect(() => {
@@ -662,14 +689,73 @@ function SubmissionDetailPanel({
               onClick={() => patch({ status: "SPAM" }, "status")}
             />
           </div>
-          {replyHref && (
-            <a
-              href={replyHref}
-              className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50 text-[12px] font-semibold transition"
-            >
-              <Reply size={12} /> Reply via email
-              <ExternalLink size={10} className="text-emerald-500" />
-            </a>
+
+          {emailForReply && (
+            <div className="grid grid-cols-2 gap-1.5">
+              {replyHref && (
+                <a
+                  href={replyHref}
+                  className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 text-[12px] font-semibold transition"
+                >
+                  <Reply size={12} /> Reply via email
+                  <ExternalLink size={10} className="text-slate-400" />
+                </a>
+              )}
+              <button
+                type="button"
+                onClick={() => { setShowDirectReply((v) => !v); setReplySent(false); setError(""); }}
+                className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50 text-[12px] font-semibold transition"
+              >
+                <Mail size={12} /> Direct reply
+              </button>
+            </div>
+          )}
+
+          {replySent && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-[12px]">
+              <CheckCircle2 size={13} /> Email sent to {emailForReply}
+            </div>
+          )}
+
+          {showDirectReply && emailForReply && (
+            <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+              <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 text-[11px] text-slate-500">
+                To: <span className="font-semibold text-slate-700">{emailForReply}</span>
+                {displayName !== emailForReply && (
+                  <span className="ml-1 text-slate-400">({displayName})</span>
+                )}
+              </div>
+              <textarea
+                value={replyBody}
+                onChange={(e) => setReplyBody(e.target.value)}
+                placeholder="Write your reply…"
+                rows={5}
+                className="w-full px-3 py-2.5 text-[13px] text-slate-800 focus:outline-none resize-y"
+              />
+              <div className="px-3 py-2 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-2">
+                <span className="text-[11px] text-slate-400">
+                  Sent as <strong>Dropyard Support</strong>
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => { setShowDirectReply(false); setReplyBody(""); }}
+                    className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-slate-600 hover:bg-slate-100 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={sendDirectReply}
+                    disabled={sendingReply || !replyBody.trim()}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-[11px] font-semibold transition"
+                  >
+                    {sendingReply ? <Loader2 size={11} className="animate-spin" /> : <Mail size={11} />}
+                    Send
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
         </footer>
       </aside>
