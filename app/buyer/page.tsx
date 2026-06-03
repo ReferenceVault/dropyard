@@ -131,7 +131,7 @@ function BuyerDashboardContent() {
   const { user, loading } = useAuth();
   useEffect(() => {
     if (!loading && !user) {
-      router.replace("/join?mode=signin");
+      router.replace("/join");
     }
   }, [loading, user, router]);
   if (loading || !user) {

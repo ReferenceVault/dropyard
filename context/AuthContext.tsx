@@ -130,8 +130,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signout = useCallback(async () => {
     const token = localStorage.getItem(ACCESS_TOKEN_KEY);
+    // Fire-and-forget the backend invalidation. Awaiting it would block the
+    // redirect when the API is slow / unreachable, leaving the user looking
+    // at a dead "Sign out" click. Local state and tokens get cleared either
+    // way, so they're effectively logged out from the user's perspective.
     if (token) {
-      await apiRequest('/api/auth/signout', { method: 'POST', token }).catch(() => {});
+      apiRequest('/api/auth/signout', { method: 'POST', token }).catch(() => {});
     }
     localStorage.removeItem(ACCESS_TOKEN_KEY);
     localStorage.removeItem(REFRESH_TOKEN_KEY);
