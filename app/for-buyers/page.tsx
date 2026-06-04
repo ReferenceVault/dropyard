@@ -139,9 +139,8 @@ export default function ForBuyersPage() {
           </h1>
 
           <p style={{ fontSize: 18, fontWeight: 700, color: "rgba(255,255,255,0.96)", marginBottom: 10 }}>Shop locally. Simply.</p>
-          <p style={{ fontSize: 13, color: "rgba(255,255,255,0.62)", maxWidth: "none", margin: "0 auto 22px", lineHeight: 1.7, whiteSpace: "nowrap" }}>
-            Discover amazing deals from your neighbours through curated weekend Drops, always-on Shelf listings.<br />
-            Quality items at great prices, just around the corner.
+          <p style={{ fontSize: 13, color: "rgba(255,255,255,0.62)", maxWidth: 680, margin: "0 auto 22px", lineHeight: 1.7 }}>
+            Discover amazing deals from your neighbours through curated weekend Drops, always-on Shelf listings. Quality items at great prices, just around the corner.
           </p>
 
           {/* Benefit chips */}
@@ -209,7 +208,7 @@ export default function ForBuyersPage() {
             <span style={{ fontSize: 11, fontWeight: 800, color: C.gPrimary, textTransform: "uppercase", letterSpacing: 2 }}>This Week</span>
             <h2 style={{ fontSize: 27, fontWeight: 600, color: C.gDark, marginTop: 4, letterSpacing: "-0.025em" }}>This Week&apos;s Picks</h2>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 14 }}>
             {dropItems.map((item, i) => {
               const d = item.op ? Math.round((1 - item.p / item.op) * 100) : 0;
               return (
@@ -259,7 +258,7 @@ export default function ForBuyersPage() {
             </div>
             <button onClick={go} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 13, fontWeight: 700, color: C.oPrimary, background: "none", border: "none", cursor: "pointer" }}>Browse the Shelf <ChevronRight size={14} /></button>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 14 }}>
             {shelfItems.map((item, i) => (
               <div key={i}
                 style={{ borderRadius: 16, border: "1px solid #f0f0f0", overflow: "hidden", backgroundColor: "#fff", transition: "all 0.2s", cursor: "pointer" }}

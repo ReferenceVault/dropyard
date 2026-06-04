@@ -353,30 +353,37 @@ function SubmissionRow({
   return (
     <li
       onClick={onSelect}
-      className={`group grid grid-cols-1 lg:grid-cols-[2fr_1fr_1fr_2fr_1fr_1fr_40px] gap-3 px-4 py-2.5 cursor-pointer transition-colors ${
+      className={`group grid grid-cols-1 lg:grid-cols-[2fr_1fr_1fr_2fr_1fr_1fr_40px] gap-y-2 gap-x-3 px-4 py-3 lg:py-2.5 cursor-pointer transition-colors ${
         isActive
           ? "bg-emerald-50/60"
           : "hover:bg-gradient-to-r hover:from-emerald-50/40 hover:to-transparent"
       }`}
     >
-      {/* Submitter */}
+      {/* Submitter + (mobile-only) chevron */}
       <div className="flex items-center gap-2.5 min-w-0">
         <AvatarChip name={displayName} seed={submission.id} size="md" />
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="text-[13px] font-semibold text-slate-900 truncate leading-tight">
             {displayName}
           </p>
           <p className="text-[11px] text-slate-500 truncate">{subtitle}</p>
         </div>
+        {/* Mobile-only chevron — anchors the row as tappable */}
+        <ChevronRight size={14} className="lg:hidden flex-shrink-0 text-slate-300" />
       </div>
 
-      {/* Type */}
-      <div className="flex items-center min-w-0">
+      {/* Type — on mobile, type + status + date all share one wrapped row for at-a-glance triage */}
+      <div className="flex items-center min-w-0 flex-wrap gap-1.5 lg:pl-0 pl-[44px] lg:gap-0">
         <SubmissionTypeBadge type={submission.type} />
+        {/* Mobile-only: pull status and date inline */}
+        <div className="lg:hidden contents">
+          <SubmissionStatusBadge status={submission.status} />
+          <RelativeDateBadge date={submission.createdAt} />
+        </div>
       </div>
 
-      {/* Source */}
-      <div className="flex items-center min-w-0 text-[11px] text-slate-600">
+      {/* Source — desktop only on its own column; on mobile, hidden to save space */}
+      <div className="hidden lg:flex items-center min-w-0 text-[11px] text-slate-600">
         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 font-mono truncate">
           <Globe size={9} className="text-slate-400 flex-shrink-0" />
           <span className="truncate">{formatSource(submission.source)}</span>
@@ -384,24 +391,24 @@ function SubmissionRow({
       </div>
 
       {/* Preview */}
-      <div className="min-w-0 lg:py-0.5 text-[12px] text-slate-600 line-clamp-2">
+      <div className="min-w-0 lg:py-0.5 text-[12px] text-slate-600 line-clamp-2 lg:pl-0 pl-[44px]">
         {submission.message || (
           <span className="italic text-slate-400">{previewPayload(submission.payload)}</span>
         )}
       </div>
 
-      {/* Submitted */}
-      <div className="flex items-center min-w-0">
+      {/* Submitted — desktop only (mobile shows inline above) */}
+      <div className="hidden lg:flex items-center min-w-0">
         <RelativeDateBadge date={submission.createdAt} />
       </div>
 
-      {/* Status */}
-      <div className="flex items-center min-w-0">
+      {/* Status — desktop only (mobile shows inline above) */}
+      <div className="hidden lg:flex items-center min-w-0">
         <SubmissionStatusBadge status={submission.status} />
       </div>
 
-      {/* Chevron */}
-      <div className="flex items-center justify-end">
+      {/* Chevron — desktop only (mobile chevron is inside the submitter row) */}
+      <div className="hidden lg:flex items-center justify-end">
         <ChevronRight
           size={14}
           className={`text-slate-300 transition-all duration-200 ${
@@ -828,21 +835,21 @@ function RowsSkeleton() {
       {Array.from({ length: 5 }).map((_, i) => (
         <li
           key={i}
-          className="grid grid-cols-[2fr_1fr_1fr_2fr_1fr_1fr_40px] gap-3 px-4 py-3 items-center"
+          className="grid grid-cols-1 lg:grid-cols-[2fr_1fr_1fr_2fr_1fr_1fr_40px] gap-y-2 gap-x-3 px-4 py-3 lg:items-center"
         >
           <div className="flex items-center gap-2.5">
             <div className="h-8 w-8 rounded-full bg-slate-100 animate-pulse" />
             <div className="space-y-1.5 flex-1">
               <div className="h-3 w-32 bg-slate-100 rounded animate-pulse" />
-              <div className="h-2.5 w-40 bg-slate-100 rounded animate-pulse" />
+              <div className="h-2.5 w-40 max-w-full bg-slate-100 rounded animate-pulse" />
             </div>
           </div>
-          <div className="h-5 w-20 bg-slate-100 rounded-full animate-pulse" />
-          <div className="h-4 w-24 bg-slate-100 rounded animate-pulse" />
+          <div className="h-5 w-20 bg-slate-100 rounded-full animate-pulse ml-[44px] lg:ml-0" />
+          <div className="hidden lg:block h-4 w-24 bg-slate-100 rounded animate-pulse" />
           <div className="h-3 w-full bg-slate-100 rounded animate-pulse" />
-          <div className="h-5 w-16 bg-slate-100 rounded-full animate-pulse" />
-          <div className="h-5 w-20 bg-slate-100 rounded-full animate-pulse" />
-          <div />
+          <div className="hidden lg:block h-5 w-16 bg-slate-100 rounded-full animate-pulse" />
+          <div className="hidden lg:block h-5 w-20 bg-slate-100 rounded-full animate-pulse" />
+          <div className="hidden lg:block" />
         </li>
       ))}
     </ul>

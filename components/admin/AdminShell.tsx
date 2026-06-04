@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { AdminSidebar } from "./AdminSidebar";
 import { AdminTopBar } from "./AdminTopBar";
 import type { AuthUser } from "@/context/AuthContext";
@@ -28,6 +28,26 @@ export function AdminShell({
       setMobileOpen(true);
     }
   };
+
+  // Lock body scroll while the mobile drawer is open — otherwise the page
+  // behind the overlay scrolls under the user's finger.
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, [mobileOpen]);
+
+  // Auto-close the mobile drawer when the viewport grows past the lg
+  // breakpoint (rotating a tablet, resizing on desktop).
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const onResize = () => {
+      if (window.innerWidth >= LG_BREAKPOINT) setMobileOpen(false);
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [mobileOpen]);
 
   return (
     <div className="h-screen overflow-hidden bg-[#f7faf8] flex">

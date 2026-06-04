@@ -53,7 +53,7 @@ export function AdminTopBar({
       <div className="flex items-center gap-4 justify-self-start min-w-0">
         <button
           onClick={onToggleSidebar}
-          className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 flex-shrink-0"
+          className="flex h-11 w-11 lg:h-9 lg:w-9 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 flex-shrink-0"
           aria-label="Toggle navigation"
         >
           <Menu size={18} />
@@ -81,11 +81,11 @@ export function AdminTopBar({
       {/* RIGHT — bell + user */}
       <div className="flex items-center gap-3 justify-self-end">
         <button
-          className="relative flex h-9 w-9 items-center justify-center rounded-full bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-600 hover:text-slate-900 transition"
+          className="relative flex h-11 w-11 lg:h-9 lg:w-9 items-center justify-center rounded-full bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-600 hover:text-slate-900 transition"
           aria-label="Notifications"
         >
           <Bell size={15} />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-[#ff9412] ring-2 ring-white" />
+          <span className="absolute top-2.5 right-2.5 lg:top-1.5 lg:right-1.5 w-2 h-2 rounded-full bg-[#ff9412] ring-2 ring-white" />
         </button>
 
         <div ref={menuRef} className="relative">

@@ -228,7 +228,7 @@ export default function ContactPage() {
               <button
                 onClick={copyEmail}
                 aria-label="Copy email"
-                className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg border transition ${
+                className={`flex h-11 w-11 sm:h-10 sm:w-10 flex-shrink-0 items-center justify-center rounded-lg border transition ${
                   copied
                     ? "border-emerald-300 bg-emerald-100 text-emerald-700"
                     : "border-slate-200 bg-white text-slate-500 hover:border-emerald-300 hover:text-emerald-700"

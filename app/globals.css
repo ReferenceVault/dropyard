@@ -24,3 +24,171 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Mobile-only horizontal-overflow clip on the document. Scoped to mobile so it
+   can't interact with desktop layouts (sticky sidebars, fixed nav, etc). On
+   mobile, the dashboard's SSR-vs-client viewport mismatch (`useViewport`
+   defaults to width=1280 server-side) briefly renders the desktop layout
+   on initial paint, which can overflow the real ~360-414px viewport. This
+   keeps the document from horizontally scrolling during that transient
+   window. Apply ONLY to body — putting overflow-x on `<html>` can break
+   `position: fixed` (the mobile bottom nav) on some browsers. */
+@media (max-width: 768px) {
+  body {
+    overflow-x: hidden;
+  }
+}
+
+/* Mobile bottom navigation — rendered in SSR HTML on every page so the user
+   sees it immediately at first paint. Hidden via this media query on tablet
+   and up. Gating it on a JS `isMobile` check produced a "nav appears after
+   scrolling" bug on real mobile devices because the SSR rendered without the
+   nav (useViewport defaults to width=1280 server-side) and the hydration
+   re-render that added the nav happened late. */
+@media (min-width: 769px) {
+  .dy-mobile-bottom-nav {
+    display: none !important;
+  }
+}
+
+/* Desktop sidebar (seller dashboard `Sidebar` component) — rendered in SSR
+   HTML always; hidden on mobile via this media query. Same pattern as
+   `.dy-mobile-bottom-nav` above, mirrored for the inverse breakpoint. Avoids
+   the SSR-renders-sidebar-then-pops-out-on-hydration layout shift on mobile. */
+@media (max-width: 768px) {
+  .dy-desktop-sidebar {
+    display: none !important;
+  }
+}
+
+/* Generic mobile-only / desktop-only visibility helpers. Use these to wrap
+   any element that has no desktop OR no mobile equivalent (e.g. the seller
+   TopNav's "Switch to Buyer" pill, which lives in the sidebar's RoleToggle
+   on desktop). Same SSR-safe CSS-based gating as the named classes above. */
+@media (min-width: 769px) {
+  .dy-mobile-only {
+    display: none !important;
+  }
+}
+@media (max-width: 768px) {
+  .dy-desktop-only {
+    display: none !important;
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+   Seller dashboard TopNav — CSS-driven responsive layout.
+   Replaces the JS `isMobile` branches that caused a first-paint flicker on
+   mobile (SSR `useViewport` defaulted to width=1280 → desktop layout briefly
+   rendered before client re-render). With CSS media queries the layout is
+   correct from the SSR HTML on any viewport. C.fawn = #EDE8E0 is hardcoded
+   here because globals.css can't reach the runtime color constants — keep
+   in sync with the JSX file if the palette changes.
+   ──────────────────────────────────────────────────────────────────────── */
+
+/* Header grid: 4 columns on desktop (logo zone aligns with sidebar), 3 on mobile. */
+.dy-seller-topnav {
+  height: 64px;
+  display: grid;
+  grid-template-columns: 240px auto 1fr auto;
+  align-items: center;
+  padding: 0 18px 0 0;
+  gap: 18px;
+  border-bottom: 1px solid #EDE8E0;
+  background: #FFFFFF;
+  flex-shrink: 0;
+}
+@media (max-width: 768px) {
+  .dy-seller-topnav {
+    height: 56px;
+    grid-template-columns: auto 1fr auto;
+    padding: 0 12px;
+    gap: 10px;
+  }
+}
+
+/* Logo zone — borders the sidebar on desktop, free-floating on mobile. */
+.dy-seller-topnav__logo-zone {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding-left: 18px;
+  border-right: 1px solid #EDE8E0;
+}
+@media (max-width: 768px) {
+  .dy-seller-topnav__logo-zone {
+    padding-left: 0;
+    border-right: none;
+  }
+}
+
+/* Logo image — taller on desktop. */
+.dy-seller-topnav__logo {
+  height: 38px;
+  width: auto;
+  display: block;
+}
+@media (max-width: 768px) {
+  .dy-seller-topnav__logo {
+    height: 30px;
+  }
+}
+
+/* Breadcrumb font scales down on mobile. */
+.dy-seller-topnav__breadcrumb {
+  font-size: 14px;
+}
+@media (max-width: 768px) {
+  .dy-seller-topnav__breadcrumb {
+    font-size: 13px;
+  }
+}
+
+/* Right cluster gap. */
+.dy-seller-topnav__right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+@media (max-width: 768px) {
+  .dy-seller-topnav__right {
+    gap: 6px;
+  }
+}
+
+/* Notifications bell — smaller and tighter on mobile. */
+.dy-seller-topnav__bell {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid #EDE8E0;
+  background: #FFFFFF;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 150ms ease;
+}
+.dy-seller-topnav__bell:hover {
+  background: #FFF9F0;
+}
+@media (max-width: 768px) {
+  .dy-seller-topnav__bell {
+    width: 36px;
+    height: 36px;
+  }
+}
+
+/* Seller main content — bottom padding accommodates the mobile bottom nav. */
+.dy-seller-main {
+  flex: 1;
+  overflow: auto;
+  padding: 20px 28px;
+  background: #FFFFFF;
+}
+@media (max-width: 768px) {
+  .dy-seller-main {
+    padding: 16px 16px calc(76px + env(safe-area-inset-bottom, 0));
+  }
+}

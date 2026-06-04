@@ -431,6 +431,56 @@ function RoleToggle({ onSwitchToBuyer }) {
   );
 }
 
+// Compact "Switch to Buyer" pill — shown in the TopNav on mobile only (CSS
+// gated via `.dy-mobile-only` class). The full RoleToggle above lives in the
+// desktop sidebar; mobile users need an equivalent affordance because the
+// sidebar is hidden. Mirrors the buyer dashboard's compact SwitchToSellerButton
+// in shape, swapped to the buyer-side green tint.
+function SwitchToBuyerButton({ onClick }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      aria-label="Switch to Buyer"
+      title="Switch to Buyer"
+      style={{
+        position: "relative",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "8px",
+        borderRadius: 999,
+        border: "1.5px solid " + (hover ? C.green : C.fawn),
+        background: hover
+          ? "linear-gradient(135deg, " + C.greenMist + " 0%, " + C.paper + " 100%)"
+          : C.paper,
+        cursor: "pointer",
+        fontFamily: F.head,
+        fontSize: 12,
+        fontWeight: 800,
+        color: hover ? C.greenDeep : C.mink,
+        boxShadow: hover
+          ? "0 6px 18px " + C.green + "33, 0 1px 2px rgba(31,29,25,0.04)"
+          : "0 1px 2px rgba(31,29,25,0.04)",
+        transform: hover ? "translateY(-1px)" : "translateY(0)",
+        transition: "all 200ms cubic-bezier(0.4, 0, 0.2, 1)",
+      }}
+    >
+      <span style={{
+        width: 24, height: 24, borderRadius: 7,
+        background: hover ? C.green : C.greenMist,
+        display: "inline-flex", alignItems: "center", justifyContent: "center",
+        boxShadow: hover ? "0 2px 6px " + C.green + "55" : "none",
+        transition: "all 200ms ease",
+      }}>
+        <ShoppingBag size={13} style={{ color: hover ? "#fff" : C.greenDeep }} strokeWidth={2.6}/>
+      </span>
+    </button>
+  );
+}
+
 // Magic nav item: left accent bar with glow on active, sliding chevron on
 // hover, premium icon tile with subtle elevation, smooth transitions.
 // In `collapsed` (rail) mode, renders icon-only with the label in `title`
@@ -608,8 +658,8 @@ function MobileBottomNav({ activeView, onNav }) {
     { id: "history",    label: "You",      icon: User,          matches: ["history","settings","ai-plan"] },
   ];
   return (
-    <nav role="navigation" aria-label="Primary" style={{
-      position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 50,
+    <nav role="navigation" aria-label="Primary" className="dy-mobile-bottom-nav" style={{
+      position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 60,
       background: "rgba(255, 252, 247, 0.92)",
       backdropFilter: "blur(20px) saturate(180%)", WebkitBackdropFilter: "blur(20px) saturate(180%)",
       borderTop: "1px solid " + C.fawn,
@@ -723,7 +773,7 @@ function Sidebar({ activeView, onNav, aiPlan, onSwitchRole, collapsed = false })
   }
 
   return (
-    <aside style={{
+    <aside className="dy-desktop-sidebar" style={{
       width: collapsed ? 72 : 240,
       borderRight: "1px solid " + C.fawn,
       background: C.paper,
@@ -950,34 +1000,30 @@ function labelForView(view) {
   return (view || "").charAt(0).toUpperCase() + (view || "").slice(1).replace(/-/g, " ");
 }
 
-function TopNav({ user, onSignout, onOpenSettings, activeView, onToggleSidebar }) {
-  const { isMobile } = useViewport();
+function TopNav({ user, onSignout, onOpenSettings, activeView, onToggleSidebar, onSwitchRole }) {
+  // No `useViewport()` here on purpose — layout flips between mobile/desktop
+  // happen entirely via CSS media queries on the `.dy-seller-topnav*` classes
+  // defined in globals.css. Gating layout on a JS hook produced a first-paint
+  // flicker on mobile (SSR `useViewport` defaults to width=1280 → desktop
+  // layout rendered first, then re-rendered after hydration). See BUG-030.
   const viewLabel = labelForView(activeView);
   return (
-    <header style={{
-      height: isMobile ? 56 : 64, borderBottom: "1px solid " + C.fawn,
-      display: "grid",
-      gridTemplateColumns: isMobile ? "auto 1fr auto" : "240px auto 1fr auto",
-      alignItems: "center",
-      padding: isMobile ? "0 12px" : "0 18px 0 0",
-      gap: isMobile ? 10 : 18,
-      background: C.paper, flexShrink: 0,
-    }}>
+    <header className="dy-seller-topnav">
       {/* LOGO ZONE — 240px wide on desktop to match the sidebar so the next
           column aligns with where the sidebar ends. Compresses to auto on mobile. */}
-      <div style={{ display: "flex", alignItems: "center", paddingLeft: isMobile ? 0 : 18, borderRight: isMobile ? "none" : "1px solid " + C.fawn, height: "100%" }}>
+      <div className="dy-seller-topnav__logo-zone">
         <Link href="/" title="DropYard home" style={{ display: "flex", alignItems: "center", flexShrink: 0, textDecoration: "none" }}>
-          <img src={LOGO_SRC} alt="DropYard" style={{ height: isMobile ? 30 : 38, width: "auto", display: "block" }}/>
+          <img src={LOGO_SRC} alt="DropYard" className="dy-seller-topnav__logo"/>
         </Link>
       </div>
 
-      {/* BREADCRUMB — sidebar toggle is hidden on mobile (bottom nav replaces sidebar). */}
+      {/* BREADCRUMB — sidebar toggle and "Seller /" prefix are desktop-only. */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-        {!isMobile && (
         <button
           onClick={onToggleSidebar}
           title="Toggle sidebar"
           aria-label="Toggle sidebar"
+          className="dy-desktop-only"
           style={{
             width: 38, height: 38, borderRadius: 10,
             border: "1px solid " + C.fawn, background: C.paper,
@@ -990,21 +1036,15 @@ function TopNav({ user, onSignout, onOpenSettings, activeView, onToggleSidebar }
         >
           <Menu size={16} style={{ color: C.mink }} strokeWidth={2.2}/>
         </button>
-        )}
-        <nav aria-label="Breadcrumb" style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: F.head, fontSize: isMobile ? 13 : 14, minWidth: 0 }}>
-          {!isMobile && (
-            <>
-              <span style={{ color: C.mink, fontWeight: 600 }}>Seller</span>
-              <span style={{ color: C.smoke, fontWeight: 700 }}>/</span>
-            </>
-          )}
+        <nav aria-label="Breadcrumb" className="dy-seller-topnav__breadcrumb" style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: F.head, minWidth: 0 }}>
+          <span className="dy-desktop-only" style={{ color: C.mink, fontWeight: 600 }}>Seller</span>
+          <span className="dy-desktop-only" style={{ color: C.smoke, fontWeight: 700 }}>/</span>
           <span style={{ color: C.ink, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{viewLabel}</span>
         </nav>
       </div>
 
       {/* CENTER — search bar (desktop only) */}
-      {!isMobile && (
-      <div style={{ display: "flex", justifyContent: "center" }}>
+      <div className="dy-desktop-only" style={{ display: "flex", justifyContent: "center" }}>
         <div style={{ position: "relative", maxWidth: 640, width: "100%" }}>
           <Search size={15} style={{ position: "absolute", left: 16, top: "50%", transform: "translateY(-50%)", color: C.ash, pointerEvents: "none" }} strokeWidth={2.4}/>
           <input
@@ -1033,20 +1073,19 @@ function TopNav({ user, onSignout, onOpenSettings, activeView, onToggleSidebar }
           }}>⌘K</span>
         </div>
       </div>
-      )}
 
-      {/* RIGHT — notifications bell + user menu */}
-      <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 6 : 10 }}>
-        <button title="Notifications" style={{
-          position: "relative",
-          width: isMobile ? 36 : 40, height: isMobile ? 36 : 40, borderRadius: "50%",
-          border: "1px solid " + C.fawn, background: C.paper,
-          cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-          transition: "background 150ms ease",
-        }}
-        onMouseEnter={e => { e.currentTarget.style.background = C.sand; }}
-        onMouseLeave={e => { e.currentTarget.style.background = C.paper; }}>
-          <Bell size={isMobile ? 15 : 16} style={{ color: C.mink }} strokeWidth={2.2}/>
+      {/* RIGHT — notifications bell + (mobile-only) switch to buyer + user menu */}
+      <div className="dy-seller-topnav__right">
+        {/* Switch to Buyer: shown only on mobile; desktop has the RoleToggle in the sidebar. */}
+        {onSwitchRole && (
+          <span className="dy-mobile-only" style={{ display: "inline-flex" }}>
+            <SwitchToBuyerButton onClick={() => onSwitchRole()}/>
+          </span>
+        )}
+        <button title="Notifications" aria-label="Notifications" className="dy-seller-topnav__bell"
+          onMouseEnter={e => { e.currentTarget.style.background = C.sand; }}
+          onMouseLeave={e => { e.currentTarget.style.background = C.paper; }}>
+          <Bell size={16} style={{ color: C.mink }} strokeWidth={2.2}/>
           <span style={{ position: "absolute", top: 9, right: 9, width: 8, height: 8, borderRadius: "50%", background: C.amber, border: "2px solid " + C.paper }}/>
         </button>
         <SellerUserMenu user={user} onSignout={onSignout} onOpenSettings={onOpenSettings}/>
@@ -1274,26 +1313,26 @@ function BetweenHero({ now, countdown, nextDropAt, queuedCount, shelfCount, draf
       marginBottom: isMobile ? 16 : 24,
       position: "relative", overflow: "hidden",
       borderRadius: isMobile ? 18 : 24,
-      padding: isMobile ? "22px 22px" : "32px 36px",
+      padding: isMobile ? "18px 16px" : "32px 36px",
       background: "linear-gradient(135deg, " + C.amberMist + " 0%, " + C.paper + " 75%)",
       border: "1px solid " + C.amber + "30",
       boxShadow: _SH_MD + ", inset 0 1px 0 rgba(255,255,255,0.7)",
     }}>
       <div style={{ position: "absolute", top: -60, right: -30, width: 200, height: 200, borderRadius: "50%", background: "radial-gradient(circle, " + C.amber + "1a 0%, transparent 70%)", pointerEvents: "none" }}/>
       <div style={{ position: "absolute", bottom: -50, left: 40, width: 110, height: 110, borderRadius: "50%", background: "radial-gradient(circle, " + C.amber + "10 0%, transparent 70%)", pointerEvents: "none" }}/>
-      <div style={{ position: "relative", display: "flex", flexWrap: "wrap", alignItems: isMobile ? "stretch" : "center", justifyContent: "space-between", gap: isMobile ? 16 : 28 }}>
-        <div style={{ flex: 1, minWidth: isMobile ? 0 : 280 }}>
+      <div style={{ position: "relative", display: "flex", flexWrap: "wrap", alignItems: isMobile ? "stretch" : "center", justifyContent: "space-between", gap: isMobile ? 14 : 28 }}>
+        <div style={{ flex: 1, minWidth: isMobile ? "100%" : 280 }}>
           <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 11px", borderRadius: 999, background: C.amberDeep, marginBottom: 12, boxShadow: _SH_XS }}>
             <Calendar size={11} style={{ color: "#fff" }} strokeWidth={2.5}/>
             <span style={{ fontFamily: F.head, fontSize: 10, fontWeight: 900, color: "#fff", letterSpacing: "0.1em", textTransform: "uppercase" }}>Next Drop</span>
           </div>
-          <h2 style={{ fontFamily: F.head, fontSize: isMobile ? 22 : 36, fontWeight: 900, color: C.ink, letterSpacing: "-0.035em", lineHeight: 1, marginBottom: 4 }}>
+          <h2 style={{ fontFamily: F.head, fontSize: isMobile ? 20 : 36, fontWeight: 900, color: C.ink, letterSpacing: "-0.035em", lineHeight: 1, marginBottom: 4 }}>
             {dayLabel} {timeLabel}
           </h2>
-          <p style={{ fontFamily: F.head, fontSize: isMobile ? 40 : 58, fontWeight: 900, color: C.amberDeep, letterSpacing: "-0.04em", lineHeight: 1, marginBottom: 12 }}>
+          <p style={{ fontFamily: F.head, fontSize: isMobile ? 32 : 58, fontWeight: 900, color: C.amberDeep, letterSpacing: "-0.04em", lineHeight: 1, marginBottom: 10 }}>
             {countdown}
           </p>
-          <p style={{ fontFamily: F.body, fontSize: isMobile ? 13 : 14, fontWeight: 600, color: C.mink, lineHeight: 1.5 }}>
+          <p style={{ fontFamily: F.body, fontSize: isMobile ? 12.5 : 14, fontWeight: 600, color: C.mink, lineHeight: 1.5 }}>
             {shelfCount > 0 && queuedCount > 0
               ? shelfCount + " selling on the Shelf now · " + queuedCount + " queued for Saturday"
               : shelfCount > 0
@@ -1310,28 +1349,42 @@ function BetweenHero({ now, countdown, nextDropAt, queuedCount, shelfCount, draf
             </p>
           )}
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 10, flexShrink: 0, minWidth: 220 }}>
+        <div style={{
+          display: "flex",
+          flexDirection: isMobile ? "row" : "column",
+          gap: isMobile ? 8 : 10,
+          flexShrink: 0,
+          width: isMobile ? "100%" : "auto",
+          minWidth: isMobile ? 0 : 220,
+        }}>
           <button
             onClick={onShare}
             className="cta-primary"
             style={{
+              flex: isMobile ? 1 : "0 1 auto",
               display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-              padding: "13px 22px", borderRadius: 999, border: "none", cursor: "pointer",
-              fontFamily: F.head, fontSize: 13, fontWeight: 800, letterSpacing: "-0.005em",
+              padding: isMobile ? "11px 14px" : "13px 22px",
+              borderRadius: 999, border: "none", cursor: "pointer",
+              fontFamily: F.head, fontSize: isMobile ? 12 : 13, fontWeight: 800, letterSpacing: "-0.005em",
               background: "linear-gradient(180deg, " + C.amber + " 0%, " + C.amberDeep + " 100%)",
               color: "#fff",
               boxShadow: "0 2px 0 #8B4A00, " + _SH_SM,
+              whiteSpace: "nowrap",
             }}
           >
-            <Share2 size={14} strokeWidth={2.4}/> Share what I&apos;m bringing
+            <Share2 size={14} strokeWidth={2.4}/>
+            {isMobile ? "Share" : "Share what I’m bringing"}
           </button>
           <button
             onClick={() => onNav("add-manual")}
             style={{
+              flex: isMobile ? 1 : "0 1 auto",
               display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-              padding: "12px 22px", borderRadius: 999, border: "1.5px solid " + C.amber + "40",
-              cursor: "pointer", fontFamily: F.head, fontSize: 13, fontWeight: 800,
+              padding: isMobile ? "11px 14px" : "12px 22px",
+              borderRadius: 999, border: "1.5px solid " + C.amber + "40",
+              cursor: "pointer", fontFamily: F.head, fontSize: isMobile ? 12 : 13, fontWeight: 800,
               background: C.paper, color: C.amberDeep,
+              whiteSpace: "nowrap",
             }}
           >
             <Plus size={13} strokeWidth={2.4}/> List more
@@ -1812,6 +1865,7 @@ function ImpactCard({ rehomed, earned, weight, onNav }) {
 // Share modal — triggered from BetweenHero's "Share what I'm bringing" CTA.
 // Generates branded text + 6 share targets (copy, WhatsApp, SMS, email, etc).
 function ShareSheet({ items, onClose }) {
+  const { isMobile } = useViewport();
   const [copied, setCopied] = useState(false);
 
   function pathOf(it) { return it.layer || it.publishedTo || "shelf"; }
@@ -1916,7 +1970,7 @@ function ShareSheet({ items, onClose }) {
         position: "fixed", inset: 0,
         background: "rgba(31, 29, 25, 0.5)",
         display: "flex", alignItems: "center", justifyContent: "center",
-        zIndex: 100, padding: 24,
+        zIndex: 100, padding: isMobile ? 12 : 24,
         backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)",
       }}
     >
@@ -1953,7 +2007,7 @@ function ShareSheet({ items, onClose }) {
           <button
             onClick={onClose}
             style={{
-              background: C.sand, border: "none", width: 32, height: 32, borderRadius: "50%",
+              background: C.sand, border: "none", width: 44, height: 44, borderRadius: "50%",
               cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
             }}
             aria-label="Close"
@@ -1988,7 +2042,7 @@ function ShareSheet({ items, onClose }) {
         {/* Share targets — 3 columns */}
         <div style={{ padding: "8px 22px 22px", borderTop: "1px solid " + C.fawn, background: C.paper }}>
           <p style={{ fontFamily: F.head, fontSize: 10, fontWeight: 800, color: C.ash, letterSpacing: "0.12em", textTransform: "uppercase", margin: "16px 0 10px" }}>Share via</p>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(3, 1fr)", gap: 10 }}>
             {targets.map((t) => (
               <button
                 key={t.id}
@@ -2404,27 +2458,36 @@ function Overview({ onNav, user, sellerItems = null, accessToken = null }) {
 
 // v2-style white card. Standalone stat tile used by ContextualStats.
 function BannerStat({ icon: Ic, label, value }) {
+  const { isMobile } = useViewport();
+  // On mobile, stack vertically so the full card width is available to the
+  // label ("ON SHELF", "QUEUED", etc) — the horizontal layout used 40px for
+  // the icon + 12px gap + 32px padding, leaving only ~16px in a 100px-wide
+  // column, which truncated the label with an ellipsis.
   return (
     <div style={{
-      display: "flex", alignItems: "center", gap: 12,
-      padding: "14px 18px 14px 14px",
+      display: "flex",
+      flexDirection: isMobile ? "column" : "row",
+      alignItems: isMobile ? "flex-start" : "center",
+      gap: isMobile ? 6 : 12,
+      padding: isMobile ? "10px 12px" : "14px 18px 14px 14px",
       borderRadius: 14, background: C.paper,
       border: "1px solid " + C.fawn,
       boxShadow: _SH_XS,
       minWidth: 0,
     }}>
       <div style={{
-        width: 40, height: 40, borderRadius: 11,
+        width: isMobile ? 28 : 40, height: isMobile ? 28 : 40,
+        borderRadius: isMobile ? 8 : 11,
         background: "linear-gradient(135deg, " + C.greenMist + " 0%, " + C.greenMist + "80 100%)",
         display: "flex", alignItems: "center", justifyContent: "center",
         flexShrink: 0,
         border: "1px solid " + C.green + "20",
       }}>
-        <Ic size={18} style={{ color: C.greenDeep }} strokeWidth={2.3}/>
+        <Ic size={isMobile ? 13 : 18} style={{ color: C.greenDeep }} strokeWidth={2.3}/>
       </div>
-      <div style={{ textAlign: "left", minWidth: 0 }}>
-        <p style={{ fontFamily: F.head, fontSize: 9, fontWeight: 800, color: C.mink, letterSpacing: "0.12em", marginBottom: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textTransform: "uppercase" }}>{label}</p>
-        <p style={{ fontFamily: F.head, fontSize: 22, fontWeight: 900, color: C.ink, letterSpacing: "-0.02em", lineHeight: 1, whiteSpace: "nowrap" }}>{value}</p>
+      <div style={{ textAlign: "left", minWidth: 0, width: "100%" }}>
+        <p style={{ fontFamily: F.head, fontSize: 9, fontWeight: 800, color: C.mink, letterSpacing: "0.1em", marginBottom: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textTransform: "uppercase" }}>{label}</p>
+        <p style={{ fontFamily: F.head, fontSize: isMobile ? 19 : 22, fontWeight: 900, color: C.ink, letterSpacing: "-0.02em", lineHeight: 1, whiteSpace: "nowrap" }}>{value}</p>
       </div>
     </div>
   );
@@ -2434,6 +2497,7 @@ function BannerStat({ icon: Ic, label, value }) {
 // the between+fresh-recap window (~30h post-close) it swaps to last Drop's
 // SOLD / EARNED / BACK ON SHELF totals.
 function ContextualStats({ dropPhase, isFreshRecap, data }) {
+  const { isMobile } = useViewport();
   const freshRecap = [
     { icon: CheckCircle, label: "SOLD",          value: String(data.soldRecap) },
     { icon: DollarSign,  label: "EARNED",        value: "$" + data.earnedRecap },
@@ -2458,7 +2522,7 @@ function ContextualStats({ dropPhase, isFreshRecap, data }) {
   };
   const items = sets[dropPhase] || sets.between;
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 22 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: isMobile ? 8 : 12, marginBottom: 22 }}>
       {items.map((s, i) => (
         <BannerStat key={i} icon={s.icon} label={s.label} value={s.value}/>
       ))}
@@ -2518,7 +2582,7 @@ function UpgradeToProModal({ onClose, onSuccess }) {
         </div>
 
         {/* Form body */}
-        <div style={{ padding: "22px 26px" }}>
+        <div style={{ padding: isMobile ? "18px 16px" : "22px 26px" }}>
           <div style={{ marginBottom: 14 }}>
             <label style={{ fontFamily: F.head, fontSize: 11, fontWeight: 800, color: C.mink, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 6, display: "block" }}>Cardholder name</label>
             <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Alex Anderson" style={{ width: "100%", padding: "11px 14px", borderRadius: 12, border: "1.5px solid " + C.fawn, fontFamily: F.body, fontSize: 14, fontWeight: 600, color: C.ink, outline: "none", background: C.paper, boxSizing: "border-box" }}/>
@@ -2532,7 +2596,7 @@ function UpgradeToProModal({ onClose, onSuccess }) {
             </div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 18 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr", gap: 10, marginBottom: 18 }}>
             <div>
               <label style={{ fontFamily: F.head, fontSize: 11, fontWeight: 800, color: C.mink, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 6, display: "block" }}>Expires</label>
               <input type="text" value={exp} onChange={e => setExp(fmtExp(e.target.value))} placeholder="MM/YY" inputMode="numeric" style={{ width: "100%", padding: "11px 14px", borderRadius: 12, border: "1.5px solid " + C.fawn, fontFamily: F.body, fontSize: 14, fontWeight: 600, color: C.ink, outline: "none", background: C.paper, boxSizing: "border-box" }}/>
@@ -3171,6 +3235,27 @@ function ManualItemForm({ onDone, onBack, onGoToItems, onEnhanceAI, aiSettings =
       return prev.filter(p => p.id !== id);
     });
   }
+  // Reorder helpers — first photo is the cover. Identical implementation in
+  // EditItemView; duplicated rather than extracted to keep this PR's blast
+  // radius small.
+  function movePhoto(idx, delta) {
+    setPhotos(prev => {
+      const next = idx + delta;
+      if (next < 0 || next >= prev.length) return prev;
+      const copy = [...prev];
+      [copy[idx], copy[next]] = [copy[next], copy[idx]];
+      return copy;
+    });
+  }
+  function setAsCover(idx) {
+    setPhotos(prev => {
+      if (idx <= 0 || idx >= prev.length) return prev;
+      const copy = [...prev];
+      const [target] = copy.splice(idx, 1);
+      copy.unshift(target);
+      return copy;
+    });
+  }
 
   /**
    * Submit the listing.
@@ -3317,8 +3402,8 @@ function ManualItemForm({ onDone, onBack, onGoToItems, onEnhanceAI, aiSettings =
 
             {/* Photo thumbnails */}
             <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-              {photos.map(p => (
-                <div key={p.id} style={{ width: 72, height: 72, borderRadius: 12, border: "1.5px solid " + C.gPrimary + "30", backgroundColor: C.gLightBg, display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden" }}>
+              {photos.map((p, idx) => (
+                <div key={p.id} style={{ width: 88, height: 88, borderRadius: 12, border: "1.5px solid " + (idx === 0 ? C.amber : C.gPrimary + "30"), backgroundColor: C.gLightBg, display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden" }}>
                   {p.preview ? (
                     <img src={p.preview} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", opacity: p.uploading ? 0.5 : 1 }}/>
                   ) : (
@@ -3329,23 +3414,46 @@ function ManualItemForm({ onDone, onBack, onGoToItems, onEnhanceAI, aiSettings =
                       Uploading…
                     </span>
                   )}
+                  {!p.uploading && idx === 0 && (
+                    <span style={{ position: "absolute", top: 4, left: 4, padding: "2px 6px", borderRadius: 999, background: C.amber, color: "#fff", fontFamily: F.head, fontSize: 9, fontWeight: 900, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+                      Cover
+                    </span>
+                  )}
                   {!p.uploading && (
-                    <button onClick={() => removePhoto(p.id)}
+                    <button onClick={() => removePhoto(p.id)} aria-label="Remove photo"
                       style={{ position: "absolute", top: -4, right: -4, width: 18, height: 18, borderRadius: "50%", backgroundColor: "#EF4444", border: "2px solid #fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 0 }}>
                       <X size={8} style={{ color: "#fff" }} />
                     </button>
+                  )}
+                  {!p.uploading && photos.length > 1 && (
+                    <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "3px 4px", background: "rgba(31,29,25,0.55)" }}>
+                      <button onClick={() => movePhoto(idx, -1)} disabled={idx === 0} aria-label="Move left"
+                        style={{ width: 18, height: 18, borderRadius: 4, border: "none", background: idx === 0 ? "transparent" : "rgba(255,255,255,0.18)", color: "#fff", cursor: idx === 0 ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, opacity: idx === 0 ? 0.4 : 1 }}>
+                        <ChevronLeft size={11}/>
+                      </button>
+                      {idx !== 0 ? (
+                        <button onClick={() => setAsCover(idx)} aria-label="Set as cover" title="Set as cover"
+                          style={{ width: 18, height: 18, borderRadius: 4, border: "none", background: "rgba(240,144,0,0.85)", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>
+                          <Star size={10} strokeWidth={2.4}/>
+                        </button>
+                      ) : <span style={{ width: 18, height: 18 }}/>}
+                      <button onClick={() => movePhoto(idx, +1)} disabled={idx === photos.length - 1} aria-label="Move right"
+                        style={{ width: 18, height: 18, borderRadius: 4, border: "none", background: idx === photos.length - 1 ? "transparent" : "rgba(255,255,255,0.18)", color: "#fff", cursor: idx === photos.length - 1 ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, opacity: idx === photos.length - 1 ? 0.4 : 1 }}>
+                        <ChevronRight size={11}/>
+                      </button>
+                    </div>
                   )}
                 </div>
               ))}
               {photos.length < MAX_PHOTOS && (
                 <button onClick={openFilePicker} disabled={submitting}
-                  style={{ width: 72, height: 72, borderRadius: 12, border: "2px dashed #d1d5db", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", cursor: submitting ? "not-allowed" : "pointer", background: C.paper, gap: 2 }}>
+                  style={{ width: 88, height: 88, borderRadius: 12, border: "2px dashed #d1d5db", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", cursor: submitting ? "not-allowed" : "pointer", background: C.paper, gap: 2 }}>
                   <Plus size={16} style={{ color: C.smoke }} />
                   <span style={{ fontSize: 8, color: C.smoke, fontFamily: F.body }}>Add</span>
                 </button>
               )}
             </div>
-            <p style={{ fontSize: 10, color: C.ash, marginTop: 8, fontFamily: F.body }}>First photo becomes the cover image. Up to {MAX_PHOTOS} photos.</p>
+            <p style={{ fontSize: 10, color: C.ash, marginTop: 8, fontFamily: F.body }}>The Cover photo is the first one buyers see. Use the arrows to reorder, or the star to promote. Up to {MAX_PHOTOS} photos.</p>
           </div>
 
           {/* Video upload */}
@@ -5229,12 +5337,20 @@ function SellerMessagesView({ user = null, accessToken = null }) {
   function adaptMessage(api) {
     if (!api) return null;
     const fromMe = api.senderId === myId;
+    // Mirror of the buyer-side TYPE_MAP — backend MessageType (upper) → lower
+    // render keys. Mismatched / missing values fall through to "text".
+    const TYPE_MAP = {
+      TEXT: "text", OFFER: "offer", COUNTER: "counter", CLAIM: "claim",
+      WHATSAPP: "whatsapp", NOTICE: "notice", REMINDER: "reminder",
+    };
+    const renderType = TYPE_MAP[api.messageType] || "text";
     return {
       id:   api.id,
       from: fromMe ? "seller" : "buyer",
       text: api.body,
       time: new Date(api.createdAt).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" }),
-      type: "text",
+      type: renderType,
+      amount: typeof api.amount === "number" ? api.amount : undefined,
     };
   }
 
@@ -5861,25 +5977,54 @@ function PickupsView({ onNav, embedded = false, accessToken = null, onChanged = 
     setNoShowItem(item);
   }
 
-  function confirmNoShow() {
+  async function confirmNoShow() {
     const item = noShowItem;
     setNoShowItem(null);
-    // No backend route for no-show yet — standalone preview only.
+    if (!item) return;
+    // Optimistic — remove from the pickups list immediately. On API failure
+    // we restore the row so the seller can retry.
+    const snapshot = pickups;
     setPickups(prev => prev.filter(p => p.id !== item.id));
-    setSuccessMsg(item.t + " marked as no-show. Auto-relists in 2 hours unless " + item.buyer.split(" ")[0] + " reschedules.");
+    if (accessToken && item.id) {
+      try {
+        await apiRequest("/api/claims/" + encodeURIComponent(item.id) + "/no-show", {
+          method: "PATCH",
+          token:  accessToken,
+        });
+      } catch (err) {
+        setPickups(snapshot);
+        setSuccessMsg("Couldn't mark as no-show: " + (err?.message || "try again"));
+        setTimeout(() => setSuccessMsg(null), 4000);
+        return;
+      }
+    }
+    setSuccessMsg(item.t + " marked as no-show. Item is back on the Shelf — other neighbours can claim it.");
     setTimeout(() => setSuccessMsg(null), 4500);
   }
 
-  function handleRelease(item) {
-    // No backend route for release yet — standalone preview only.
+  async function handleRelease(item) {
+    const snapshot = pickups;
     setPickups(prev => prev.filter(p => p.id !== item.id));
+    if (accessToken && item.id) {
+      try {
+        await apiRequest("/api/claims/" + encodeURIComponent(item.id) + "/release", {
+          method: "PATCH",
+          token:  accessToken,
+        });
+      } catch (err) {
+        setPickups(snapshot);
+        setSuccessMsg("Couldn't release the claim: " + (err?.message || "try again"));
+        setTimeout(() => setSuccessMsg(null), 4000);
+        return;
+      }
+    }
     setSuccessMsg(item.t + " released. Back on the Shelf — waitlisted buyers will be notified.");
     setTimeout(() => setSuccessMsg(null), 4000);
   }
 
-  // Release / No-show have no backend equivalents yet, so they're hidden in
-  // real mode and only available in the standalone design preview.
-  const showLegacyActions = !accessToken;
+  // Release / No-show are now wired to the backend (item #9). Show the
+  // buttons in both demo and real mode.
+  const showLegacyActions = true;
 
   return (
     <div>
@@ -6801,6 +6946,26 @@ function EditItemView({ onBack, editingItem, aiSettings = {}, accessToken = null
       return prev.filter(p => p.id !== id);
     });
   }
+  // Reorder helpers — the first photo is the cover. movePhoto swaps two
+  // adjacent items; setAsCover splices the chosen index to the front.
+  function movePhoto(idx, delta) {
+    setPhotos(prev => {
+      const next = idx + delta;
+      if (next < 0 || next >= prev.length) return prev;
+      const copy = [...prev];
+      [copy[idx], copy[next]] = [copy[next], copy[idx]];
+      return copy;
+    });
+  }
+  function setAsCover(idx) {
+    setPhotos(prev => {
+      if (idx <= 0 || idx >= prev.length) return prev;
+      const copy = [...prev];
+      const [target] = copy.splice(idx, 1);
+      copy.unshift(target);
+      return copy;
+    });
+  }
 
   // True when we have a real backend item to edit (cuid id passed in).
   function isRealItem() {
@@ -6985,8 +7150,8 @@ function EditItemView({ onBack, editingItem, aiSettings = {}, accessToken = null
 
             {/* Photo thumbnails */}
             <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-              {photos.map(p => (
-                <div key={p.id} style={{ width: 72, height: 72, borderRadius: 12, border: "1.5px solid " + C.gPrimary + "30", backgroundColor: C.gLightBg, display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden" }}>
+              {photos.map((p, idx) => (
+                <div key={p.id} style={{ width: 88, height: 88, borderRadius: 12, border: "1.5px solid " + (idx === 0 ? C.amber : C.gPrimary + "30"), backgroundColor: C.gLightBg, display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden" }}>
                   {p.preview ? (
                     <img src={p.preview} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", opacity: p.uploading ? 0.5 : 1 }}/>
                   ) : (
@@ -6997,23 +7162,46 @@ function EditItemView({ onBack, editingItem, aiSettings = {}, accessToken = null
                       Uploading…
                     </span>
                   )}
+                  {!p.uploading && idx === 0 && (
+                    <span style={{ position: "absolute", top: 4, left: 4, padding: "2px 6px", borderRadius: 999, background: C.amber, color: "#fff", fontFamily: F.head, fontSize: 9, fontWeight: 900, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+                      Cover
+                    </span>
+                  )}
                   {!p.uploading && (
-                    <button onClick={() => removePhoto(p.id)}
+                    <button onClick={() => removePhoto(p.id)} aria-label="Remove photo"
                       style={{ position: "absolute", top: -4, right: -4, width: 18, height: 18, borderRadius: "50%", backgroundColor: "#EF4444", border: "2px solid #fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 0 }}>
                       <X size={8} style={{ color: "#fff" }} />
                     </button>
+                  )}
+                  {!p.uploading && photos.length > 1 && (
+                    <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "3px 4px", background: "rgba(31,29,25,0.55)" }}>
+                      <button onClick={() => movePhoto(idx, -1)} disabled={idx === 0} aria-label="Move left"
+                        style={{ width: 18, height: 18, borderRadius: 4, border: "none", background: idx === 0 ? "transparent" : "rgba(255,255,255,0.18)", color: "#fff", cursor: idx === 0 ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, opacity: idx === 0 ? 0.4 : 1 }}>
+                        <ChevronLeft size={11}/>
+                      </button>
+                      {idx !== 0 ? (
+                        <button onClick={() => setAsCover(idx)} aria-label="Set as cover" title="Set as cover"
+                          style={{ width: 18, height: 18, borderRadius: 4, border: "none", background: "rgba(240,144,0,0.85)", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>
+                          <Star size={10} strokeWidth={2.4}/>
+                        </button>
+                      ) : <span style={{ width: 18, height: 18 }}/>}
+                      <button onClick={() => movePhoto(idx, +1)} disabled={idx === photos.length - 1} aria-label="Move right"
+                        style={{ width: 18, height: 18, borderRadius: 4, border: "none", background: idx === photos.length - 1 ? "transparent" : "rgba(255,255,255,0.18)", color: "#fff", cursor: idx === photos.length - 1 ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, opacity: idx === photos.length - 1 ? 0.4 : 1 }}>
+                        <ChevronRight size={11}/>
+                      </button>
+                    </div>
                   )}
                 </div>
               ))}
               {photos.length < MAX_PHOTOS && (
                 <button onClick={openFilePicker} disabled={submitting}
-                  style={{ width: 72, height: 72, borderRadius: 12, border: "2px dashed #d1d5db", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", cursor: submitting ? "not-allowed" : "pointer", background: C.paper, gap: 2 }}>
+                  style={{ width: 88, height: 88, borderRadius: 12, border: "2px dashed #d1d5db", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", cursor: submitting ? "not-allowed" : "pointer", background: C.paper, gap: 2 }}>
                   <Plus size={16} style={{ color: C.smoke }} />
                   <span style={{ fontSize: 8, color: C.smoke, fontFamily: F.body }}>Add</span>
                 </button>
               )}
             </div>
-            <p style={{ fontSize: 10, color: C.ash, marginTop: 8, fontFamily: F.body }}>First photo becomes the cover image. Up to {MAX_PHOTOS} photos.</p>
+            <p style={{ fontSize: 10, color: C.ash, marginTop: 8, fontFamily: F.body }}>The Cover photo is the first one buyers see. Use the arrows to reorder, or the star to promote. Up to {MAX_PHOTOS} photos.</p>
           </div>
         </div>
 
@@ -9028,13 +9216,15 @@ export default function DropYardSellerDashboard({
           onOpenSettings={() => setView("settings")}
           activeView={view}
           onToggleSidebar={() => setSidebarCollapsed(c => !c)}
+          onSwitchRole={onSwitchRole}
         />
         <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
-          {/* Desktop sidebar — replaced by MobileBottomNav on small screens. */}
-          {!isMobile && (
-            <Sidebar activeView={view} onNav={safeNav} aiPlan={aiPlan} onSwitchRole={onSwitchRole} collapsed={sidebarCollapsed}/>
-          )}
-          <main style={{ flex: 1, overflow: "auto", padding: isMobile ? "16px 16px calc(76px + env(safe-area-inset-bottom, 0))" : "20px 28px", background: C.paper }}>
+          {/* Desktop sidebar — rendered always so SSR/client markup matches; CSS
+              media query (`.dy-desktop-sidebar`) hides it on mobile. Gating on
+              the JS `isMobile` flag caused the sidebar to render in SSR HTML
+              (defaults to desktop) and pop out on hydration, shifting layout. */}
+          <Sidebar activeView={view} onNav={safeNav} aiPlan={aiPlan} onSwitchRole={onSwitchRole} collapsed={sidebarCollapsed}/>
+          <main className="dy-seller-main">
             {view === "overview" && <Overview onNav={safeNav} user={user} sellerItems={sellerItems} accessToken={accessToken}/>}
             {view === "items" && <MyItemsView onNav={safeNav} onEdit={goToEdit} onView={goToView} sellerItems={sellerItems} onItemsChange={onItemsChange} sellerItemsLoading={sellerItemsLoading} accessToken={accessToken}/>}
             {view === "item-detail" && <ItemDetailView item={editingItem} onBack={() => setView("items")} onEdit={() => setView("edit-item")} accessToken={accessToken}/>}
@@ -9062,7 +9252,8 @@ export default function DropYardSellerDashboard({
             )}
           </main>
         </div>
-        {isMobile && <MobileBottomNav activeView={view} onNav={safeNav}/>}
+        {/* Always render. CSS hides on desktop. See globals.css `.dy-mobile-bottom-nav`. */}
+        <MobileBottomNav activeView={view} onNav={safeNav}/>
       </div>
       {showOnboarding && (
         <SellerOnboardingModal

@@ -194,7 +194,8 @@ function ItemCard({ item }: { item: typeof FEATURED_ITEMS[0] }) {
         <div className="absolute top-3 left-3 bg-amber-500 text-white text-[11px] font-bold px-2 py-1 rounded-full">-{discount}%</div>
         <button
           onClick={() => setSaved(!saved)}
-          className={`absolute top-3 right-3 w-8 h-8 rounded-full flex items-center justify-center ${saved ? "bg-rose-500 text-white" : "bg-white/90 text-gray-400 hover:text-rose-500"}`}
+          aria-label={saved ? "Unsave item" : "Save item"}
+          className={`absolute top-3 right-3 w-10 h-10 sm:w-8 sm:h-8 rounded-full flex items-center justify-center ${saved ? "bg-rose-500 text-white" : "bg-white/90 text-gray-400 hover:text-rose-500"}`}
         >
           <Heart size={16} fill={saved ? "currentColor" : "none"} />
         </button>
@@ -902,7 +903,7 @@ function HomePage({
               View All <ChevronRight size={18} />
             </button>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
             {featuredItems.map((item) => <ItemCard key={item.id} item={item} />)}
           </div>
           <div className="text-center mt-10">
@@ -1043,14 +1044,14 @@ function HomePage({
               <div className="flex items-center justify-center gap-3 mt-4">
                 <button
                   onClick={prevTestimonial}
-                  className="w-9 h-9 rounded-full border border-emerald-200 text-emerald-700 hover:bg-emerald-50 transition-colors"
+                  className="w-11 h-11 sm:w-9 sm:h-9 rounded-full border border-emerald-200 text-emerald-700 hover:bg-emerald-50 transition-colors"
                   aria-label="Previous testimonial"
                 >
                   <ChevronLeft className="w-4 h-4 mx-auto" />
                 </button>
                 <button
                   onClick={nextTestimonial}
-                  className="w-9 h-9 rounded-full border border-emerald-200 text-emerald-700 hover:bg-emerald-50 transition-colors"
+                  className="w-11 h-11 sm:w-9 sm:h-9 rounded-full border border-emerald-200 text-emerald-700 hover:bg-emerald-50 transition-colors"
                   aria-label="Next testimonial"
                 >
                   <ChevronRight className="w-4 h-4 mx-auto" />
