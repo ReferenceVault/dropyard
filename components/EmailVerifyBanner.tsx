@@ -109,7 +109,7 @@ export function EmailVerifyBanner() {
                 type="button"
                 onClick={resend}
                 disabled={state === "sending"}
-                className="group relative inline-flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-full text-[13px] sm:text-sm font-bold text-white overflow-hidden transition-all shadow-md shadow-amber-500/30 hover:shadow-lg hover:shadow-amber-500/40 hover:scale-105 active:scale-100 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:shadow-md"
+                className="group relative inline-flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2 min-h-11 sm:min-h-0 rounded-full text-[13px] sm:text-sm font-bold text-white overflow-hidden transition-all shadow-md shadow-amber-500/30 hover:shadow-lg hover:shadow-amber-500/40 hover:scale-105 active:scale-100 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:shadow-md"
                 style={{
                   background: "linear-gradient(135deg, #f59e0b 0%, #f0900d 50%, #d97706 100%)",
                 }}

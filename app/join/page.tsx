@@ -17,8 +17,8 @@ import {
   AlertCircle,
   Loader2,
 } from "lucide-react";
-import { useGoogleLogin } from "@react-oauth/google";
 import { useAuth } from "@/context/AuthContext";
+import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 
 function JoinPageContent() {
   const router = useRouter();
@@ -46,27 +46,20 @@ function JoinPageContent() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const login = useGoogleLogin({
-    flow: "implicit",
-    onSuccess: async (tokenResponse) => {
-      if (!tokenResponse.access_token) return;
-      setError("");
-      setLoading(true);
-      try {
-        const user = await signInWithGoogle(tokenResponse.access_token);
-        // Replace, not push — so the back button from the dashboard skips past
-        // /join instead of landing the now-authenticated user back here.
-        router.replace(user.role === "ADMIN" ? "/admin" : "/buyer");
-      } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : "Google sign-in failed");
-      } finally {
-        setLoading(false);
-      }
-    },
-    onError: () => {
-      setError("Google sign-in was cancelled or failed");
-    },
-  });
+  const handleGoogleAccessToken = async (accessToken: string) => {
+    setError("");
+    setLoading(true);
+    try {
+      const user = await signInWithGoogle(accessToken);
+      // Replace, not push — so the back button from the dashboard skips past
+      // /join instead of landing the now-authenticated user back here.
+      router.replace(user.role === "ADMIN" ? "/admin" : "/buyer");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Google sign-in failed");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     const mode = searchParams.get("mode");
@@ -342,7 +335,7 @@ function JoinPageContent() {
             <button
               type="submit"
               disabled={loading || (authMode === "signup" && !agreedToTerms)}
-              className="w-full py-4 rounded-xl font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+              className="w-full min-h-12 py-4 rounded-xl font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
             >
               {loading && <Loader2 size={18} className="animate-spin" />}
               {authMode === "signin" ? "Sign In" : "Sign Up"}
@@ -360,19 +353,11 @@ function JoinPageContent() {
 
           {googleClientId ? (
             <div className="w-full">
-              <button
-                type="button"
-                onClick={() => login()}
+              <GoogleSignInButton
+                onAccessToken={handleGoogleAccessToken}
+                onError={setError}
                 disabled={loading}
-                  className="w-full py-4 rounded-xl font-semibold border border-gray-200 bg-white hover:bg-gray-50 transition-colors flex items-center justify-center gap-3 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                <img
-                  src="https://developers.google.com/identity/images/g-logo.png"
-                  alt="Google"
-                  className="w-5 h-5"
-                />
-                Continue with Google
-              </button>
+              />
             </div>
           ) : (
             <p className="text-center text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-xl py-3 px-4">

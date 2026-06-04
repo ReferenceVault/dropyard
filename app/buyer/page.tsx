@@ -503,7 +503,21 @@ function AuthedBuyerContent() {
   // signout function, accessToken, and refresh callback flow through without
   // TS complaining about the inferred null-only types.
   if ((mode as string) === "seller") {
-    if (!mounted) return <div className="min-h-screen bg-slate-50" />;
+    // Match BuyerDashboardContent's loading branch EXACTLY so hydration aligns
+    // regardless of which branch SSR took. The bare bg-slate-50 placeholder
+    // we used previously caused a hydration mismatch when the SSR HTML still
+    // contained the "Checking access" loading div but the client first-render
+    // reached AuthedBuyerContent's !mounted branch.
+    if (!mounted) {
+      return (
+        <div className="h-screen flex items-center justify-center bg-[#f7faf8]">
+          <div className="flex items-center gap-3 text-slate-500">
+            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+            <p className="text-sm font-medium">Checking access…</p>
+          </div>
+        </div>
+      );
+    }
     return (
       <>
         <EmailVerifyBanner />
@@ -525,7 +539,21 @@ function AuthedBuyerContent() {
   // Buyer mode renders the new dashboard from /preview/buyer-dashboard wholesale.
   // Its TopBar "Switch to Seller" button and Sell-with-AI CTA flip to seller mode.
   if ((mode as string) === "buyer") {
-    if (!mounted) return <div className="min-h-screen bg-slate-50" />;
+    // Match BuyerDashboardContent's loading branch EXACTLY so hydration aligns
+    // regardless of which branch SSR took. The bare bg-slate-50 placeholder
+    // we used previously caused a hydration mismatch when the SSR HTML still
+    // contained the "Checking access" loading div but the client first-render
+    // reached AuthedBuyerContent's !mounted branch.
+    if (!mounted) {
+      return (
+        <div className="h-screen flex items-center justify-center bg-[#f7faf8]">
+          <div className="flex items-center gap-3 text-slate-500">
+            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+            <p className="text-sm font-medium">Checking access…</p>
+          </div>
+        </div>
+      );
+    }
     return (
       <>
         <EmailVerifyBanner />

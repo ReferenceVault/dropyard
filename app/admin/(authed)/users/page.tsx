@@ -364,9 +364,9 @@ function UserRow({
     : "border-l-2 border-l-transparent";
 
   return (
-    <li className={`group grid grid-cols-1 lg:grid-cols-[2.2fr_1fr_1fr_0.9fr_1.4fr_44px] gap-3 px-4 py-2.5 hover:bg-gradient-to-r hover:from-emerald-50/40 hover:to-transparent transition-colors first:rounded-t-xl last:rounded-b-xl ${rowTint}`}>
+    <li className={`group grid grid-cols-1 lg:grid-cols-[2.2fr_1fr_1fr_0.9fr_1.4fr_44px] gap-y-2.5 gap-x-3 px-4 py-3 lg:py-2.5 hover:bg-gradient-to-r hover:from-emerald-50/40 hover:to-transparent transition-colors first:rounded-t-xl last:rounded-b-xl ${rowTint}`}>
       {/* User: avatar + name + email + phone */}
-      <div className="flex items-center gap-2.5 min-w-0">
+      <div className="flex items-start lg:items-center gap-2.5 min-w-0">
         <div className="relative flex-shrink-0">
           <AvatarChip name={user.name} seed={user.id} size="md" />
           {user.role === "ADMIN" && (
@@ -391,13 +391,13 @@ function UserRow({
               className="flex-shrink-0 -ml-0.5 text-emerald-600 opacity-0 -translate-x-1 group-hover/name:opacity-100 group-hover/name:translate-x-0 transition-all duration-150"
             />
           </button>
-          <div className="mt-0.5 flex items-center gap-2 min-w-0">
-            <span className="text-[11.5px] text-slate-500 truncate select-text">
+          <div className="mt-0.5 flex items-center gap-2 min-w-0 flex-wrap">
+            <span className="text-[11.5px] text-slate-500 truncate max-w-full select-text">
               {user.email}
             </span>
             {user.phone && (
               <>
-                <span className="text-slate-300">·</span>
+                <span className="text-slate-300 hidden sm:inline">·</span>
                 <span className="inline-flex items-center gap-1 text-[11.5px] text-slate-500 whitespace-nowrap">
                   <Phone size={9} /> {user.phone}
                 </span>
@@ -405,10 +405,21 @@ function UserRow({
             )}
           </div>
         </div>
+        {/* Action menu — on mobile, sits inline with avatar/name */}
+        <div className="lg:hidden flex-shrink-0">
+          <UserActionMenu
+            user={user}
+            actionable={actionable}
+            isSelf={isSelf}
+            isAdmin={isAdmin}
+            onAction={onAction}
+            mobile
+          />
+        </div>
       </div>
 
       {/* Activity chips */}
-      <div className="flex items-center gap-1.5 flex-wrap lg:flex-nowrap">
+      <div className="flex items-center gap-1.5 flex-wrap lg:flex-nowrap lg:pl-0 pl-[44px]">
         <ActivityChip
           icon={<Package size={10} />}
           count={user._count.items}
@@ -430,7 +441,7 @@ function UserRow({
       </div>
 
       {/* Location */}
-      <div className="flex items-center gap-1.5 min-w-0">
+      <div className="flex items-center gap-1.5 min-w-0 lg:pl-0 pl-[44px]">
         <MapPin size={11} className="text-slate-400 flex-shrink-0 lg:hidden" />
         {location.primary ? (
           <div className="min-w-0">
@@ -445,7 +456,7 @@ function UserRow({
       </div>
 
       {/* Joined */}
-      <div className="flex flex-col gap-0.5 min-w-0 lg:py-0.5">
+      <div className="flex flex-col gap-0.5 min-w-0 lg:py-0.5 lg:pl-0 pl-[44px]">
         <RelativeDateBadge date={user.createdAt} />
         <span className="text-[10px] text-slate-400" title={new Date(user.updatedAt).toLocaleString()}>
           last seen {relativeTime(user.updatedAt)}
@@ -453,7 +464,7 @@ function UserRow({
       </div>
 
       {/* Role + status + onboarding dots */}
-      <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+      <div className="flex items-center gap-1.5 flex-wrap min-w-0 lg:pl-0 pl-[44px]">
         <StatusPill label={meta.label} tone={meta.tone} withDot />
         {user.status !== "ACTIVE" && (
           <span title={user.statusReason ?? undefined}>
@@ -463,8 +474,8 @@ function UserRow({
         <OnboardingDots role={user.role} buyerDone={user.buyerOnboardingDone} sellerDone={user.sellerOnboardingDone} />
       </div>
 
-      {/* Action menu */}
-      <div className="flex items-center justify-end gap-1">
+      {/* Desktop action menu — far-right column */}
+      <div className="hidden lg:flex items-center justify-end gap-1">
         <UserActionMenu
           user={user}
           actionable={actionable}
@@ -485,12 +496,16 @@ function UserActionMenu({
   isSelf,
   isAdmin,
   onAction,
+  mobile,
 }: {
   user: AdminUser;
   actionable: boolean;
   isSelf: boolean;
   isAdmin: boolean;
   onAction: (action: ModalAction) => void;
+  /** When true, the trigger button is visible at all breakpoints (used in the
+   *  mobile card-row layout where the desktop column is hidden). */
+  mobile?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
@@ -522,7 +537,7 @@ function UserActionMenu({
         disabled={!actionable}
         aria-label="More actions"
         title={tooltip}
-        className={`hidden lg:inline-flex h-8 w-8 items-center justify-center rounded-lg border transition-all ${
+        className={`${mobile ? "inline-flex h-10 w-10" : "hidden lg:inline-flex h-8 w-8"} items-center justify-center rounded-lg border transition-all ${
           actionable
             ? open
               ? "bg-slate-900 border-slate-900 text-white"
@@ -1262,20 +1277,20 @@ function UserRowsSkeleton() {
       {Array.from({ length: 6 }).map((_, i) => (
         <li
           key={i}
-          className="grid grid-cols-[2.2fr_1fr_1fr_0.9fr_1.2fr_40px] gap-3 px-4 py-3 items-center"
+          className="grid grid-cols-1 lg:grid-cols-[2.2fr_1fr_1fr_0.9fr_1.2fr_40px] gap-y-2.5 gap-x-3 px-4 py-3 lg:items-center"
         >
           <div className="flex items-center gap-2.5">
             <div className="h-8 w-8 rounded-full bg-slate-100 animate-pulse" />
             <div className="space-y-1.5 flex-1">
               <div className="h-3 w-32 bg-slate-100 rounded animate-pulse" />
-              <div className="h-2.5 w-48 bg-slate-100 rounded animate-pulse" />
+              <div className="h-2.5 w-48 max-w-full bg-slate-100 rounded animate-pulse" />
             </div>
           </div>
-          <div className="h-5 w-24 bg-slate-100 rounded animate-pulse" />
-          <div className="h-3 w-20 bg-slate-100 rounded animate-pulse" />
-          <div className="h-5 w-16 bg-slate-100 rounded-full animate-pulse" />
-          <div className="h-5 w-24 bg-slate-100 rounded-full animate-pulse" />
-          <div />
+          <div className="h-5 w-24 bg-slate-100 rounded animate-pulse lg:pl-0 ml-[44px] lg:ml-0" />
+          <div className="h-3 w-20 bg-slate-100 rounded animate-pulse lg:pl-0 ml-[44px] lg:ml-0" />
+          <div className="h-5 w-16 bg-slate-100 rounded-full animate-pulse lg:pl-0 ml-[44px] lg:ml-0" />
+          <div className="h-5 w-24 bg-slate-100 rounded-full animate-pulse lg:pl-0 ml-[44px] lg:ml-0" />
+          <div className="hidden lg:block" />
         </li>
       ))}
     </ul>

@@ -387,7 +387,7 @@ export default function AboutPage() {
       {/* ===== SAY HI ===== */}
       <section className="px-4 py-10 sm:px-6 sm:py-12 lg:px-8">
         <div className="mx-auto max-w-3xl">
-          <div className="relative overflow-hidden rounded-[2.5rem] bg-gradient-to-br from-[#0b2f20] via-[#0f6a44] to-[#2f8a22] p-10 text-center text-white shadow-2xl">
+          <div className="relative overflow-hidden rounded-[2.5rem] bg-gradient-to-br from-[#0b2f20] via-[#0f6a44] to-[#2f8a22] p-6 sm:p-10 text-center text-white shadow-2xl">
             <div className="absolute -top-16 -right-16 h-48 w-48 rounded-full bg-amber-300/20 blur-3xl" />
             <div className="absolute -bottom-16 -left-16 h-48 w-48 rounded-full bg-emerald-300/20 blur-3xl" />
 

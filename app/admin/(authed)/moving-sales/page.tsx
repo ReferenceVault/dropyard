@@ -54,6 +54,7 @@ interface Application {
   taxReceipt: boolean;
   referralSource?: string;
   approvedWeekend?: string;
+  rejectionReason?: string;
   createdAt: string;
   user: { id: string; name: string; email: string; role: string; createdAt: string };
 }
@@ -102,29 +103,35 @@ function ApplicationRow({
     <button
       type="button"
       onClick={onSelect}
-      className={`group w-full grid grid-cols-1 lg:grid-cols-[2fr_1.2fr_1fr_70px_1.1fr] gap-3 items-center px-4 py-2.5 text-left transition-colors border-l-2 ${
+      className={`group w-full grid grid-cols-1 lg:grid-cols-[2fr_1.2fr_1fr_70px_1.1fr] gap-y-2 gap-x-3 items-start lg:items-center px-4 py-3 lg:py-2.5 text-left transition-colors border-l-2 ${
         selected
           ? "border-l-emerald-500 bg-emerald-50/40"
           : "border-l-transparent hover:bg-slate-50/60"
       }`}
     >
-      {/* Applicant */}
-      <div className="min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[13px] font-bold text-slate-900 truncate">{app.contactName}</span>
-          <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-400">
-            {app.sellerType.toLowerCase()}
-          </span>
+      {/* Applicant row — on mobile this also carries the status badge for at-a-glance triage */}
+      <div className="min-w-0 flex items-start gap-3 lg:block">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[13px] font-bold text-slate-900 truncate">{app.contactName}</span>
+            <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-400">
+              {app.sellerType.toLowerCase()}
+            </span>
+          </div>
+          <div className="mt-0.5 flex items-center gap-2 min-w-0 text-[11.5px] text-slate-500">
+            <Mail size={10} className="flex-shrink-0" />
+            <span className="truncate">{app.email}</span>
+          </div>
+          {app.organizationName && (
+            <p className="text-[11px] text-slate-400 truncate mt-0.5 inline-flex items-center gap-1">
+              <Building2 size={10} /> {app.organizationName}
+            </p>
+          )}
         </div>
-        <div className="mt-0.5 flex items-center gap-2 min-w-0 text-[11.5px] text-slate-500">
-          <Mail size={10} className="flex-shrink-0" />
-          <span className="truncate">{app.email}</span>
+        {/* Mobile-only status (so it's visible without scrolling each card) */}
+        <div className="lg:hidden flex-shrink-0">
+          <StatusBadge status={app.status} />
         </div>
-        {app.organizationName && (
-          <p className="text-[11px] text-slate-400 truncate mt-0.5 inline-flex items-center gap-1">
-            <Building2 size={10} /> {app.organizationName}
-          </p>
-        )}
       </div>
 
       {/* Location */}
@@ -133,7 +140,7 @@ function ApplicationRow({
           <MapPin size={11} className="text-slate-400 flex-shrink-0" />
           {app.city}, {app.postalCode}
         </p>
-        <p className="text-[11px] text-slate-500 truncate mt-0.5">
+        <p className="text-[11px] text-slate-500 truncate mt-0.5 lg:pl-[18px]">
           {app.neighborhood ?? "—"}
         </p>
       </div>
@@ -144,7 +151,7 @@ function ApplicationRow({
           <Calendar size={11} className="text-slate-400 flex-shrink-0" />
           {app.preferredWeekend}
         </p>
-        <p className="text-[11px] text-slate-500 truncate mt-0.5">
+        <p className="text-[11px] text-slate-500 truncate mt-0.5 lg:pl-[18px]">
           {app.estimatedItems}
         </p>
       </div>
@@ -157,12 +164,12 @@ function ApplicationRow({
         </span>
       </div>
 
-      {/* Status + chevron */}
-      <div className="flex items-center justify-end gap-2">
+      {/* Status + chevron — desktop only (mobile shows status in the applicant block) */}
+      <div className="hidden lg:flex items-center justify-end gap-2">
         <StatusBadge status={app.status} />
         <ChevronRight
           size={14}
-          className={`hidden lg:block flex-shrink-0 transition ${
+          className={`flex-shrink-0 transition ${
             selected ? "text-emerald-600 translate-x-0" : "text-slate-300 -translate-x-1 group-hover:translate-x-0 group-hover:text-slate-500"
           }`}
         />
@@ -187,10 +194,17 @@ function MovingSaleDetailPanel({
   const [approvedWeekend, setApprovedWeekend] = useState(app.approvedWeekend ?? app.preferredWeekend);
   const [loading, setLoading] = useState<"approve" | "reject" | null>(null);
   const [error, setError] = useState("");
+  // BUG-033: reject now requires a reason. The footer toggles between the
+  // approve form (default) and a rejection reason input when admin clicks
+  // "Reject", so they confirm + provide context in one place.
+  const [rejectMode, setRejectMode] = useState(false);
+  const [rejectionReason, setRejectionReason] = useState("");
 
   // Reset local input when switching to a different application.
   useEffect(() => {
     setApprovedWeekend(app.approvedWeekend ?? app.preferredWeekend);
+    setRejectMode(false);
+    setRejectionReason("");
     setError("");
   }, [app.id, app.approvedWeekend, app.preferredWeekend]);
 
@@ -211,18 +225,35 @@ function MovingSaleDetailPanel({
   );
 
   async function doAction(action: "approve" | "reject") {
+    // For reject, require + send the reason. The backend also enforces this
+    // (BUG-033 fix) — duplicating client-side so the UI catches it before
+    // the network round-trip.
+    if (action === "reject" && !rejectionReason.trim()) {
+      setError("Please enter a rejection reason.");
+      return;
+    }
     setLoading(action);
     setError("");
     try {
-      const data = await apiRequest<{ application: Application }>(
+      const data = await apiRequest<{ application: Application; movingSale?: Application }>(
         `/api/admin/moving-sales/${encodeURIComponent(app.id)}/${action}`,
         {
           method: "PATCH",
           token,
-          body: action === "approve" ? JSON.stringify({ approvedWeekend }) : undefined,
+          body: action === "approve"
+            ? JSON.stringify({ approvedWeekend })
+            : JSON.stringify({ reason: rejectionReason.trim() }),
         },
       );
-      onUpdated(data.application ?? { ...app, status: action === "approve" ? "APPROVED" : "REJECTED", approvedWeekend });
+      // Backend returns `{ application }` on this route (approve handler in
+      // tests has been seen returning `{ movingSale }` — accept either shape).
+      const next = data.application ?? (data as { movingSale?: Application }).movingSale ?? {
+        ...app,
+        status: action === "approve" ? "APPROVED" : "REJECTED",
+        approvedWeekend,
+        rejectionReason: action === "reject" ? rejectionReason.trim() : app.rejectionReason,
+      };
+      onUpdated(next);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not update application.");
     } finally {
@@ -345,51 +376,97 @@ function MovingSaleDetailPanel({
 
         {/* Footer action bar — context-aware */}
         {isPending ? (
-          <footer className="border-t border-slate-200 bg-slate-50/60 p-4 space-y-3">
-            <div>
-              <label htmlFor="approved-weekend" className="block text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500 mb-1.5">
-                Approved weekend
-              </label>
-              <input
-                id="approved-weekend"
-                type="text"
-                value={approvedWeekend}
-                onChange={(e) => setApprovedWeekend(e.target.value)}
-                placeholder="e.g. Apr 5–6, 2026"
-                disabled={!!loading}
-                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-[13px] bg-white focus:outline-none focus:border-emerald-300 focus:ring-2 focus:ring-emerald-100 disabled:opacity-60"
-              />
-              <p className="text-[10.5px] text-slate-500 mt-1">
-                Defaults to the seller&apos;s preferred weekend; change before approving if needed.
-              </p>
-            </div>
+          rejectMode ? (
+            <footer className="border-t border-slate-200 bg-rose-50/40 p-4 space-y-3">
+              <div>
+                <label htmlFor="reject-reason" className="block text-[11px] font-bold uppercase tracking-[0.16em] text-rose-700 mb-1.5">
+                  Rejection reason
+                </label>
+                <textarea
+                  id="reject-reason"
+                  value={rejectionReason}
+                  onChange={(e) => { setRejectionReason(e.target.value); if (error) setError(""); }}
+                  placeholder="e.g. Outside our service area for this weekend / Listing categories not supported / etc."
+                  rows={3}
+                  maxLength={2000}
+                  disabled={!!loading}
+                  autoFocus
+                  className="w-full resize-none px-3 py-2 border border-rose-200 rounded-lg text-[13px] bg-white focus:outline-none focus:border-rose-300 focus:ring-2 focus:ring-rose-100 disabled:opacity-60"
+                />
+                <p className="text-[10.5px] text-slate-500 mt-1">
+                  Required — recorded in the audit log and shown to the seller.
+                </p>
+              </div>
 
-            <div className="flex items-center justify-end gap-2">
-              <button
-                onClick={() => doAction("reject")}
-                disabled={!!loading}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-rose-200 text-rose-700 text-[12.5px] font-bold hover:bg-rose-50 disabled:opacity-50 transition"
-              >
-                {loading === "reject" ? <Loader2 size={13} className="animate-spin" /> : <X size={13} />}
-                Reject
-              </button>
-              <button
-                onClick={() => doAction("approve")}
-                disabled={!approvedWeekend.trim() || !!loading}
-                className="inline-flex items-center gap-1.5 px-5 py-2 rounded-lg bg-emerald-600 text-white text-[12.5px] font-bold hover:bg-emerald-700 disabled:opacity-50 transition shadow-[0_8px_18px_rgba(5,150,105,0.25)]"
-              >
-                {loading === "approve" ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
-                Approve
-              </button>
-            </div>
-          </footer>
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  onClick={() => { setRejectMode(false); setRejectionReason(""); setError(""); }}
+                  disabled={!!loading}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-slate-600 text-[12.5px] font-bold hover:bg-slate-100 disabled:opacity-50 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => doAction("reject")}
+                  disabled={!rejectionReason.trim() || !!loading}
+                  className="inline-flex items-center gap-1.5 px-5 py-2 rounded-lg bg-rose-600 text-white text-[12.5px] font-bold hover:bg-rose-700 disabled:opacity-50 transition shadow-[0_8px_18px_rgba(225,29,72,0.25)]"
+                >
+                  {loading === "reject" ? <Loader2 size={13} className="animate-spin" /> : <X size={13} />}
+                  Confirm Reject
+                </button>
+              </div>
+            </footer>
+          ) : (
+            <footer className="border-t border-slate-200 bg-slate-50/60 p-4 space-y-3">
+              <div>
+                <label htmlFor="approved-weekend" className="block text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500 mb-1.5">
+                  Approved weekend
+                </label>
+                <input
+                  id="approved-weekend"
+                  type="text"
+                  value={approvedWeekend}
+                  onChange={(e) => setApprovedWeekend(e.target.value)}
+                  placeholder="e.g. Apr 5–6, 2026"
+                  disabled={!!loading}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-[13px] bg-white focus:outline-none focus:border-emerald-300 focus:ring-2 focus:ring-emerald-100 disabled:opacity-60"
+                />
+                <p className="text-[10.5px] text-slate-500 mt-1">
+                  Defaults to the seller&apos;s preferred weekend; change before approving if needed.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  onClick={() => { setRejectMode(true); setError(""); }}
+                  disabled={!!loading}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-rose-200 text-rose-700 text-[12.5px] font-bold hover:bg-rose-50 disabled:opacity-50 transition"
+                >
+                  <X size={13} />
+                  Reject
+                </button>
+                <button
+                  onClick={() => doAction("approve")}
+                  disabled={!approvedWeekend.trim() || !!loading}
+                  className="inline-flex items-center gap-1.5 px-5 py-2 rounded-lg bg-emerald-600 text-white text-[12.5px] font-bold hover:bg-emerald-700 disabled:opacity-50 transition shadow-[0_8px_18px_rgba(5,150,105,0.25)]"
+                >
+                  {loading === "approve" ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                  Approve
+                </button>
+              </div>
+            </footer>
+          )
         ) : (
           <footer className="border-t border-slate-200 bg-slate-50/60 px-4 py-3 flex items-center justify-between gap-3">
             <p className="text-[12px] text-slate-500">
               {app.status === "APPROVED" && (
                 <>Approved for <strong className="text-slate-900">{app.approvedWeekend ?? app.preferredWeekend}</strong></>
               )}
-              {app.status === "REJECTED" && <>Marked as rejected.</>}
+              {app.status === "REJECTED" && (
+                app.rejectionReason
+                  ? <>Rejected — <span className="italic text-slate-700">&ldquo;{app.rejectionReason}&rdquo;</span></>
+                  : <>Marked as rejected.</>
+              )}
               {app.status === "COMPLETED" && <>Sale completed.</>}
             </p>
             <a
@@ -529,32 +606,34 @@ export default function MovingSalesPage() {
         <AdminStatCard label="Completed"      value={completed} icon={<Package size={14} />}     accent="slate" />
       </div>
 
-      {/* Filter tabs */}
-      <div className="flex items-center gap-1.5 flex-wrap mb-4 bg-white rounded-full border border-slate-200 p-1 w-fit">
-        {FILTERS.map((s) => {
-          const count = s === "ALL" ? applications.length : summary[s] ?? 0;
-          const active = filter === s;
-          return (
-            <button
-              key={s}
-              onClick={() => setFilter(s)}
-              className={`px-3 py-1 rounded-full text-[12px] font-semibold transition-colors inline-flex items-center gap-1.5 ${
-                active
-                  ? "bg-slate-900 text-white shadow-sm"
-                  : "text-slate-600 hover:text-slate-900"
-              }`}
-            >
-              {s === "ALL" ? "All" : STATUS_CONFIG[s].label}
-              <span
-                className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full tabular-nums ${
-                  active ? "bg-white/20 text-white" : "bg-slate-100 text-slate-500"
+      {/* Filter tabs — horizontal scroll on small viewports so tabs never wrap inside the pill */}
+      <div className="-mx-1 px-1 overflow-x-auto mb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="inline-flex items-center gap-1.5 bg-white rounded-full border border-slate-200 p-1 whitespace-nowrap">
+          {FILTERS.map((s) => {
+            const count = s === "ALL" ? applications.length : summary[s] ?? 0;
+            const active = filter === s;
+            return (
+              <button
+                key={s}
+                onClick={() => setFilter(s)}
+                className={`px-3 py-1 rounded-full text-[12px] font-semibold transition-colors inline-flex items-center gap-1.5 flex-shrink-0 ${
+                  active
+                    ? "bg-slate-900 text-white shadow-sm"
+                    : "text-slate-600 hover:text-slate-900"
                 }`}
               >
-                {count}
-              </span>
-            </button>
-          );
-        })}
+                {s === "ALL" ? "All" : STATUS_CONFIG[s].label}
+                <span
+                  className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full tabular-nums ${
+                    active ? "bg-white/20 text-white" : "bg-slate-100 text-slate-500"
+                  }`}
+                >
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Error */}

@@ -412,19 +412,21 @@ function UserMenu({ user, onSignout, onOpenSettings }) {
 
 // Magical "Switch to Seller" pill: amber-tinted gradient outline, Truck icon,
 // arrow that slides on hover, soft glow underneath, and a quick scale tick.
-function SwitchToSellerButton({ onClick }) {
+function SwitchToSellerButton({ onClick, compact = false }) {
   const [hover, setHover] = useState(false);
   return (
     <button
       onClick={onClick}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
+      aria-label={compact ? "Switch to Seller" : undefined}
+      title={compact ? "Switch to Seller" : undefined}
       style={{
         position: "relative",
         display: "inline-flex",
         alignItems: "center",
-        gap: 8,
-        padding: "8px 14px 8px 12px",
+        gap: compact ? 0 : 8,
+        padding: compact ? "8px" : "8px 14px 8px 12px",
         borderRadius: 999,
         border: "1.5px solid " + (hover ? C.amber : C.fawn),
         background: hover
@@ -444,24 +446,26 @@ function SwitchToSellerButton({ onClick }) {
     >
       {/* Tiny truck tile that animates on hover */}
       <span style={{
-        width: 22, height: 22, borderRadius: 7,
+        width: 24, height: 24, borderRadius: 7,
         background: hover ? C.amber : C.amberMist,
         display: "inline-flex", alignItems: "center", justifyContent: "center",
         boxShadow: hover ? "0 2px 6px " + C.amber + "55" : "none",
         transition: "all 200ms ease",
       }}>
-        <Truck size={12} style={{ color: hover ? "#fff" : C.amberDeep }} strokeWidth={2.6}/>
+        <Truck size={13} style={{ color: hover ? "#fff" : C.amberDeep }} strokeWidth={2.6}/>
       </span>
-      <span style={{ letterSpacing: "0.01em" }}>Switch to Seller</span>
-      <ArrowRight
-        size={13}
-        strokeWidth={2.6}
-        style={{
-          color: hover ? C.amberDeep : C.ash,
-          transform: hover ? "translateX(3px)" : "translateX(0)",
-          transition: "transform 200ms ease, color 200ms ease",
-        }}
-      />
+      {!compact && <span style={{ letterSpacing: "0.01em" }}>Switch to Seller</span>}
+      {!compact && (
+        <ArrowRight
+          size={13}
+          strokeWidth={2.6}
+          style={{
+            color: hover ? C.amberDeep : C.ash,
+            transform: hover ? "translateX(3px)" : "translateX(0)",
+            transition: "transform 200ms ease, color 200ms ease",
+          }}
+        />
+      )}
     </button>
   );
 }
@@ -481,8 +485,8 @@ function MobileBottomNav({ page, setPage, savedCount, claimsCount, unreadCount =
     { id: "history",  label: "You",      icon: User },
   ];
   return (
-    <nav role="navigation" aria-label="Primary" style={{
-      position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 50,
+    <nav role="navigation" aria-label="Primary" className="dy-mobile-bottom-nav" style={{
+      position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 60,
       background: "rgba(255, 255, 255, 0.96)",
       backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)",
       borderTop: "1px solid " + C.fawn,
@@ -575,9 +579,11 @@ function TopBar({ page, setPage, savedCount, claimsCount, onSwitchRole, onReset,
           </nav>
         )}
 
-        <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 8 : 12 }}>
-          {/* Switch-to-seller button compresses to icon-only on mobile inside the component itself. */}
-          {!isMobile && <SwitchToSellerButton onClick={() => onSwitchRole && onSwitchRole()}/>}
+        <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 6 : 12 }}>
+          {/* Switch-to-Seller pill. On mobile, render an icon-only compact variant
+             so it still fits at 360px alongside logo + avatar. Desktop keeps the
+             full label. */}
+          <SwitchToSellerButton onClick={() => onSwitchRole && onSwitchRole()} compact={isMobile}/>
           <UserMenu user={user} onSignout={onSignout} onOpenSettings={() => setPage("settings")}/>
         </div>
       </div>
@@ -1037,36 +1043,12 @@ function MobileFilterBar({ filter, setFilter, search, setSearch, cat, setCat, so
 
 function FilterRail({ filter, setFilter, search, setSearch, cat, setCat, sort, setSort, panelOpen, setPanelOpen, state }) {
   const { isMobile } = useViewport();
-  const sorts = [
-    { id: "newest",    label: "Just listed" },
-    { id: "nearest",   label: "Closest to you" },
-    { id: "priceLow",  label: "Price: low to high" },
-    { id: "priceHigh", label: "Price: high to low" },
-  ];
-  const activeFilterCount = (cat !== "All" ? 1 : 0) + (sort !== "newest" ? 1 : 0);
-  const accent = state === "between" ? C.amber : C.green;
-
-  // On mobile, swap to the sheet-based filter UI.
-  if (isMobile) {
-    return (
-      <MobileFilterBar
-        filter={filter} setFilter={setFilter}
-        search={search} setSearch={setSearch}
-        cat={cat} setCat={setCat}
-        sort={sort} setSort={setSort}
-        state={state}
-        accent={accent}
-        sorts={sorts}
-        activeFilterCount={activeFilterCount}
-      />
-    );
-  }
-
-  // Active segment in the expanded panel
+  // All hooks must run unconditionally — when the viewport crosses the mobile
+  // breakpoint at hydration (SSR width default → real client width), the early
+  // return below would change the hook count and React errors out. Hooks first,
+  // then branch.
   const [activeSegment, setActiveSegment] = useState(null); // "search" | "category" | "sort" | null
   const [hoveredSegment, setHoveredSegment] = useState(null);
-
-  // Airbnb-style scroll collapse
   const [compact, setCompact] = useState(false);
   useEffect(() => {
     function onScroll() {
@@ -1081,6 +1063,31 @@ function FilterRail({ filter, setFilter, search, setSearch, cat, setCat, sort, s
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
+
+  const sorts = [
+    { id: "newest",    label: "Just listed" },
+    { id: "nearest",   label: "Closest to you" },
+    { id: "priceLow",  label: "Price: low to high" },
+    { id: "priceHigh", label: "Price: high to low" },
+  ];
+  const activeFilterCount = (cat !== "All" ? 1 : 0) + (sort !== "newest" ? 1 : 0);
+  const accent = state === "between" ? C.amber : C.green;
+
+  // On mobile, swap to the sheet-based filter UI. Branch AFTER all hooks.
+  if (isMobile) {
+    return (
+      <MobileFilterBar
+        filter={filter} setFilter={setFilter}
+        search={search} setSearch={setSearch}
+        cat={cat} setCat={setCat}
+        sort={sort} setSort={setSort}
+        state={state}
+        accent={accent}
+        sorts={sorts}
+        activeFilterCount={activeFilterCount}
+      />
+    );
+  }
 
   // When the expanded panel opens, always show the full capsule
   const isCompact = compact && !activeSegment;
@@ -1455,6 +1462,7 @@ function ItemCard({ item, saved, onToggleSave, onOpen, onClaimNow, index, liveMo
    No Claim, no Ask. Save button is the only action.
    ============================================================ */
 function PreviewItemDetail({ item, onBack, savedPreview, togglePreview }) {
+  const { isMobile } = useViewport();
   const isSaved = savedPreview.has(item.id);
   return (
     <div style={{ paddingBottom: 40 }}>
@@ -1462,7 +1470,7 @@ function PreviewItemDetail({ item, onBack, savedPreview, togglePreview }) {
         <ArrowLeft size={14}/> Back
       </button>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 380px", gap: 40, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 380px", gap: isMobile ? 24 : 40, alignItems: "start" }}>
         {/* Image area with locked-preview styling */}
         <div>
           <div style={{ position: "relative", aspectRatio: "4/3", borderRadius: 24, background: "linear-gradient(135deg, " + C.amberMist + " 0%, " + C.sand + " 100%)", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid " + C.fawn + "80", marginBottom: 24, overflow: "hidden" }}>
@@ -2091,6 +2099,7 @@ function Toast({ message, onClose }) {
    CLAIM MODAL — buyer selects a pickup slot
    ============================================================ */
 function ClaimModal({ item, onClose, onConfirm }) {
+  const { isMobile } = useViewport();
   const [step, setStep] = useState("confirm"); // "confirm" | "offer-sent" | "done"
   const [mode, setMode] = useState("listed"); // "listed" | "offer"
   const [offer, setOffer] = useState(Math.round(item.price * 0.9));
@@ -2105,20 +2114,20 @@ function ClaimModal({ item, onClose, onConfirm }) {
   };
 
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(31, 29, 25, 0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: 24, backdropFilter: "blur(4px)" }}>
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(31, 29, 25, 0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: isMobile ? 12 : 24, backdropFilter: "blur(4px)" }}>
       <div onClick={e => e.stopPropagation()} className="fade-in" style={{ background: C.paper, borderRadius: 24, width: "100%", maxWidth: 520, maxHeight: "92vh", overflow: "auto", boxShadow: "0 24px 64px rgba(31, 29, 25, 0.2)" }}>
         {/* Header */}
-        <div style={{ padding: "24px 28px 0 28px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
-          <h2 style={{ fontFamily: F.head, fontSize: 22, fontWeight: 900, color: C.ink, letterSpacing: "-0.02em" }}>
+        <div style={{ padding: isMobile ? "20px 18px 0 18px" : "24px 28px 0 28px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
+          <h2 style={{ fontFamily: F.head, fontSize: isMobile ? 19 : 22, fontWeight: 900, color: C.ink, letterSpacing: "-0.02em" }}>
             {step === "confirm" ? "Claim this item" : step === "offer-sent" ? "Offer sent!" : "Item claimed!"}
           </h2>
-          <button onClick={onClose} style={{ border: "none", background: C.sand, width: 34, height: 34, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+          <button onClick={onClose} aria-label="Close" style={{ border: "none", background: C.sand, width: 44, height: 44, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
             <X size={16} style={{ color: C.mink }}/>
           </button>
         </div>
 
         {/* Item summary card (always) */}
-        <div style={{ margin: "0 28px 20px 28px", display: "flex", gap: 14, padding: "14px 16px", borderRadius: 14, background: C.sand, border: "1px solid " + C.fawn }}>
+        <div style={{ margin: isMobile ? "0 18px 16px 18px" : "0 28px 20px 28px", display: "flex", gap: 14, padding: "14px 16px", borderRadius: 14, background: C.sand, border: "1px solid " + C.fawn }}>
           <div style={{ fontSize: 40, width: 58, height: 58, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{item.img}</div>
           <div style={{ flex: 1 }}>
             <p style={{ fontFamily: F.head, fontSize: 15, fontWeight: 800, color: C.ink }}>{item.title}</p>
@@ -2132,7 +2141,7 @@ function ClaimModal({ item, onClose, onConfirm }) {
 
         {/* STEP 1 — CONFIRM */}
         {step === "confirm" && (
-          <div style={{ padding: "0 28px 28px 28px" }}>
+          <div style={{ padding: isMobile ? "0 18px 22px 18px" : "0 28px 28px 28px" }}>
 
             {/* How claiming works explainer */}
             <div style={{ padding: 16, borderRadius: 14, background: C.greenMist, border: "1px solid " + C.green + "30", marginBottom: 20, display: "flex", alignItems: "flex-start", gap: 12 }}>
@@ -2205,7 +2214,7 @@ function ClaimModal({ item, onClose, onConfirm }) {
             {mode === "listed" && (
               <div style={{ marginBottom: 22 }}>
                 <p style={{ fontFamily: F.head, fontSize: 11, fontWeight: 800, color: C.mink, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 10 }}>Pickup window</p>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2, 1fr)", gap: 8 }}>
                   {slots.map(sl => (
                     <button key={sl} onClick={() => setSlot(sl)} style={{ padding: "10px 12px", borderRadius: 12, border: "1.5px solid " + (slot === sl ? C.green : C.fawn), background: slot === sl ? C.greenMist : C.paper, color: slot === sl ? C.greenDeep : C.mink, fontFamily: F.head, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
                       {slot === sl && <Check size={11} style={{ marginRight: 5, verticalAlign: "middle" }}/>}
@@ -2280,7 +2289,7 @@ function ClaimModal({ item, onClose, onConfirm }) {
 
         {/* STEP 2a — OFFER SENT */}
         {step === "offer-sent" && (
-          <div style={{ padding: "0 28px 28px 28px", textAlign: "center" }}>
+          <div style={{ padding: isMobile ? "0 18px 22px 18px" : "0 28px 28px 28px", textAlign: "center" }}>
             <div style={{ width: 64, height: 64, borderRadius: "50%", background: C.aiMist, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
               <Sparkles size={30} style={{ color: C.ai }}/>
             </div>
@@ -2302,7 +2311,7 @@ function ClaimModal({ item, onClose, onConfirm }) {
 
         {/* STEP 2b — CLAIM DONE */}
         {step === "done" && (
-          <div style={{ padding: "0 28px 28px 28px", textAlign: "center" }}>
+          <div style={{ padding: isMobile ? "0 18px 22px 18px" : "0 28px 28px 28px", textAlign: "center" }}>
             <div style={{ width: 64, height: 64, borderRadius: "50%", background: C.greenMist, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
               <CheckCircle size={32} style={{ color: C.green }}/>
             </div>
@@ -2344,6 +2353,7 @@ function ClaimModal({ item, onClose, onConfirm }) {
    ASK MODAL — message the seller a question
    ============================================================ */
 function AskModal({ item, onClose, onSend }) {
+  const { isMobile } = useViewport();
   const [msg, setMsg] = useState("");
   const [sent, setSent] = useState(false);
   const [whatsapp, setWhatsapp] = useState(false);
@@ -2357,13 +2367,13 @@ function AskModal({ item, onClose, onSend }) {
   };
 
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(31, 29, 25, 0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: 24, backdropFilter: "blur(4px)" }}>
-      <div onClick={e => e.stopPropagation()} className="fade-in" style={{ background: C.paper, borderRadius: 24, width: "100%", maxWidth: 480, maxHeight: "92vh", overflow: "auto", padding: 26, boxShadow: "0 24px 64px rgba(31, 29, 25, 0.2)" }}>
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(31, 29, 25, 0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: isMobile ? 12 : 24, backdropFilter: "blur(4px)" }}>
+      <div onClick={e => e.stopPropagation()} className="fade-in" style={{ background: C.paper, borderRadius: 24, width: "100%", maxWidth: 480, maxHeight: "92vh", overflow: "auto", padding: isMobile ? 18 : 26, boxShadow: "0 24px 64px rgba(31, 29, 25, 0.2)" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
           <h2 style={{ fontFamily: F.head, fontSize: 20, fontWeight: 900, color: C.ink, letterSpacing: "-0.02em" }}>
             {sent ? "Question submitted" : "Ask about this item"}
           </h2>
-          <button onClick={onClose} style={{ border: "none", background: C.sand, width: 34, height: 34, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><X size={16} style={{ color: C.mink }}/></button>
+          <button onClick={onClose} aria-label="Close" style={{ border: "none", background: C.sand, width: 44, height: 44, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}><X size={16} style={{ color: C.mink }}/></button>
         </div>
 
         {/* Item summary */}
@@ -2943,8 +2953,29 @@ function ClaimsPage({ claims, setClaims, onBrowse, onBack, onGoToMessages, onOpe
     setRatingNote("");
   };
 
-  const submitRating = () => {
+  const submitRating = async () => {
     const claim = claims.find(c => c.id === ratingId);
+    if (!claim) return;
+    // Persist the review to the backend if we have a real session and a
+    // non-demo claim id. The optimistic remove from the local Claims list
+    // happens AFTER success — if the post fails we keep the row so the
+    // buyer can retry or skip.
+    const isReal = accessToken && typeof claim.id === "string" && !claim.id.startsWith("bc");
+    if (isReal && ratingStars > 0) {
+      try {
+        await apiRequest("/api/claims/" + encodeURIComponent(claim.id) + "/review", {
+          method: "POST",
+          token:  accessToken,
+          body:   JSON.stringify({
+            rating: ratingStars,
+            text:   ratingNote && ratingNote.trim() ? ratingNote.trim() : undefined,
+          }),
+        });
+      } catch (err) {
+        flash("Couldn't save your review — " + (err?.message || "try again"));
+        return;
+      }
+    }
     setClaims(prev => prev.filter(c => c.id !== ratingId));
     flash("Pickup complete. " + claim.t + " marked as picked up." + (ratingStars > 0 ? " Thanks for rating " + claim.seller + "!" : ""));
     setRatingId(null);
@@ -2986,9 +3017,25 @@ function ClaimsPage({ claims, setClaims, onBrowse, onBack, onGoToMessages, onOpe
     flash("Opening chat with " + claim.seller + " to request a new pickup time.");
   };
 
-  const releaseClaim = (claim) => {
+  const releaseClaim = async (claim) => {
+    // Buyer-side "release" on an overdue confirmed claim is functionally a
+    // buyer cancellation — claim closes, item returns to LIVE. Reuses the
+    // existing PATCH /api/claims/:id/cancel route. Optimistic remove +
+    // rollback on error mirrors the cancelClaim flow above.
+    const snapshot = claims;
     setClaims(prev => prev.filter(c => c.id !== claim.id));
     flash("Claim on " + claim.t + " released. The item is available again for others.");
+    if (!accessToken) return;
+    if (typeof claim.id === "string" && claim.id.startsWith("bc")) return; // demo claim
+    try {
+      await apiRequest("/api/claims/" + encodeURIComponent(claim.id) + "/cancel", {
+        method: "PATCH",
+        token:  accessToken,
+      });
+    } catch (err) {
+      setClaims(snapshot);
+      flash("Could not release the claim: " + (err?.message || "try again"));
+    }
   };
 
   const acceptCounter = (claim) => {
@@ -3376,12 +3423,22 @@ function MessagesPage({ user = null, accessToken = null, claims = [], onAcceptCo
   function adaptMessage(api) {
     if (!api) return null;
     const fromMe = api.senderId === myId;
+    // Map backend MessageType (uppercase enum) to the lowercase keys the
+    // render switch in renderMessage() uses. Unknown / missing → "text".
+    const TYPE_MAP = {
+      TEXT: "text", OFFER: "offer", COUNTER: "counter", CLAIM: "claim",
+      WHATSAPP: "whatsapp", NOTICE: "notice", REMINDER: "reminder",
+    };
+    const renderType = TYPE_MAP[api.messageType] || "text";
     return {
       id:   api.id,
       from: fromMe ? "you" : "seller",
       text: api.body,
       time: new Date(api.createdAt).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" }),
-      type: "text",
+      type: renderType,
+      // amount surfaces in the OFFER/COUNTER/CLAIM bubble header as "· $30"
+      // — render side reads m.amount directly.
+      amount: typeof api.amount === "number" ? api.amount : undefined,
     };
   }
 
@@ -3928,10 +3985,31 @@ function HistoryPage({ highlightId = null, onClearHighlight = null, onOpenThread
     { label: "Avg rating",   value: (withReviews.filter(t => t.rating).reduce((a,t) => a+t.rating, 0) / Math.max(1, withReviews.filter(t => t.rating).length)).toFixed(1), icon: Star, color: C.amberDeep, bg: C.amberMist },
   ];
 
-  const submitReview = (txId) => {
+  const submitReview = async (txId) => {
+    // Optimistic overlay so the row shows the rating immediately.
+    const previous = reviews[txId];
     setReviews(r => ({ ...r, [txId]: reviewStars }));
     setReviewId(null);
     setReviewStars(0);
+    // Persist to the backend when we have a real session + claim id (history
+    // rows for demo accounts have non-cuid ids and skip the API).
+    const isReal = accessToken && typeof txId === "string" && txId.length > 8 && !txId.startsWith("bc");
+    if (!isReal) return;
+    try {
+      await apiRequest("/api/claims/" + encodeURIComponent(txId) + "/review", {
+        method: "POST",
+        token:  accessToken,
+        body:   JSON.stringify({ rating: reviewStars }),
+      });
+    } catch {
+      // Roll back the optimistic overlay so the row stops claiming it's rated.
+      setReviews(r => {
+        const copy = { ...r };
+        if (previous == null) delete copy[txId];
+        else copy[txId] = previous;
+        return copy;
+      });
+    }
   };
 
   function TxRow({ tx, idx }) {
@@ -4922,16 +5000,20 @@ export default function DropYardBuyerDashboard({
           />
         )}
 
-        {isMobile && (
-          <MobileBottomNav
-            page={page}
-            setPage={(p) => { resetNav(); setPage(p); }}
-            savedCount={savedIds.size}
-            claimsCount={claims.length}
-            unreadCount={0}
-            dropState={dropState}
-          />
-        )}
+        {/* Always render the mobile bottom nav — `MobileBottomNav` itself uses
+            a CSS media query to hide on desktop. This avoids the SSR/client
+            hydration mismatch that comes from gating on `isMobile` (which is
+            false on SSR because `useViewport` defaults width=1280, then flips
+            to true on mobile clients after hydration — causing the nav to
+            "appear after scroll" on real mobile devices). */}
+        <MobileBottomNav
+          page={page}
+          setPage={(p) => { resetNav(); setPage(p); }}
+          savedCount={savedIds.size}
+          claimsCount={claims.length}
+          unreadCount={0}
+          dropState={dropState}
+        />
       </div>
     </>
   );

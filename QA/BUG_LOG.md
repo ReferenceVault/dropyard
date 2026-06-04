@@ -27,6 +27,191 @@ _None._
 
 ## P2 — Fixed this session
 
+### BUG-034  ·  P3  ·  Inconsistent invalid-filter handling across admin list endpoints  ·  Status: Open
+**Title:** `/api/admin/moving-sales?status=NOPE` returns 400 (guarded post-BUG-019), but `/api/admin/submissions?status=NOPE`, `/api/admin/submissions?type=NOPE`, and `/api/claims/incoming?status=NOPE` silently fall back to default and return 200. Behavior is inconsistent across similar-shape endpoints.
+**Found by:** Narveer · **Found date:** 2026-06-04 · **Test case:** TC-D8.1b/c + TC-C11.9
+**Repro steps:** `curl /api/admin/submissions?status=NOPE` → 200 with all submissions. `curl /api/admin/moving-sales?status=NOPE` → 400 "Invalid status".
+**Expected:** Consistent behavior across all list endpoints — either all guard with 400 (preferred for early error surfacing) or all fall back (preferred for resilience).
+**Actual:** Two endpoints reject, two endpoints fall back.
+**Impact:** P3 — no functional bug, no crash, no data leak. Just a developer-experience inconsistency that makes the API harder to reason about. The cross-cutting test plan TC-C11 #1 explicitly says "falls back to default OR 400" — so both branches are technically acceptable.
+**Notes:** Worth aligning to one pattern when there's time. Recommendation: surface as 400 with `Invalid status` for all filter params, mirroring how the moving-sales handler does it (early validation against the enum). Defer until there's a cohesive API-cleanup pass — not worth one-off-fixing the three endpoints today.
+
+### BUG-033  ·  P2  ·  PATCH /api/admin/moving-sales/:id/reject silently accepts (and discards) rejection reason  ·  Status: Fixed (verify)
+**Title:** The route handler at `dropyard_backend/src/routes/admin.ts:665` took no `reason` field from the request body and wrote no rejection reason to the database. The admin frontend's reject button at `MovingSaleDetailPanel` also sent no body. The seller, when notified, had no idea why their application was rejected.
+**Found by:** Narveer · **Found date:** 2026-06-04 · **Test case:** TC-D7.7c (reject without reason, expected 400 per docs)
+**Repro steps (before fix):**
+1. As admin, `curl -X PATCH /api/admin/moving-sales/:id/reject -d '{}'`
+2. **Actual:** 200, status flips to REJECTED, no reason stored.
+**Expected:** 400 "rejection reason is required".
+**Impact:** P2 — rejected seller had no actionable feedback. Audit log had nothing on rejections either, so the admin team couldn't review past decisions.
+**Fix commit:** _(local, dropyard_backend/prisma/schema.prisma + migration 20260604103115_add_moving_sale_rejection_reason + src/routes/admin.ts + dropyard_frontend/app/admin/(authed)/moving-sales/page.tsx)_
+**Re-tested:**
+  - ✅ POST without `reason` body → 400 "A rejection reason is required."
+  - ✅ POST with whitespace-only reason → 400
+  - ✅ POST with valid reason → 200, reason persisted to `MovingSale.rejectionReason`
+  - ✅ GET /:id surfaces `rejectionReason` in response
+  - ✅ Audit log entry `MOVING_SALE_REJECTED` created with `reason` and `payload: { from, to: 'REJECTED' }`
+  - ✅ Oversized (2001 char) reason → 400 (max 2000)
+  - ✅ Frontend admin UI: clicking Reject now toggles a rose-tinted textarea + "Confirm Reject" / "Cancel" footer; required client-side; on success the side panel footer reads `Rejected — "…"` for the persisted reason.
+**Notes:**
+  1. Schema: added `rejectionReason String?` on `MovingSale`, applied migration `20260604103115_add_moving_sale_rejection_reason`.
+  2. Backend: `/reject` now validates `reason` (non-empty, ≤2000 chars) and writes a `MOVING_SALE_REJECTED` audit log entry inside a `$transaction` alongside the status update. Symmetric `MOVING_SALE_APPROVED` audit entry was added to `/approve` for parity — admin history now captures both sides.
+  3. Frontend: `MovingSaleDetailPanel` adds `rejectMode` state that swaps the footer from the approve form to a reason textarea. The persisted `rejectionReason` is surfaced in the read-only footer (`Rejected — "…"`).
+  4. TypeScript cast (`as Prisma.MovingSaleUpdateInput`) on the data field — Windows EPERM file lock blocked `prisma generate` while backend ran; the column exists in the DB and the cast unblocks TS until `prisma generate` is re-run on next backend restart.
+  5. Notification email — deferred. The reason is now in the DB; a future pass can surface it in the seller-rejected email template.
+
+### BUG-032  ·  P1  ·  POST /api/watchlist/:itemId crashes backend on nonexistent itemId  ·  Status: Fixed (verify)
+**Title:** When a buyer hits `POST /api/watchlist/:itemId` with an itemId that doesn't exist, the Prisma `upsert` fires a foreign-key constraint violation against `Watchlist.itemId → Item.id`. The handler has no try/catch, so the unhandled promise rejection takes the Node process down. Same root-cause pattern as BUG-019 (missing validation + missing try/catch on a route that touches a relational FK).
+**Found by:** Narveer · **Found date:** 2026-06-04 · **Test case:** TC-C12.7 (POST /api/watchlist/:nonexistent)
+**Repro steps:**
+1. Sign in as any buyer, capture token T.
+2. `curl -X POST http://localhost:4000/api/watchlist/nope_xxxxxxxxxxxxxxxxxxxxxx -H "Authorization: Bearer T"`
+3. Backend process exits (or hangs on the next request).
+**Expected:** 404 "Item not found" with backend still alive.
+**Actual (before fix):** Request hangs → connection drops → next curl gets 000 (couldn't connect).
+**Impact:** P1 — anyone with a valid auth token (i.e. any signed-in buyer) can crash the entire backend with one request. While auth is required, this is still a denial-of-service vector. Beyond DoS, it broke Wave C testing mid-sweep (TC-C12.8-12.10 returned 000 not because their unauth was rejected, but because the backend had died from 12.7).
+**Fix commit:** _(local, dropyard_backend/src/routes/watchlist.ts)_
+**Re-tested:** ✅ TC-C12.7 now returns 404 with `{"error":"Item not found"}`. Backend stays alive. All other 12.x cases pass.
+**Notes:** Two-part fix in `routes/watchlist.ts`: (a) pre-check `prisma.item.findUnique({ where: { id: itemId }})` and return 404 if missing — clean primary fix; (b) wrap the upsert in try/catch as defense-in-depth in case a concurrent item delete races between the check and the upsert (still surfaces as 500 instead of crashing). Also added try/catch around the DELETE handler for consistency, though `deleteMany` is naturally idempotent and didn't have the same crash risk.
+
+### BUG-031  ·  P2  ·  Seller TopNav first-paint flicker on mobile — JS isMobile branches caused desktop layout to render briefly  ·  Status: Fixed (verify)
+**Title:** Resolves the deferred limitation flagged in BUG-030. The seller TopNav and main content area used JS `isMobile` branches for grid columns, paddings, heights, and show/hide of search/sidebar-toggle. On mobile devices the SSR HTML rendered the desktop layout (because `useViewport` defaults to width=1280 server-side), then hydrated and re-rendered as mobile — producing a visible flicker at first paint, brief horizontal overflow, and a momentarily mis-aligned breadcrumb.
+**Found by:** Carry-over from BUG-030 · **Found date:** 2026-06-04 · **Test case:** _mobile review during Phase 2_
+**Repro steps (before fix):**
+1. Open `/buyer` on a real mobile device. Switch to Seller via the truck pill.
+2. Observe: brief frame of TopNav with 240px logo column + desktop search bar + "Seller /" breadcrumb, then re-renders as mobile.
+**Expected:** Mobile layout from SSR HTML / first paint, no flicker.
+**Actual (before fix):** Desktop layout in SSR → flicker → mobile layout after hydration.
+**Impact:** P2 — purely visual, no broken functionality. But noticeable on every seller-mode load and felt unprofessional.
+**Fix commit:** _(local, dropyard_frontend/components/previews/DropYard_SellerDashboard.jsx + app/globals.css)_
+**Re-tested:** ⏳ Requires hard refresh.
+**Notes:** Refactored the TopNav SHELL to be CSS-driven instead of JS-driven:
+  1. Added CSS classes to `globals.css`: `.dy-seller-topnav` (header grid, height, padding, gap), `.dy-seller-topnav__logo-zone` (border, padding), `.dy-seller-topnav__logo` (height), `.dy-seller-topnav__breadcrumb` (font), `.dy-seller-topnav__right` (gap), `.dy-seller-topnav__bell` (size + hover), `.dy-seller-main` (main padding incl. mobile bottom-nav clearance).
+  2. Each class has desktop defaults + `@media (max-width: 768px)` overrides.
+  3. Removed `useViewport()` from `TopNav` entirely. All layout flips happen via CSS now — meaning the SSR HTML is correct for any viewport.
+  4. Used `.dy-desktop-only` to hide the sidebar toggle, "Seller /" breadcrumb prefix, and search bar on mobile; `.dy-mobile-only` already hid Switch-to-Buyer on desktop.
+  5. Hardcoded `#EDE8E0` (C.fawn) in the CSS — flagged in a CSS comment that this needs to stay in sync with the JSX color constants.
+**Out of scope** (kept JS `isMobile`): inner-view content (Overview, MyItemsView, ManualItemForm, etc) still uses `useViewport()`. Those flicker too, but to a much smaller degree because by the time content matters, hydration is usually complete. A follow-up pass could convert them too, but the shell was the visible problem.
+
+### BUG-030  ·  P1  ·  Seller dashboard mobile view completely broken — sidebar visible, no bottom nav, horizontal scroll  ·  Status: Fixed (verify)
+**Title:** Mirror of BUG-029 but for the seller dashboard. After switching to seller mode, mobile users see the desktop sidebar bleeding into the viewport, no mobile bottom nav, and horizontal scroll.
+**Found by:** Narveer · **Found date:** 2026-06-04 · **Test case:** _mobile review during Phase 2_
+**Repro steps:** Open `/buyer`, switch to Seller via the truck pill, view on mobile width.
+**Expected:** Mobile-friendly layout — sidebar hidden, bottom nav visible, content fits viewport.
+**Actual (before fix):** Sidebar rendered at top, content shifted off-screen, no bottom nav.
+**Impact:** P1 — same severity as BUG-029. Primary product surface unusable on mobile.
+**Fix commit:** _(local, dropyard_frontend/components/previews/DropYard_SellerDashboard.jsx + app/globals.css)_
+**Re-tested:** ⏳ Requires hard refresh.
+**Notes:** Mirrored the BUG-029 fix pattern to seller dashboard:
+  1. `Sidebar` now renders unconditionally (removed `{!isMobile && ...}` gate). Added `className="dy-desktop-sidebar"` to the `<aside>`. CSS rule in globals.css hides on `max-width: 768px`.
+  2. `MobileBottomNav` now renders unconditionally (removed `{isMobile && ...}` gate). Added `className="dy-mobile-bottom-nav"`. Same CSS rule from BUG-029 already hides on `min-width: 769px`. Bumped z-index 50 → 60 for parity with buyer.
+  3. The same mobile-scoped `body { overflow-x: hidden }` from globals.css catches any remaining transient overflow during the SSR-to-mobile re-render (TopNav's `gridTemplateColumns: isMobile ? "auto 1fr auto" : "240px auto 1fr auto"` still renders the 240px desktop logo column on SSR; will be visible briefly before mobile layout kicks in).
+**Known follow-up**: TopNav and various `isMobile`-dependent inline styles in seller dashboard still cause a brief desktop-flash on first paint. Same root cause as BUG-029 — `useViewport` defaults to width=1280 on SSR. The CSS clip masks it but doesn't eliminate the flicker. Proper fix is to convert layout primitives (grid columns, sidebar width, main padding) to CSS classes with media queries instead of JS `isMobile` branches. Deferred — too large for this turn.
+
+### BUG-029  ·  P1  ·  Mobile bottom nav (Discover/Saved/Claims/Messages/You) only appears after scrolling on /buyer  ·  Status: Fixed (verify)
+**Title:** On real mobile devices, the bottom nav strip doesn't show on initial page load. It pops in only after the user scrolls or some other re-render is triggered. Major UX regression because the bottom nav is the only mobile-primary navigation.
+**Found by:** Narveer · **Found date:** 2026-06-04 · **Test case:** _mobile review during Phase 2_
+**Repro steps:**
+1. Open `/buyer` on a real mobile device.
+2. On first paint, no `MobileBottomNav` visible.
+3. Scroll the page. Bottom nav appears.
+**Expected:** Bottom nav present from the first paint.
+**Actual:** SSR HTML doesn't contain the bottom nav. Hydration eventually adds it.
+**Impact:** P1 — primary mobile navigation invisible until user discovers it via scrolling. Combined with the horizontal-scroll regression (BUG-028), the mobile experience was broken.
+**Fix commit:** _(local, dropyard_frontend/components/previews/DropYard_BuyerDashboard.jsx + app/globals.css)_
+**Re-tested:** ⏳ Requires hard refresh on a mobile-width browser.
+**Notes:** Root cause: `useViewport` initializes width to `typeof window !== "undefined" ? window.innerWidth : 1280`. On SSR, `window` is undefined → 1280 → `isMobile=false` → `{isMobile && <MobileBottomNav/>}` gates the nav OUT of SSR HTML. On the client, hydration eventually runs the resize/effects → `isMobile=true` → React inserts the nav → user sees it appear. The "scrolling reveals it" perception is just the hydration timing. **Fix**: render `MobileBottomNav` UNCONDITIONALLY (no `{isMobile && ...}` gate) and hide it on desktop via a CSS media query (`@media (min-width: 769px) { .dy-mobile-bottom-nav { display: none } }`). Now the nav is in SSR HTML on every page; CSS decides visibility per viewport. No more hydration-timing pop-in. Also applies to the same pattern in the seller dashboard (deferred — not changed this turn). Same root cause likely explains part of BUG-028 (horizontal scroll): the desktop layout briefly renders during the SSR-to-mobile transition. Added a mobile-only `body { overflow-x: hidden }` rule scoped to `@media (max-width: 768px)` to clip the transient overflow without affecting desktop.
+
+### BUG-028  ·  P2  ·  Buyer dashboard scrolls horizontally on mobile — page wider than viewport  ·  Status: Defensive fix applied (verify)
+**Title:** After Phase 2 + the FilterRail hooks fix, `/buyer` on mobile widths scrolls horizontally. Some descendant of the dashboard's outer container is wider than the viewport.
+**Found by:** Narveer · **Found date:** 2026-06-04 · **Test case:** _mobile review during Phase 2_
+**Repro steps:** Open `/buyer` at a mobile width (≤768px). Drag horizontally — page scrolls left/right when it shouldn't.
+**Expected:** Page fits the viewport width. No horizontal scroll.
+**Actual (before fix):** Horizontal scroll appeared. Did NOT exist before Phase 2.
+**Impact:** P2 — page is usable but feels broken. Visual content slides off-screen.
+**Fix commit:** _(local, dropyard_frontend/components/previews/DropYard_BuyerDashboard.jsx)_
+**Re-tested:** ⏳ Requires hard refresh.
+**Notes:** Defensive fix — added `overflowX: "hidden"` to the dashboard's outer wrapper div (line ~4895). This clips any descendant overflow without needing to identify the exact offending element. Did NOT find the root cause — checked grids (all `auto-fill minmax(220-260px, 1fr)` which collapse to 1 col at 328px content width, safe), checked MobileFilterBar (uses `flex: 1` for search + `flexShrink: 0` for 44px button, fits), checked TopBar (logo + SwitchToSellerButton compact + UserMenu, ~180px total + gaps, fits at 360px). Suspect a transient SSR-vs-client mismatch where the desktop `FilterRail` capsule renders during SSR (because `useViewport`'s initial width defaults to 1280) and briefly overflows mobile before the client re-renders as `MobileFilterBar`. The `overflowX: hidden` masks that transient state. Should investigate properly when there's time — but this unblocks users today.
+
+### BUG-027  ·  P1  ·  "Switch to Seller" still inaccessible on buyer mobile after BUG-023 fix — UserMenu dropdown is not discoverable  ·  Status: Fixed (verify)
+**Title:** BUG-023 added "Switch to Seller" to the mobile UserMenu dropdown. User reported it was still inaccessible — they didn't realize they had to tap the avatar to find it.
+**Found by:** Narveer · **Found date:** 2026-06-04 · **Test case:** _mobile review during Phase 2 (follow-up to BUG-023)_
+**Repro steps:** Open /buyer on mobile width. Look for any Switch to Seller affordance in the visible UI without opening menus.
+**Expected:** Affordance is visible (or has a discoverable hint) without requiring user to discover the avatar dropdown.
+**Actual (before this fix):** Switch to Seller existed only inside UserMenu dropdown (which itself requires tapping the unlabeled avatar to discover).
+**Impact:** P1 — same impact as BUG-023 (no path from buyer to seller dashboard on mobile). The BUG-023 fix nominally restored the feature but UX-tested it was still effectively hidden.
+**Fix commit:** _(local, dropyard_frontend/components/previews/DropYard_BuyerDashboard.jsx)_
+**Re-tested:** ⏳ Requires hard refresh.
+**Notes:** Replaced the BUG-023 approach. Now `SwitchToSellerButton` renders on mobile too, in a compact icon-only variant: just the Truck-icon tile, no label, no arrow. Added `compact` prop to the component (default false on desktop, true on mobile). Removed the duplicate menu item from UserMenu — single source of truth in the topbar pill. The icon-only mobile version is ~40×40px (touch-friendly), still amber-tinted so it matches the desktop pill's affordance, with `aria-label` and `title` for screen readers / hover tooltip. UserMenu no longer needs the `onSwitchRole` prop; removed it from both component signature and call site.
+
+### BUG-026  ·  P1  ·  FilterRail violates Rules of Hooks — buyer Discover page crashes at SSR/mobile boundary  ·  Status: Fixed (verify)
+**Title:** `FilterRail` in `DropYard_BuyerDashboard.jsx` calls `useState` × 3 and `useEffect` AFTER an `if (isMobile) return <MobileFilterBar/>` early return. When `isMobile` flips (which happens during SSR hydration: server `width=1280→isMobile=false`, client reads actual viewport), the hook count changes and React throws.
+**Found by:** Narveer · **Found date:** 2026-06-04 · **Test case:** _mobile review during Phase 2_
+**Repro steps:**
+1. Open `/buyer` on mobile width (≤768px).
+2. Browser console / Next.js overlay shows: "React has detected a change in the order of Hooks called by FilterRail" → followed by "Rendered more hooks than during the previous render."
+3. Code: `dropyard_frontend/components/previews/DropYard_BuyerDashboard.jsx:1056` — `useViewport()`, then `if (isMobile) return...`, then `useState(null)` × 3 + `useEffect`.
+**Expected:** All hooks run unconditionally on every render; the mobile/desktop branch determines only what's returned.
+**Actual (before fix):** Hooks 2-5 are skipped when `isMobile=true` but run when `isMobile=false`. React explodes on viewport flip.
+**Impact:** P1 — buyer Discover page is unrenderable on mobile or whenever the viewport state changes. The error is also misleading: it surfaces secondary errors (hydration mismatches downstream) that distract from the root cause.
+**Fix commit:** _(local, dropyard_frontend/components/previews/DropYard_BuyerDashboard.jsx)_
+**Re-tested:** ⏳ Requires hard refresh at mobile width.
+**Notes:** Standard Rules of Hooks fix — moved all hook calls (`useState` × 3 + `useEffect`) above the `if (isMobile) return ...` branch. Added a comment explaining why. Verified there's no similar pattern elsewhere: searched both dashboard files for `if (isMobile)` early returns; the only other match (seller `MyItemsView` line 4288) is inside a `.map()` callback, not a component-level early return — safe.
+
+### BUG-025  ·  P1  ·  /buyer hydration mismatch — server renders loading div, client renders mounted placeholder  ·  Status: Fixed (verify)
+**Title:** When `/buyer` loads, React reports a hydration mismatch: server-side HTML contains `BuyerDashboardContent`'s "Checking access" loading div (`h-screen flex items-center justify-center bg-[#f7faf8]`), but client first-render produces `AuthedBuyerContent`'s `!mounted` placeholder (`min-h-screen bg-slate-50`). React re-generates the tree client-side, masking the underlying cause and degrading first paint.
+**Found by:** Narveer · **Found date:** 2026-06-04 · **Test case:** _mobile review during Phase 2_
+**Repro steps:**
+1. Visit `/buyer` (any width).
+2. Next.js overlay shows hydration mismatch with className diff: `+ min-h-screen bg-slate-50` (client) vs `- h-screen flex items-center justify-center bg-[#f7faf8]` (server).
+**Expected:** Server and client first-paint markup match.
+**Actual (before fix):** Server takes `BuyerDashboardContent`'s loading branch (since `useAuth` returns `loading=true, user=null` on SSR). Client first render reaches `AuthedBuyerContent`'s `!mounted` early return with different markup. Hydration mismatch.
+**Impact:** P1 — every visit to `/buyer` causes a hydration error and a forced client re-render. Real users see a brief flicker; the broken tree also surfaces cascading errors downstream (the FilterRail hooks bug above was masked by this).
+**Fix commit:** _(local, dropyard_frontend/app/buyer/page.tsx)_
+**Re-tested:** ⏳ Requires hard refresh.
+**Notes:** Pragmatic fix — aligned `AuthedBuyerContent`'s `!mounted` placeholder (2 occurrences, one per `mode` branch) with the exact loading markup from `BuyerDashboardContent`. Now whichever branch the SSR HTML reflects, the client's first-render markup matches byte-for-byte. Did NOT investigate WHY the client first render is reaching `AuthedBuyerContent` when the server takes the loading branch — `AuthProvider`'s `useState` initializes with `loading=true, user=null` identically on both, so they should match. Speculation: React 19 + Next 16 Turbopack runs the initial render in some non-blocking way that allows `useEffect` to complete before hydration validation. Mooting the question by making both branches' fallbacks identical is safer than chasing the discrepancy. Both placeholders now render the "Checking access…" pill on the `#f7faf8` background.
+
+### BUG-024  ·  P2  ·  Buyer mobile bottom nav reportedly missing on Claims page  ·  Status: Defensive fix applied (verify)
+**Title:** User reported that on /buyer at mobile width, the MobileBottomNav appears on Saved/Messages but not on Claims.
+**Found by:** Narveer · **Found date:** 2026-06-04 · **Test case:** _mobile review during Phase 2_
+**Repro steps (per user):** Open /buyer on a mobile-width viewport, navigate to Claims tab from bottom nav.
+**Expected:** MobileBottomNav remains visible at the bottom on Claims like every other view.
+**Actual (per user):** Bottom nav doesn't appear on Claims.
+**Code analysis:** `MobileBottomNav` is rendered unconditionally inside `{isMobile && ...}` at the dashboard root (`DropYard_BuyerDashboard.jsx` ~line 4928). It's `position: fixed; bottom: 0`. Parent has `padding-bottom: calc(76px + env(safe-area-inset-bottom, 0))` so content clears the nav. ClaimsPage (~line 2919) renders no fixed/sticky element that would cover the nav. Only fixed-position element in ClaimsPage scope is the cancel-confirmation modal (z-index 200), which only opens on user action. **Could not reproduce from code review.**
+**Impact:** P2 — bottom nav is the only mobile-primary navigation. If broken on Claims, users can't switch tabs without scrolling back to top.
+**Fix commit:** _(local, dropyard_frontend/components/previews/DropYard_BuyerDashboard.jsx — bumped MobileBottomNav z-index 50→60)_
+**Re-tested:** ⏳ Awaiting user re-test after dev server restart. If still missing, will need to instrument with browser dev tools to identify what's covering the nav.
+**Notes:** Defensive fix only — bumped nav z-index from 50 to 60 to defeat any unknown overlay sitting at z-index 50-59. Did not change the render condition. If issue persists, suspect either (a) a hot-reload / state caching issue where ClaimsPage was rendered before Phase 2 modal edits committed, (b) a viewport-specific behavior we missed, or (c) a per-row action button somehow being interpreted as covering the nav.
+
+### BUG-023  ·  P1  ·  "Switch to Seller" inaccessible on buyer mobile — no way to upgrade role  ·  Status: Fixed (verify)
+**Title:** On `/buyer` at mobile width, the "Switch to Seller" entry point is hidden with no replacement. Mobile buyers cannot reach the seller dashboard.
+**Found by:** Narveer · **Found date:** 2026-06-04 · **Test case:** _mobile review during Phase 2_
+**Repro steps:**
+1. Open `/buyer` at mobile width (≤768px).
+2. Inspect TopBar — `SwitchToSellerButton` is gated `{!isMobile && <SwitchToSellerButton .../>}` (line 580).
+3. Open UserMenu — no Switch to Seller entry there either.
+**Expected:** Mobile users have a discoverable path to the seller dashboard.
+**Actual (before fix):** Dead end. Mobile buyers must rotate their device or open desktop to switch.
+**Impact:** P1 because seller acquisition / role-switch is a primary product flow. The buyer dashboard advertises seller features (e.g. `SellWithAICta`) on Discover, so a buyer who clicks through expects to land on the seller side. On mobile they had nowhere to go.
+**Fix commit:** _(local, dropyard_frontend/components/previews/DropYard_BuyerDashboard.jsx)_
+**Re-tested:** ⏳ Requires manual verification at mobile width.
+**Notes:** Added a Switch to Seller entry to the mobile UserMenu (avatar dropdown), gated on `isMobile && onSwitchRole`. Uses the same `Truck` icon and amber color as the desktop pill so the affordance is recognizable. UserMenu now accepts an `onSwitchRole` prop and TopBar forwards it. Desktop behavior unchanged (Switch to Seller stays in the TopBar pill where it always was). Note: `DiscoverPage` also has a `SellWithAICta` that wires `onSwitchRole` (line ~4340) — that's a discover-page CTA, not nav. It remains visible on mobile too, but it's discoverable only from one page; the avatar menu is the always-available entry point.
+
+### BUG-022  ·  P1  ·  /join page crashes when `NEXT_PUBLIC_GOOGLE_CLIENT_ID` is missing — entire signup/signin unreachable  ·  Status: Fixed (verify)
+**Title:** When the Google client ID env var is missing, the /join page throws "Google OAuth components must be used within GoogleOAuthProvider" at render and never recovers. No way to sign in via email/password either, even though that flow doesn't need Google.
+**Found by:** Narveer · **Found date:** 2026-06-04 · **Test case:** _runtime regression — surfaced during Phase 1 mobile-responsiveness review_
+**Repro steps:**
+1. Delete or rename `dropyard_frontend/.env.local` (or simply leave `NEXT_PUBLIC_GOOGLE_CLIENT_ID` unset).
+2. Restart `npm run dev`.
+3. Visit `http://localhost:3000/join`.
+**Expected:** Page renders normally. Google button hides or shows the "not configured" notice; email/password works.
+**Actual (before fix):** Runtime error overlay: `useGoogleOAuth → useGoogleLogin → JoinPageContent`. Whole page is unreachable.
+**Environment:** Local dev, Next.js 16.1.6 (Turbopack), `@react-oauth/google`. Same code path runs in prod — any prod deploy without `NEXT_PUBLIC_GOOGLE_CLIENT_ID` baked at build time would 500 the entire signup page.
+**Impact:** P1 because: signup/signin is the primary entry to the app. A missing env var → entire flow dead. The page already has a conditional render for the Google button (when env empty, it shows an "add NEXT_PUBLIC_GOOGLE_CLIENT_ID" notice). That branch was never reachable because the hook above the JSX threw first.
+**Fix commit:** _(local, dropyard_frontend/components/GoogleSignInButton.tsx + app/join/page.tsx)_
+**Re-tested:** ⏳ Requires restoring or leaving `.env.local` blank. Typecheck clean.
+**Notes:** Root cause was structural — `useGoogleLogin` was called unconditionally at the top of `JoinPageContent`, but `GoogleOAuthProviderWrapper` short-circuits to a no-provider render when `NEXT_PUBLIC_GOOGLE_CLIENT_ID` is empty. Hook + no provider = throw. Extracted the Google button into `components/GoogleSignInButton.tsx`; the hook now only mounts when the gate at line 361 (`googleClientId ? ...`) is true. The "not configured" notice branch is now reachable. Side observation: `.env.local` was tracked-but-gitignored earlier this session; it went missing between then and now (likely lost during a `git checkout` / `git restore` somewhere). User needs to recreate it with `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_GOOGLE_CLIENT_ID`.
+
 ### BUG-021  ·  P2  ·  Drop boundaries stored in UTC, not Ottawa-local — backend/frontend disagree by 4h  ·  Status: Fixed (verify)
 **Title:** Backend phase math runs in UTC; frontend phase math runs in local browser time. They disagree by 4h (EDT) or 5h (EST) on when the drop actually opens and closes.
 **Found by:** Narveer · **Found date:** 2026-06-03 · **Test case:** TC-B15.4 (timezone handling)
