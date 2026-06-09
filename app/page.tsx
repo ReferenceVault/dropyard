@@ -792,16 +792,18 @@ function HomePage({
   goMovingAuth: (mode?: "signup" | "login") => void;
 }) {
   // Live "Featured This Week" — fetches the 4 most recent items from the
-  // public /api/items endpoint. Falls back to FEATURED_ITEMS demo data while
-  // loading or if the request fails (so the marketing page never looks empty).
-  const [featuredItems, setFeaturedItems] = useState<typeof FEATURED_ITEMS>(FEATURED_ITEMS);
+  // public /api/items endpoint. Initial state is an empty array (NOT the
+  // FEATURED_ITEMS demo) so the homepage NEVER renders fake listings to
+  // visitors. When the API returns 0 items the section hides entirely.
+  // Same honest-empty-state pattern as the Sneak Peek fix (BUG-037).
+  const [featuredItems, setFeaturedItems] = useState<typeof FEATURED_ITEMS>([]);
   useEffect(() => {
     let cancelled = false;
     apiRequest<{ items: Array<Record<string, unknown>> }>("/api/items?limit=4")
       .then((data) => {
         if (cancelled) return;
         const list = Array.isArray(data?.items) ? data.items : [];
-        if (list.length === 0) return; // keep demo fallback when marketplace is empty
+        if (list.length === 0) { setFeaturedItems([]); return; }
         const adapted = list.map((api, idx) => {
           const seller = (api.seller as Record<string, unknown>) || {};
           const count = (api._count as Record<string, unknown>) || {};
@@ -830,7 +832,7 @@ function HomePage({
         });
         setFeaturedItems(adapted);
       })
-      .catch(() => { /* keep demo fallback on network blip */ });
+      .catch(() => { if (!cancelled) setFeaturedItems([]); /* honest empty state on network blip */ });
     return () => { cancelled = true; };
   }, []);
   const testimonials = [
@@ -902,7 +904,12 @@ function HomePage({
         </div>
       </div>
 
-      {/* Featured This Week */}
+      {/* Featured This Week — only renders when the API returned real
+          listings. With no items, the whole section disappears rather than
+          showing fake "Patel Family · Kanata North" demo cards. Marketing
+          page stays honest; conversion CTA on the bottom of the page is
+          unaffected. */}
+      {featuredItems.length > 0 && (
       <section className="py-8 md:py-10 bg-gray-50">
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex items-center justify-between mb-8">
@@ -930,6 +937,7 @@ function HomePage({
           </div>
         </div>
       </section>
+      )}
 
       {/* A Different Kind of Marketplace — design from /preview/feedback/a-different-marketplace */}
       <DifferentMarketplaceSection />
