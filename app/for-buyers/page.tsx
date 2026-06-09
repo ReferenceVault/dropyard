@@ -17,6 +17,43 @@ import TrustedLocallyStats from "@/components/TrustedLocallyStats";
 import BuyingStepsSection from "@/components/BuyingStepsSection";
 import ShopWaysSection from "@/components/ShopWaysSection";
 import BuyerPerksSection from "@/components/BuyerPerksSection";
+import { apiRequest } from "@/lib/api";
+
+// Backend item shape for the public /api/items response (subset we use).
+type ApiItem = {
+  id?: string;
+  title?: string;
+  price?: number;
+  originalPrice?: number | null;
+  photos?: string[];
+  category?: string;
+  placement?: string;
+  status?: string;
+  createdAt?: string;
+};
+
+// Marketing card shape that the two grids below render against. Same shape
+// as the original demo arrays — keeps the JSX render path stable.
+type DropCard  = { id: string | number; t: string; p: number; op: number | null; img: string; cat: string };
+type ShelfCard = { id: string | number; t: string; p: number; op: number | null; img: string; days: number; pd: boolean };
+
+// Category emoji fallback for items without a photo.
+const CATEGORY_EMOJI_FOR_BUYERS: Record<string, string> = {
+  FURNITURE:   "\u{1F6CB}\u{FE0F}",
+  ELECTRONICS: "\u{1F4F1}",
+  CLOTHING:    "\u{1F455}",
+  KITCHEN:     "\u{1F373}",
+  KIDS:        "\u{1F9F8}",
+  SPORTS:      "\u{1F3BE}",
+  BOOKS:       "\u{1F4DA}",
+  HOME:        "\u{1F3E0}",
+  TOOLS:       "\u{1F527}",
+  OTHER:       "\u{1F4E6}",
+};
+function categoryLabel(cat?: string): string {
+  if (!cat) return "Other";
+  return cat.charAt(0) + cat.slice(1).toLowerCase();
+}
 
 const C = {
   gLightBg: "#ECFDF5", gSoft: "#D1FAE5", gAccent: "#6EE7B7",
@@ -28,19 +65,11 @@ const C = {
   wa: "#25D366",
 };
 
-const dropItems = [
-  { t: "Sectional Sofa", p: 450, op: 1800, img: "🛋️", cat: "Furniture" },
-  { t: "iPhone 13", p: 320, op: 600, img: "📱", cat: "Electronics" },
-  { t: "Mountain Bike", p: 180, op: 500, img: "🚲", cat: "Sports" },
-  { t: "PS5 Bundle", p: 380, op: 550, img: "🎮", cat: "Electronics" },
-];
-
-const shelfItems = [
-  { t: "Standing Desk", p: 140, op: 175, img: "🖥️", days: 12, pd: true },
-  { t: "Galaxy Tab A7", p: 65, op: 80, img: "📲", days: 10, pd: true },
-  { t: "Yoga Mat + Bands", p: 15, op: null, img: "🧘", days: 5, pd: false },
-  { t: "Winter Jacket", p: 20, op: null, img: "🧥", days: 7, pd: false },
-];
+// Demo arrays were removed alongside the BUG-035 wiring — this marketing
+// page now reads real items from /api/items. The "This Week's Picks" and
+// "On the Shelf" sections hide entirely when the marketplace is empty, so
+// prospective buyers never see fake "Sectional Sofa / iPhone 13" listings
+// that no neighbour is actually offering.
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -73,6 +102,61 @@ export default function ForBuyersPage() {
     m: Math.floor((totalSec % 3600) / 60),
     s: totalSec % 60,
   };
+
+  // Real listings for the two preview grids. Both start empty so SSR and
+  // first client paint render nothing — the sections hide entirely until
+  // the API responds. No demo fallback (same honest-empty pattern as the
+  // homepage Featured fix). The fetch runs once on mount; this is a
+  // marketing surface, not a live dashboard, so it doesn't need refreshing.
+  const [dropItems,  setDropItems]  = useState<DropCard[]>([]);
+  const [shelfItems, setShelfItems] = useState<ShelfCard[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    apiRequest<{ items: ApiItem[] }>("/api/items?limit=12")
+      .then(({ items }) => {
+        if (cancelled) return;
+        const list = Array.isArray(items) ? items : [];
+        const photoOrEmoji = (it: ApiItem): string => {
+          const photos = Array.isArray(it.photos) ? it.photos.filter(Boolean) : [];
+          return photos[0] || CATEGORY_EMOJI_FOR_BUYERS[(it.category as string) || "OTHER"] || "\u{1F4E6}";
+        };
+        const drops = list
+          .filter((i) => i.placement === "DROP" && i.status === "LIVE")
+          .slice(0, 4)
+          .map((i, idx): DropCard => ({
+            id:  i.id ?? "drop-" + idx,
+            t:   i.title || "Item",
+            p:   Number(i.price) || 0,
+            op:  Number(i.originalPrice) > Number(i.price) ? Number(i.originalPrice) : null,
+            img: photoOrEmoji(i),
+            cat: categoryLabel(i.category),
+          }));
+        const shelf = list
+          .filter((i) => i.placement === "SHELF" && i.status === "LIVE")
+          .slice(0, 4)
+          .map((i, idx): ShelfCard => {
+            const createdMs = i.createdAt ? new Date(i.createdAt).getTime() : Date.now();
+            const days = Math.max(1, Math.floor((Date.now() - createdMs) / 86400000));
+            return {
+              id:   i.id ?? "shelf-" + idx,
+              t:    i.title || "Item",
+              p:    Number(i.price) || 0,
+              op:   Number(i.originalPrice) > Number(i.price) ? Number(i.originalPrice) : null,
+              img:  photoOrEmoji(i),
+              days,
+              pd:   Number(i.originalPrice) > Number(i.price),
+            };
+          });
+        setDropItems(drops);
+        setShelfItems(shelf);
+      })
+      .catch(() => { if (!cancelled) { setDropItems([]); setShelfItems([]); } });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Tiny inline render helper: photo URL → <img>; emoji fallback → text.
+  // Mirrors the <ItemImage> helper in the buyer dashboard.
+  const isImageUrl = (s: string): boolean => /^(https?:\/\/|data:image\/)/i.test(s);
 
   return (
     <div className="min-h-full flex flex-col">
@@ -201,7 +285,10 @@ export default function ForBuyersPage() {
         </div>
       </section>
 
-      {/* ═══ 2. THIS WEEK'S PICKS ═══ */}
+      {/* ═══ 2. THIS WEEK'S PICKS ═══
+          Only renders when the marketplace has live DROP items. Empty
+          marketplace → section disappears entirely, no fake content. */}
+      {dropItems.length > 0 && (
       <section style={{ padding: "24px 24px", backgroundColor: "#fff" }}>
         <div style={{ maxWidth: 1000, margin: "0 auto" }}>
           <div style={{ textAlign: "center", marginBottom: 28 }}>
@@ -212,13 +299,17 @@ export default function ForBuyersPage() {
             {dropItems.map((item, i) => {
               const d = item.op ? Math.round((1 - item.p / item.op) * 100) : 0;
               return (
-                <div key={i}
+                <div key={item.id}
                   style={{ borderRadius: 16, border: "1px solid #f0f0f0", overflow: "hidden", backgroundColor: "#fff", transition: "all 0.2s", cursor: "pointer" }}
                   onClick={go}
                   onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "translateY(-4px)"; (e.currentTarget as HTMLDivElement).style.boxShadow = "0 10px 28px rgba(0,0,0,0.06)"; }}
                   onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "translateY(0)"; (e.currentTarget as HTMLDivElement).style.boxShadow = "none"; }}>
-                  <div style={{ height: 140, backgroundColor: C.gLightBg, display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
-                    <span style={{ fontSize: 44 }}>{item.img}</span>
+                  <div style={{ height: 140, backgroundColor: C.gLightBg, display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden" }}>
+                    {isImageUrl(item.img) ? (
+                      <img src={item.img} alt={item.t} style={{ width: "100%", height: "100%", objectFit: "cover" }} onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}/>
+                    ) : (
+                      <span style={{ fontSize: 44 }}>{item.img}</span>
+                    )}
                     {d > 0 && <span style={{ position: "absolute", top: 10, right: 10, fontSize: 11, fontWeight: 800, padding: "3px 10px", borderRadius: 8, backgroundColor: "#DC2626", color: "#fff" }}>-{d}%</span>}
                     <div style={{ position: "absolute", top: 10, left: 10, display: "flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: 6, backgroundColor: C.gDark, color: "#fff" }}>
                       <div style={{ width: 4, height: 4, borderRadius: "50%", backgroundColor: "#22C55E" }} />
@@ -243,11 +334,16 @@ export default function ForBuyersPage() {
           </div>
         </div>
       </section>
+      )}
 
       {/* ═══ 3. THREE WAYS TO SHOP — design from /preview/feedback/two-ways-to-shop ═══ */}
       <ShopWaysSection />
 
-{/* ═══ 5. ON THE SHELF ═══ */}
+      {/* ═══ 5. ON THE SHELF ═══
+          Same conditional render as Section 2 — hides when no real SHELF
+          items are live, so visitors never see fake "Standing Desk / Yoga
+          Mat" placeholder cards. */}
+      {shelfItems.length > 0 && (
       <section style={{ padding: "24px 24px", backgroundColor: C.oLightBg }}>
         <div style={{ maxWidth: 1000, margin: "0 auto" }}>
           <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 24 }}>
@@ -259,14 +355,18 @@ export default function ForBuyersPage() {
             <button onClick={go} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 13, fontWeight: 700, color: C.oPrimary, background: "none", border: "none", cursor: "pointer" }}>Browse the Shelf <ChevronRight size={14} /></button>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 14 }}>
-            {shelfItems.map((item, i) => (
-              <div key={i}
+            {shelfItems.map((item) => (
+              <div key={item.id}
                 style={{ borderRadius: 16, border: "1px solid #f0f0f0", overflow: "hidden", backgroundColor: "#fff", transition: "all 0.2s", cursor: "pointer" }}
                 onClick={go}
                 onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "translateY(-4px)"; (e.currentTarget as HTMLDivElement).style.boxShadow = "0 10px 28px rgba(0,0,0,0.06)"; }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.transform = "translateY(0)"; (e.currentTarget as HTMLDivElement).style.boxShadow = "none"; }}>
-                <div style={{ height: 120, backgroundColor: "#fafafa", display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
-                  <span style={{ fontSize: 38 }}>{item.img}</span>
+                <div style={{ height: 120, backgroundColor: "#fafafa", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden" }}>
+                  {isImageUrl(item.img) ? (
+                    <img src={item.img} alt={item.t} style={{ width: "100%", height: "100%", objectFit: "cover" }} onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}/>
+                  ) : (
+                    <span style={{ fontSize: 38 }}>{item.img}</span>
+                  )}
                   <div style={{ position: "absolute", top: 8, left: 8, display: "flex", alignItems: "center", gap: 3, padding: "3px 7px", borderRadius: 6, backgroundColor: C.oPrimary, color: "#fff" }}>
                     <Package size={8} /><span style={{ fontSize: 7, fontWeight: 800 }}>SHELF</span>
                   </div>
@@ -289,6 +389,7 @@ export default function ForBuyersPage() {
           </div>
         </div>
       </section>
+      )}
 
       {/* ═══ 6. WHY BUY — design from /preview/feedback/the-perk ═══ */}
       <BuyerPerksSection />
