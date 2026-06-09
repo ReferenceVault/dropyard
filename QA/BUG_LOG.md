@@ -27,6 +27,257 @@ _None._
 
 ## P2 — Fixed this session
 
+### BUG-051  ·  P3  ·  No per-item "Share" feature on item cards (buyer + seller) or the LiveHero  ·  Status: Fixed (verify)
+**Title:** User asked to add a Share affordance on (1) each buyer-side item card in Discover/Saved/Sneak Peek, (2) the seller's inventory row actions, and (3) the LiveHero hero on the seller Overview. The seller dashboard already had a multi-item `ShareSheet` opened from `BetweenHero` for between-drop sharing, but nothing for per-item or LiveHero share.
+**Found by:** Real user (Narveer screenshot) · **Found date:** 2026-06-09
+**Fix:**
+  1. **Buyer ItemCard** — added a Share2 icon button next to the heart in the top-right cluster. Clicking it stops propagation (so the card doesn't also open), then calls a new module-level `shareListing(item)` helper.
+  2. **Seller inventory row actions** — added a Share2 icon button as the first action in the row, hidden on `draft` (drafts aren't publicly viewable). Hits a parallel `shareSellerListing(item)` helper in the seller file.
+  3. **LiveHero** — new optional `onShare` prop. When provided, renders a "Share" button in the CTA cluster alongside "Open messages" / "See what's live". Dashboard root threads `onShare={handleShare}` so it opens the existing `<ShareSheet>` modal (same one BetweenHero uses) prefilled with the seller's currently-live items.
+**Notes:**
+  1. Share helpers use the **Web Share API** when available (mobile gets native OS sheet → WhatsApp / SMS / Messenger), and fall back to **clipboard copy** with a transient success message on desktop. Final fallback for ancient browsers is showing the URL in a returned string so the caller can render it.
+  2. Share text format: `Check out "{title}" · ${price} on DropYard.` plus a URL. The URL is `window.location.origin + "/?ref=share&item=" + itemId` — `ref=share` so analytics can attribute incoming traffic, `item=<id>` for a future `/item/<id>` public deep-link route (no public per-item page exists yet — the recipient lands on the marketing root for now).
+  3. Web Share API quirks handled: `AbortError` (user dismissed the share sheet) is treated as success not failure. Clipboard writes are wrapped in try/catch since some browsers block in non-secure contexts.
+  4. Free-pile items: seller share helper uses `· FREE` in place of the dollar amount when `item.isFree` is true.
+  5. **Out of scope (follow-up):** building the actual `/item/<id>` public page so recipients see the listing directly. Right now the deep link drops them on the marketing site root. Worth doing once we want shared links to convert.
+
+### BUG-050  ·  P2  ·  Sellers see their own items in the buyer feed → "Cannot message yourself" toast on interaction  ·  Status: Fixed (verify)
+**Title:** The buyer-mode Discover feed + Sneak Peek surfaced the seller's own items. Clicking "Ask" or "Claim" landed on the backend self-guard (`if (item.sellerId === myId) → 400 "You cannot message yourself about your own item"`). User saw the toast in the screenshot — friendly enough, but the interaction shouldn't have been offered in the first place.
+**Found by:** Real user (Narveer screenshot) · **Found date:** 2026-06-09
+**Repro steps (before fix):** Sign in as a seller, switch to Buyer view. Their own listed items appeared in Discover with normal Claim/Ask buttons. Clicking either triggered the "Couldn't send: You cannot message yourself about your own item" toast.
+**Expected:** Own items hidden from buyer feed by default. If reached via deep link or stale watchlist row, the detail page should swap buyer affordances for a "switch to Seller view" CTA.
+**Fix commit:** _(local, dropyard_frontend/components/previews/DropYard_BuyerDashboard.jsx)_
+**Notes:**
+  1. **Feed filter** — both `/api/items` and `/api/items/sneak-peek` fetches now run `list.filter(i => i?.seller?.id !== user.id)` before the adapter. Self-listed items no longer surface in Discover or Sneak Peek.
+  2. **Detail-page safety net** — `ItemDetail` accepts new props `currentUserId` and `onSwitchRole`. Computes `isMyOwnItem = item?.seller?.id === currentUserId`. When true, the Claim CTA + Save/Ask buttons + "Ask a question" CTA in the Q&A section are replaced with an amber notice ("This is your listing — you can't claim or message yourself") plus an "Open in Seller view" CTA that triggers the existing role switch.
+  3. Watchlist save path untouched — backend already returns 400 on `POST /api/watchlist/<own-item>` (BUG-032 added the FK pre-check). The detail page now hides the Save button on own items so the request never fires.
+  4. **Out of scope (separate work)**: backend hardening to add `/api/items?excludeOwn=true` query param so other callers (admin, e.g.) don't have to dedupe client-side. For the buyer dashboard, client-side filter is fine.
+  5. **Image rendering bug** in the same screenshot ("1.amazonaws.cor / d204-434b-84a5") — that's BUG-035, already fixed in this branch, awaiting deploy.
+
+### BUG-049  ·  P2  ·  LiveHero on mobile squeezes headline + body text into 4-line stacks  ·  Status: Fixed (verify)
+**Title:** On mobile the "Drop is Live" hero rendered "Closes in 3h 2m" as a vertical stack ("Closes" / "in 3h" / "2m") and the body wrapped each phrase onto its own line ("0 of your / items are / in the live / Drop right / now"). Root cause: the hero's outer flex row had the right-side CTA column locked to `minWidth: 220, flexShrink: 0`, so the left text column got squeezed into ~96px of remaining space on a 360px-wide phone.
+**Found by:** Real user (Narveer mobile screenshot) · **Found date:** 2026-06-09
+**Fix:**
+  1. Outer flex container — added `flexDirection: isMobile ? "column" : "row"` so the text column takes full width and the CTAs stack underneath.
+  2. CTA column — removed the `minWidth: 220` lock on mobile; switched to `flexDirection: "row"` so the two buttons sit side-by-side filling the row.
+  3. CTA buttons — `flex: 1` on mobile so they share the width evenly; added `whiteSpace: nowrap` so the labels don't break mid-word; tightened the padding from 13/22px to 11/14px so two buttons fit comfortably on a 360px phone.
+  4. Headline — bumped from 24 → 26px (room to grow now that the column is full-width) with line-height nudged from 1.02 → 1.05.
+**Side benefit:** The same fix improves the iPhone-SE viewport (375px) which had the same compression but less severely.
+
+### BUG-048  ·  P2  ·  Mobile ContextualStats row still showed hardcoded "VIEWS TODAY 142 · CLAIMS 2 · PICKUPS 0"  ·  Status: Fixed (verify)
+**Title:** BUG-044 wired real values into `<LiveHero>` for the desktop banner but the mobile `<ContextualStats>` row (the 3-tile grid below the hero — "VIEWS TODAY / CLAIMS / PICKUPS") was reading from the same prop bag. Three issues: (1) the `views` prop already pointed at the new `liveSaves`, but the label "VIEWS TODAY" no longer matched the semantic (it's actually a sum of watcher counts, not view events). (2) `pickupsUp` was hardcoded to `0`. (3) Anyone seeing the prod build still saw "142" until BUG-044 deployed.
+**Found by:** Real user (Narveer mobile screenshot) · **Found date:** 2026-06-09
+**Fix:**
+  1. Tile label: "VIEWS TODAY" → "WATCHING", icon: `Eye` → `Heart` (matches LiveHero copy + accurate semantic).
+  2. `pickupsUp` data prop: was `0`, now `actionBuckets.pickupsToday + actionBuckets.pickupsWeek` (already computed by the existing CONFIRMED-claims fetch).
+  3. View-event tracking remains out of scope — same call-out as BUG-044.
+
+### BUG-047  ·  P0  ·  Seller Overview crashes with "liveViewsToday is not defined" after BUG-044 rename  ·  Status: Fixed (verify)
+**Title:** BUG-044 renamed `liveViewsToday` → `liveSaves` and `liveClaims` → `livePendingClaims` but missed two references inside the `<BetweenHero>` data prop (lines 2375-2376). Result: the Overview component threw `ReferenceError: liveViewsToday is not defined` and the whole seller dashboard failed to render.
+**Found by:** Real user (Narveer runtime stack trace) · **Found date:** 2026-06-09
+**Repro steps (before fix):** Sign in as a seller, land on `/buyer` (Seller mode). Page crashes with the ReferenceError; AuthedBuyerContent → DropYardSellerDashboard → Overview throws before paint.
+**Fix:** Replaced both stale identifiers with the new ones: `views: liveSaves`, `claims: livePendingClaims`.
+**Note:** BUG-044's incomplete grep at edit time — should have used `replace_all` for the rename and verified zero remaining references. Lesson logged.
+
+### BUG-046  ·  P3  ·  "Sell with AI" teaser belongs in Settings, not the Overview hero stack  ·  Status: Fixed (verify)
+**Title:** The "Sell with AI" rotating-ticker teaser (Coming Soon / Negotiate offers automatically / "Notify me when it's ready") was rendered in the Overview page between the activity strip and the Needs-Attention metric tiles. User asked to move it under Settings since the AI agent is a long-running waitlist feature, not a per-drop action.
+**Found by:** Real user (Narveer screenshot) · **Found date:** 2026-06-09
+**Fix commit:** _(local, dropyard_frontend/components/previews/DropYard_SellerDashboard.jsx)_
+**Notes:**
+  1. Removed `<SellWithAITeaser/>` from `Overview`. Comment left as a breadcrumb pointing to its new home.
+  2. Added a new Settings section `{ id: "sellWithAi", label: "Sell with AI", icon: Sparkles, desc: "AI agent that negotiates offers — coming soon" }`. Inserted between "Pickup" and "Subscription" so the upgrade path reads "configure → upsell".
+  3. `SettingsView` now owns `aiNotified` + `handleAINotify` state (lifted from Overview). Source attribution changed from `"seller-overview-teaser"` to `"seller-settings-sell-with-ai"` so the analytics tag matches the new placement.
+  4. Removed the now-unused state from `Overview`.
+  5. The mobile drill-down + desktop split-pane navigation in `SettingsView` already handles the extra row generically — no layout work needed.
+
+### BUG-045  ·  P2  ·  Item price validation rejects $0 — blocks sellers from listing free giveaways  ·  Status: Fixed (verify)
+**Title:** Sellers wanting to list an item for $0 (the "Free pile" use-case the schema already has an `isFree` boolean for) couldn't get past the form. Frontend showed "Enter a price greater than 0." and backend's Zod `z.number().positive()` would have rejected 0 anyway.
+**Found by:** Real user (Narveer screenshot) · **Found date:** 2026-06-09
+**Repro steps (before fix):** ManualItemForm (or EditItemView) → enter `0` in price → click Queue for Saturday's Drop → "Enter a price greater than 0." inline error.
+**Expected:** $0 accepted as a valid free giveaway price. Negative values + absurd values still rejected.
+**Fix commit:** _(local, dropyard_backend/src/routes/items.ts + dropyard_frontend/components/previews/DropYard_SellerDashboard.jsx)_
+**Re-tested via curl:**
+  - `POST /api/items` with `price: 0` → **201** Created
+  - `POST /api/items` with `price: -1` → **400** "Number must be greater than or equal to 0"
+  - `POST /api/items` with `price: 200000` → **400** "Number must be less than or equal to 100000"
+**Notes:**
+  1. Backend: `createItemSchema.price` changed `z.number().positive()` → `z.number().nonnegative().max(100000)`. `updateItemSchema.price` mirrored. The `.max(100000)` is a typo guard (no one's listing a $500k item on DropYard).
+  2. Backend: `originalPrice` kept as `.positive()` because a $0 "original price" makes no sense as a strikethrough anchor. The discount-percent badge would also divide by zero.
+  3. Frontend: ManualItemForm + EditItemView both ran `if (!numericPrice || numericPrice <= 0)` — the `!numericPrice` clause rejected 0 because `0` is falsy in JS. Replaced with `if (!Number.isFinite(numericPrice) || numericPrice < 0)` plus an upper bound for parity with the backend.
+  4. Error copy reworded to hint that 0 is valid: "Enter a price (0 for a free giveaway)."
+  5. **Out of scope (separate UX item):** rendering "$0" as the badge text everywhere works but reads a bit awkwardly. The schema already has an `isFree` boolean — a future polish could auto-toggle `isFree=true` when `price=0` on the backend, and the buyer-side ItemCard already has a "Free pile" claret pill when `isFree` is set. Worth wiring next time we touch this.
+
+### BUG-044  ·  P2  ·  Seller Overview "Drop is Live" hero shows hardcoded "142 views today · 2 claims pending"  ·  Status: Fixed (verify)
+**Title:** The seller Overview's `LiveHero` (the green "Drop is live" banner that displays during the LIVE phase) read `liveViewsToday = 142` and `liveClaims = 2` straight from local constants — the comment at the top of those lines even said "still demo until we wire real-time stats". User flagged on prod.
+**Found by:** Real user (Narveer screenshot) · **Found date:** 2026-06-09
+**Repro steps (before fix):** Sign in as a seller during the LIVE phase. Overview's green hero shows the same "142 views today · 2 claims pending" regardless of actual activity.
+**Expected:** Real per-seller metrics derived from data the dashboard already fetches.
+**Fix commit:** _(local, dropyard_frontend/components/previews/DropYard_SellerDashboard.jsx)_
+**Re-tested:** ⏳ Awaiting prod verification next live drop.
+**Notes:**
+  1. **Saves metric** (replaces "views today"): summed `saves` field across the seller's currently-LIVE items. `saves` comes from the existing `_count.watchlist` resolver in the item adapter (line 4050ish). No new API call. Label changed from "X views today" to "X buyer(s) watching" since there's no per-item view-event tracking yet (`viewCount` column doesn't exist on `Item`) — staying honest beats fabricating a metric.
+  2. **Claims pending** now reads from the existing `/api/claims/incoming?status=PENDING` fetch that already powers the Needs Attention strip + activity feed. Added a `livePendingClaims` state populated by `setLivePendingClaims(pending.length)` in the same `.then` handler. Demo path (no `accessToken`) seeds 2 so /preview/seller-dashboard still looks populated.
+  3. `LiveHero` prop renamed `views` → `saves` and the inline render swapped `<Eye>` icon for `<Heart>` to match the new semantic.
+  4. Real-time: the `useSocketEvent("claim:new" / "claim:updated")` hooks already bump `refreshTick`, which re-runs the useEffect that populates `livePendingClaims`. So the count updates live without a refresh when a buyer claims.
+  5. **Out of scope (separate item)**: actual view-event tracking. Adding an `ItemView` table or `Item.viewCount` counter + incrementing it on `GET /api/items/:id` (debounced, distinct buyer per day) would let us reinstate a real "X views today" metric. Worth scoping when we want to surface buyer-engagement data more broadly.
+
+### BUG-043  ·  P0  ·  "Claim at listed price" path doesn't persist if buyer clicks Done instead of View in Claims  ·  Status: Fixed (verify)
+**Title:** Same root pattern as the offer bug (BUG-042). When a buyer clicked "Claim at $X" in ClaimModal, `handlePrimary` just did `setStep("done")` — showed the "Item claimed!" success screen WITHOUT calling the backend. The actual `POST /api/claims` was only attached to the "View in Claims" button (via `onConfirm` → `handleClaimComplete`). If the user clicked **"Done"** instead, the claim was silently lost — the seller never saw it.
+**Found by:** Real user (Narveer) · **Found date:** 2026-06-09
+**Repro steps (before fix):**
+1. Open `/buyer` → Discover → click "Claim Now" on any item.
+2. Pick a slot, leave "Claim at listed price" selected, click "Claim at $X".
+3. "Item claimed!" success screen appears with WhatsApp + AI confirmation copy.
+4. Click "Done" instead of "View in Claims" → modal closes → no claim exists on the backend.
+**Expected:** POST to `/api/claims` happens when the user clicks "Claim at $X" (before the success screen), independent of which exit button they pick.
+**Fix commit:** _(local, dropyard_frontend/components/previews/DropYard_BuyerDashboard.jsx)_
+**Re-tested via curl:** `POST /api/claims` with valid `{itemId, pickupSlot}` → **201** with `{ claim: {...} }`. ClaimModal now captures the claim id and passes it to the parent's `onConfirm` so the optimistic insert in `handleClaimComplete` uses the real backend id (was a `bc-${Date.now()}` temp id that blocked subsequent cancel via `/api/claims/:id/cancel`).
+**Notes:**
+  1. `ClaimModal.handlePrimary` now branches by mode and ACTUALLY hits the backend for both paths (claim + offer). Demo items skip the API and keep the existing standalone preview UX.
+  2. New `realClaim` state caches the response so both success-screen buttons ("View in Claims" + "Done") pass the same real claim object up to `onConfirm`.
+  3. `handleClaimComplete` (dashboard root) gains an optional `realClaim` arg. When provided, it uses the real id for the optimistic insert and SKIPS the duplicate POST. When absent (legacy path or demo), the old behaviour stays — optimistic insert with `bc-` temp id, then POST (only if authed + real item).
+  4. `handleClaimConfirm` in `ItemDetail` threads the new arg through.
+  5. Inline error state + sending-spinner from BUG-042 are reused so failed POSTs surface in red instead of "succeeding silently".
+  6. The Done button used to just call `onClose` — now it also calls `onConfirm` (with the same `realClaim`) so the optimistic insert into the Claims tab fires regardless of which exit the buyer picks. They land on Discover (since Done doesn't navigate) and can find the claim in the Claims tab on the next visit.
+
+### BUG-042  ·  P1  ·  ClaimModal "Send offer" button does nothing — flips local UI state but never persists  ·  Status: Fixed (verify)
+**Title:** When a buyer picked "Make a different offer" and clicked "Send offer of $X" in the ClaimModal, the modal jumped to the "Offer sent!" success screen — but no message, no conversation, no record reached the backend. The seller never saw the offer. Confirmed in code: `handlePrimary` just did `setStep("offer-sent")`. Item #8 (BUG-038) landed the `MessageType.OFFER` + `amount` plumbing on the backend, but no UI flow wired into it until now.
+**Found by:** Real user (Narveer screenshot showing "Send offer of $2" button) · **Found date:** 2026-06-09
+**Repro steps (before fix):** Open any item on /buyer → Claim Now → Make a different offer → enter amount → Send offer. Fake "Offer sent!" screen appears. Check seller's Messages tab — nothing.
+**Expected:** Offer creates (or reuses) a conversation thread with the seller, posts an OFFER message with the amount, surfaces it on the seller's Messages tab + a `message:new` socket push. Buyer can jump to the thread via a "View in Messages" CTA.
+**Fix commit:** _(local, dropyard_frontend/components/previews/DropYard_BuyerDashboard.jsx)_
+**Re-tested via curl (local):**
+  - `POST /api/conversations` with `{itemId, body: "I'd like to offer $30...", messageType: "OFFER", amount: 30}` → **201** + conversation created with the OFFER message in one round-trip.
+  - `GET /api/conversations/:id/messages` → message present with `messageType: "OFFER"` and `amount: 30`. Buyer-side render adapter (BUG-038 work) maps it to the lowercase "offer" type so the existing OFFER bubble UI (DollarSign icon + "Offer · $30" header) renders correctly.
+**Notes:**
+  1. `ClaimModal` accepts new props `accessToken` and `onGoToMessages`. `handlePrimary` is now `async` and posts to `/api/conversations` for real items, skipping the API for demo data so `/preview/buyer-dashboard` still flows.
+  2. The conversations API conveniently accepts both `body` and `messageType`/`amount` in the create call — no need for a separate POST to `/:id/messages`. The backend wraps create-or-reuse + first-message in one transaction (see `dropyard_backend/src/routes/conversations.ts`).
+  3. UI states added: `sending` (disables both buttons + label flips to "Sending…"), `errorMsg` (claret alert surfaced inline above the action row if the API fails).
+  4. Success screen now offers a primary "View in Messages" CTA alongside "Got it" — closes the modal and routes to `/buyer` → Messages tab via `onGoToMessages` (threaded through `ItemDetail` and from the direct-from-card dashboard root).
+  5. Backend reuse: if the buyer had already messaged the seller about this item, `POST /api/conversations` returns the existing thread + appends the OFFER message rather than creating a duplicate.
+  6. Seller side: socket `message:new` fires → seller's MessagesPage refreshes. Message adapter from BUG-038 renders the OFFER bubble with the dollar amount badge.
+
+### BUG-041  ·  P2  ·  Shelf items on Saved tab + RegularSellerProfile stay amber "On the Shelf" during Live Drop  ·  Status: Fixed (verify)
+**Title:** `ItemCard` correctly switches a shelf item's badge from amber "On the Shelf" to green "Live Drop" when its `liveMode` prop is true (line 1402-1404 of `DropYard_BuyerDashboard.jsx`). DiscoverPage threads `liveMode={true}` to the unified live pool. But two other call sites — `SavedPage` (line 3018) and `RegularSellerProfile` (line 2991) — never accepted or passed the drop state, so during the LIVE phase shelf items on those pages still rendered amber, including amber "Claim Now" buttons. User screenshot showed two amber "On the Shelf" cards next to a green "Live Drop" card on the Saved tab during a live drop.
+**Found by:** Real user (Narveer screenshot) · **Found date:** 2026-06-09
+**Repro steps (before fix):**
+1. During the LIVE phase (Sat 8 AM – Sun 8 PM Toronto), open `/buyer` → Saved tab.
+2. Save a shelf item.
+3. The card shows amber "On the Shelf" badge + amber "Claim Now" — inconsistent with the rest of Discover during the live drop.
+**Expected:** During LIVE, every claimable item across Discover/Saved/Seller-profile pages displays "Live Drop" green + green "Claim Now". The shelf vs drop distinction is for between-drops only.
+**Fix commit:** _(local, dropyard_frontend/components/previews/DropYard_BuyerDashboard.jsx)_
+**Re-tested:** ⏳ Awaiting prod verification next live drop.
+**Notes:**
+  1. Added `state = "between"` to `SavedPage` signature; threaded `liveMode={state === "live"}` into its `ItemCard` map. Same change to `RegularSellerProfile`.
+  2. Dashboard root call sites now pass `state={dropState}` — the existing `dropState` value already drives `AnticipationBand`/`WelcomeBand`/`DiscoverPage`, so no new state.
+  3. ItemCard logic untouched — it already had the correct ternary `if (item.layer === "shelf" && !liveMode)`. Just needed `liveMode` threaded.
+  4. The user's screenshot also showed image areas rendering CUID strings as 72px text. That's BUG-035 (already fixed locally) — confirms prod is on the pre-035 build. Deploying this batch will resolve both issues at once.
+
+### BUG-040  ·  P1  ·  Seller item creation surfaces raw "Token expired or invalid" backend error instead of refreshing the session  ·  Status: Fixed (verify)
+**Title:** Sellers filling out the "List New Item" form on `/buyer` (Seller mode) saw the backend's literal `"Token expired or invalid"` text under the publish buttons. The frontend's auto-refresh mechanism (`apiRequest` in `lib/api.ts`) handles this correctly for normal JSON endpoints — refreshes via `/api/auth/refresh`, retries, on failure redirects to `/join` with a clean "Session expired" message. But the photo upload helper `uploadItemPhoto` used a **raw `fetch`** with no refresh path. If the seller uploaded a photo after the 15-minute access token expired (e.g. opened the form, sat for >15min, then added a photo and clicked Publish), the upload itself bounced with the raw backend 401 message — which the form caught and rendered in red.
+**Found by:** Real user (Narveer screenshot) · **Found date:** 2026-06-09
+**Repro steps (before fix):**
+1. Sign in as a seller. Open `/buyer` → Switch to Seller → "List New Item".
+2. Fill in title/description/category/condition/price but DON'T upload a photo yet.
+3. Wait > 15 minutes (access token TTL).
+4. Upload a photo OR click "Publish to Shelf now" while the photo dialog hasn't refreshed token state.
+5. If the photo upload fires the 401 first: form shows "Token expired or invalid" with no recovery.
+**Expected:** Auto-refresh via `/api/auth/refresh`, retry transparently. If refresh fails too: redirect to `/join` with a "Session expired, please sign in again." prompt.
+**Fix commit:** _(local, dropyard_frontend/lib/api.ts)_
+**Re-tested:** ⏳ Awaiting prod verification (after deploy + login expiry test).
+**Notes:**
+  1. Extracted `doUpload(file, token)` helper so the auto-refresh path can call it twice without duplicating FormData/header setup.
+  2. After a 401 on the first try, `uploadItemPhoto` now mirrors `apiRequest`'s exact flow: pull refresh token from localStorage → POST `/api/auth/refresh` → on 200, persist new tokens + retry the upload → on non-200, clear session + `window.location.href = sessionExpiredRedirect()` + throw "Session expired. Please sign in again."
+  3. Network-blip-during-refresh tolerated the same way: caught, falls through, and the trailing `if (res.status === 401)` final guard still bounces if the original response remained 401.
+  4. Audit pass: only two raw `fetch` calls remain outside `apiRequest` — `uploadItemPhoto` (now fixed) and `lib/submissions.ts` (public contact form, no auth needed, irrelevant).
+  5. Diagnosis for THIS specific user report: the seller likely uploaded a photo after a long form session and hit the gap. The fix prevents this exact path. The publish endpoint itself (`POST /api/items`) was always safe because `ManualItemForm` calls it via `apiRequest`, which has had the refresh path for a while.
+
+### BUG-039  ·  P2  ·  Claims tab + Saved badge briefly show demo numbers for authed users  ·  Status: Fixed (verify)
+**Title:** The Claims tab's stat cards (Pickup today / Scheduled / Offer pending) and the topbar Saved badge appeared to show non-zero values on first paint even for users who had no real claims or saved items. Audit on report: the stat counts themselves are correctly derived (`claims.filter(...).length`), but the underlying state (`claims`, `savedIds`, `savedPreview`) was initialized with hardcoded demo data — so authed users saw 3 fake claims (Kids Bicycle / Solid Oak Table / Cuisinart Coffee Maker) and 6 fake saved items until the `/api/claims/mine` and `/api/watchlist` fetches completed (and permanently if the network failed, because the `.catch` deliberately kept the demo set).
+**Found by:** Real user (Narveer) · **Found date:** 2026-06-09
+**Repro steps (before fix):**
+1. Sign in as a brand-new user with no claims and no watchlist.
+2. Open `/buyer`. The topbar Saved tab shows "6"; the Claims tab shows 3 cards with stat counts 1 / 1 / 1.
+3. After ~500ms the API replaces with real data.
+**Expected:** First paint shows 0/0/0 (or accurate counts) for authed users — no fake intermediate state.
+**Fix commit:** _(local, dropyard_frontend/components/previews/DropYard_BuyerDashboard.jsx)_
+**Re-tested:** ⏳ Awaiting prod verification.
+**Notes:** Same pattern as BUG-037 (sneak peek demo fallback):
+  1. `claims` initial state — extracted demo data to `DEMO_CLAIMS` const, initial state now `accessToken ? [] : DEMO_CLAIMS`.
+  2. `claims` fetch `.catch` — was "keep demo on network blips"; now resets to `[]` so blip + retry stays honest.
+  3. `savedIds` initial state — `accessToken ? new Set() : new Set([1,6,13,9,4,20])`.
+  4. `savedIds` fetch `.catch` — same empty-set reset.
+  5. `savedPreview` initial state — `accessToken ? new Set() : new Set([101,104])`.
+  6. No prod data invariant changes — every authed user transition still hydrates from the same `/api/claims/mine` and `/api/watchlist` calls. The only difference is the empty-state interim is now honest rather than a placeholder of fake data.
+**Audit note:** Hardcoded number constants WITHIN `ClaimsPage` itself (not its data source) are all correctly computed: `todayCount`, `scheduledCount`, `pendingCount`, and the subtitle "X active claims" all derive from `claims.filter(...).length`. No magic numbers in the UI.
+
+### BUG-038  ·  P2  ·  AnticipationBand hardcoded "47 neighbours have items lined up"  ·  Status: Fixed (verify)
+**Title:** The buyer Discover "OPENS SATURDAY" anticipation banner displayed `47 neighbours have items lined up.` regardless of how many sellers had actually queued items for the upcoming Drop. The five avatar bubbles + `+42` overflow pill were also fixed strings. Live user noticed the count never changed.
+**Found by:** Real user (Narveer) · **Found date:** 2026-06-05
+**Repro steps (before fix):**
+1. Sign in as a buyer on `/buyer` during BETWEEN phase.
+2. The amber band shows "47 neighbours have items lined up" no matter what's actually queued.
+**Expected:** Real unique-seller count + first 5 actual sellers' initials + overflow pill computed from `total - 5`.
+**Fix commit:** _(local, dropyard_frontend/components/previews/DropYard_BuyerDashboard.jsx)_
+**Re-tested:** ⏳ Awaiting prod re-test.
+**Notes:**
+  1. `AnticipationBand` gains `queuedCount` and `sellerNames` props (both default null for backward compat with `/preview/buyer-dashboard`).
+  2. `DiscoverPage` computes both from `sneakPeekSource` (the API data from BUG-036's `/api/items/sneak-peek` route): `new Set(sneakPeekSource.map(i => i.seller)).size` for the count, `Array.from(new Set(...))` for the names.
+  3. Body copy adapts: `displayCount > 0` keeps the "X neighbours have items lined up" framing (with singular/plural agreement); `displayCount === 0` swaps to "Items aren't queued yet — we'll notify you the moment the Drop opens. Tap Remind me..." so empty state reads honest, not broken.
+  4. Avatar stack: now uses real seller initials when provided; hides entirely if `displayCount === 0`; "+N" overflow pill computed as `displayCount - neighbours.length` instead of the hardcoded `+42`.
+  5. Demo fallback (no props) preserves the existing hardcoded "47 neighbours" + 5 demo avatars so /preview/buyer-dashboard looks unchanged.
+
+### BUG-037  ·  P2  ·  PreviewItemDetail price renders as "Around \$35" (literal backslash) + Sneak Peek falls back to demo data for authed users  ·  Status: Fixed (verify)
+**Title:** Two related issues on `PreviewItemDetail` ("Sneak Peek" item detail page):
+  1. Three JSX text nodes used `\${item.estPrice}` — the `\` is interpreted as a literal character in JSX text, rendering as `\$35` instead of `$35`. Sites affected: facts grid Approximate price (~line 1549), right-rail price headline (~line 1578), Sneak Peek grid card price (~line 1736).
+  2. Authed users with no real queued sneak peek items saw the hardcoded `sneakPeekItems` demo array (Cuisinart Coffee Grinder / Sarah L. / Barrhaven East / IKEA Malm Dresser etc.) because BUG-036's fallback used demo data whenever the API returned 0 items. Users couldn't tell which content was real and which was placeholder.
+**Found by:** Real user (Narveer, signed in as NY) · **Found date:** 2026-06-05 · **Test case:** _live UX feedback_
+**Repro steps (before fix):**
+1. Sign in as a real user (with accessToken).
+2. Open `/buyer`. Sneak Peek strip shows demo items (Cuisinart Coffee Grinder etc.).
+3. Click one. PreviewItemDetail shows price as `Around \$35` and `\$35` in the right-rail.
+**Expected:** `$35` rendered cleanly. Authed users see only real queued items (or nothing if none queued — not fake content).
+**Fix commit:** _(local, dropyard_frontend/components/previews/DropYard_BuyerDashboard.jsx)_
+**Re-tested:** ⏳ Awaiting prod verification.
+**Notes:**
+  1. Three `\$` → `$` swaps at the three render sites listed above.
+  2. `sneakPeekForUI` now does `accessToken ? (apiData ?? []) : sneakPeekItems` — demo data is reserved for the `/preview/buyer-dashboard*` routes (no token). Real users with 0 queued items now get an empty array.
+  3. `PreviewStrip` returns null when source is empty (the entire section hides — no orphaned header).
+  4. `SneakPeekListPage` distinguishes "no items at all" (Package icon + "Neighbours haven't queued items for this Saturday's Drop yet") from "no saved items yet" (Heart icon + existing copy).
+
+### BUG-036  ·  P1  ·  Sneak Peek items on buyer Discover are hardcoded demo data — never reflect real queued listings  ·  Status: Fixed (verify)
+**Title:** The "Sneak Peek — Dropping this Saturday" strip on the buyer Discover page (and the linked "See all sneak peeks" full list) read from a hardcoded `sneakPeekItems` array (8 entries: IKEA Malm, Cuisinart Coffee Grinder, etc.). They never fetched real items queued for the upcoming Drop, so buyers always saw the same fake preview regardless of what sellers had actually queued. User noticed post-deploy when sellers queued items mid-week and nothing appeared in the Sneak Peek.
+**Found by:** Real users (weekend deployment) → reported by Narveer · **Found date:** 2026-06-05 · **Test case:** _live UX feedback_
+**Repro steps (before fix):**
+1. As a seller, queue an item for the upcoming Drop (placement DROP, status DRAFT).
+2. As a buyer in BETWEEN phase, open Discover. The Sneak Peek strip shows IKEA Malm Dresser etc. — never the seller's actual queued item.
+**Expected:** Sneak Peek strip + list shows real DROP+DRAFT items for the current Drop.
+**Impact:** P1 — Sneak Peek is the buyer's primary "what's coming Saturday" mechanism. Showing fake content erodes trust and breaks the save-for-Saturday flow.
+**Fix commit:** _(local, dropyard_backend/src/routes/items.ts + dropyard_frontend/components/previews/DropYard_BuyerDashboard.jsx)_
+**Re-tested:** ⏳ Awaiting prod re-test.
+**Notes:**
+  1. **Backend**: new public route `GET /api/items/sneak-peek` returns DROP-pool DRAFT items for the current drop with seller + photo URLs resolved. Returns empty during LIVE phase (those items are already in /api/items). Verified locally: `curl /api/items/sneak-peek` → `{items: [], phase: "SUBMISSION", dropId: "..."}`.
+  2. **Frontend**: dashboard root fetches once on mount when `accessToken` is present; adapts `{id, t, estPrice, img, cat, seller, hood, dist}` from the API shape; falls back to the hardcoded `sneakPeekItems` array only when no auth (preview routes) or the API returns 0 items (so the marketing surface still has visible content). The adapted shape's `img` prefers `photos[0]` over category emoji, so BUG-035's `<ItemImage>` helper renders real photos. Threaded as `sneakPeekSource` prop down through `DiscoverPage → PreviewStrip` and into `SneakPeekListPage`.
+  3. Item save/unsave still funnels through the existing `togglePreview` flow (watchlist). No save-flow changes needed.
+
+### BUG-035  ·  P0  ·  Uploaded item photos render as 72px text strings on buyer dashboard + homepage (live user report)  ·  Status: Fixed (verify)
+**Title:** Sellers uploaded photos this weekend that were correctly persisted as S3 keys (and resolved to full URLs by the backend `withResolvedPhotos` helper). On the buyer dashboard and the homepage's "Featured This Week" strip, the photo URL was rendered as a 72-160px-font TEXT string instead of an `<img>` tag — buyers saw the literal `https://…s3…amazonaws.com/…jpg` URL on the card where the picture should be.
+**Found by:** Real users (weekend deployment) → reported by Narveer · **Found date:** 2026-06-05 · **Test case:** _live UX feedback_
+**Repro steps:**
+1. Sign in as a seller, list an item, upload at least one photo (this works correctly).
+2. Sign in as a buyer, open Discover. The card for that item shows the URL as text instead of the image.
+3. Same on `/` (homepage Featured) once that section started fetching real items.
+**Expected:** The uploaded photo renders inside the card image area, with the category emoji as fallback only when no photos exist.
+**Actual (before fix):** Every render site in `DropYard_BuyerDashboard.jsx` (7+ of them) and `app/page.tsx` (1) treated `item.img` / `item.image` as text — works for the demo emoji defaults, breaks visibly when a real photo URL lands there.
+**Impact:** P0 — first impression for every real user is a broken UI. Sellers' uploads silently appear non-functional. Discovered post-deploy.
+**Fix commit:** _(local, dropyard_frontend/components/previews/DropYard_BuyerDashboard.jsx + app/page.tsx)_
+**Re-tested:** ⏳ Awaiting user verification on prod.
+**Notes:** Two-layer fix:
+  1. **Buyer dashboard**: added an inline `<ItemImage src emojiSize imgStyle spanStyle/>` helper that detects URL vs emoji (`/^(https?:\/\/|data:image\/)/i`) and renders `<img>` or `<span>` accordingly. Applied at every site that previously stuffed `item.img` (or `c.item.img` / `tx.img` / `c.e`) into a sized span: ItemCard, PreviewItemDetail, SneakPeekListPage, PreviewStrip, ClaimModal item summary, AskModal item summary, ItemDetailView hero, ClaimsPage row, HistoryPage row, MessagesPage conversation list, MessagesPage active thread header. Also upgraded `adaptConversation` and `adaptBuyerClaim` so messages and claims rows surface real photos when available (previously always category emoji).
+  2. **Homepage** (`app/page.tsx`): same conditional render at the Featured `ItemCard`. Also fixed the API adapter which only ever set `image: CATEGORY_EMOJI_HOME[...]` — now uses `photos[0] || emoji` so the homepage actually surfaces real listings.
+  3. `<img>` has an `onError` handler that hides the broken image element silently rather than showing a default browser placeholder if the S3 URL ever fails.
+  4. No backend change needed — `withResolvedPhotos` was always returning correct URLs. The bug was purely client-side rendering. No migration required.
+
 ### BUG-034  ·  P3  ·  Inconsistent invalid-filter handling across admin list endpoints  ·  Status: Open
 **Title:** `/api/admin/moving-sales?status=NOPE` returns 400 (guarded post-BUG-019), but `/api/admin/submissions?status=NOPE`, `/api/admin/submissions?type=NOPE`, and `/api/claims/incoming?status=NOPE` silently fall back to default and return 200. Behavior is inconsistent across similar-shape endpoints.
 **Found by:** Narveer · **Found date:** 2026-06-04 · **Test case:** TC-D8.1b/c + TC-C11.9

@@ -1432,7 +1432,7 @@ function BackOnShelfCard({ items, onNav }) {
   );
 }
 
-function LiveHero({ countdown, liveCount, views, claims, onNav }) {
+function LiveHero({ countdown, liveCount, saves, claims, onNav, onShare = null }) {
   const { isMobile } = useViewport();
   return (
     <section style={{
@@ -1446,8 +1446,8 @@ function LiveHero({ countdown, liveCount, views, claims, onNav }) {
     }}>
       <div style={{ position: "absolute", top: -60, right: -30, width: 200, height: 200, borderRadius: "50%", background: "radial-gradient(circle, " + C.green + "20 0%, transparent 70%)", pointerEvents: "none" }}/>
       <div style={{ position: "absolute", bottom: -50, left: 40, width: 110, height: 110, borderRadius: "50%", background: "radial-gradient(circle, " + C.green + "10 0%, transparent 70%)", pointerEvents: "none" }}/>
-      <div style={{ position: "relative", display: "flex", flexWrap: "wrap", alignItems: isMobile ? "stretch" : "center", justifyContent: "space-between", gap: isMobile ? 16 : 28 }}>
-        <div style={{ flex: 1, minWidth: isMobile ? 0 : 280 }}>
+      <div style={{ position: "relative", display: "flex", flexDirection: isMobile ? "column" : "row", flexWrap: "wrap", alignItems: isMobile ? "stretch" : "center", justifyContent: "space-between", gap: isMobile ? 16 : 28 }}>
+        <div style={{ flex: 1, minWidth: 0, width: isMobile ? "100%" : "auto" }}>
           <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "5px 12px", borderRadius: 999, background: C.green, marginBottom: 12, boxShadow: _SH_XS }}>
             <span style={{ position: "relative", display: "inline-flex", width: 9, height: 9 }}>
               <span style={{ position: "absolute", inset: 0, borderRadius: "50%", background: "#fff", opacity: 0.6, animation: "pulseLive 1.6s ease-in-out infinite" }}/>
@@ -1455,27 +1455,31 @@ function LiveHero({ countdown, liveCount, views, claims, onNav }) {
             </span>
             <span style={{ fontFamily: F.head, fontSize: 10, fontWeight: 900, color: "#fff", letterSpacing: "0.12em", textTransform: "uppercase" }}>Drop is live</span>
           </div>
-          <h2 style={{ fontFamily: F.head, fontSize: isMobile ? 24 : 34, fontWeight: 900, color: C.ink, letterSpacing: "-0.035em", lineHeight: 1.02, marginBottom: 6 }}>
+          <h2 style={{ fontFamily: F.head, fontSize: isMobile ? 26 : 34, fontWeight: 900, color: C.ink, letterSpacing: "-0.035em", lineHeight: 1.05, marginBottom: 6 }}>
             Closes in {countdown}
           </h2>
           <p style={{ fontFamily: F.body, fontSize: 14, fontWeight: 600, color: C.mink, lineHeight: 1.5, marginBottom: 4 }}>
             <span style={{ color: C.ink, fontWeight: 700 }}>{liveCount}</span> of your items are in the live Drop right now
           </p>
           <p style={{ fontFamily: F.body, fontSize: 13, fontWeight: 700, color: C.greenDeep, display: "inline-flex", alignItems: "center", gap: 5 }}>
-            <Eye size={11} strokeWidth={2.3}/> {views} views today · {claims} {claims === 1 ? "claim" : "claims"} pending
+            <Heart size={11} strokeWidth={2.3}/> {saves} {saves === 1 ? "buyer" : "buyers"} watching · {claims} {claims === 1 ? "claim" : "claims"} pending
           </p>
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 10, flexShrink: 0, minWidth: 220 }}>
+        {/* Mobile: stack the two CTAs side-by-side (more compact than two
+            full-width buttons) so the hero stays tall-but-not-towering. */}
+        <div style={{ display: "flex", flexDirection: isMobile ? "row" : "column", gap: 10, flexShrink: 0, minWidth: isMobile ? 0 : 220, width: isMobile ? "100%" : "auto" }}>
           <button
             onClick={() => onNav("messages")}
             className="cta-primary"
             style={{
+              flex: isMobile ? 1 : "0 0 auto",
               display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-              padding: "13px 22px", borderRadius: 999, border: "none", cursor: "pointer",
+              padding: isMobile ? "11px 14px" : "13px 22px", borderRadius: 999, border: "none", cursor: "pointer",
               fontFamily: F.head, fontSize: 13, fontWeight: 800, letterSpacing: "-0.005em",
               background: "linear-gradient(180deg, " + C.green + " 0%, " + C.greenDeep + " 100%)",
               color: "#fff",
               boxShadow: "0 2px 0 " + C.greenDeep + ", " + _SH_SM,
+              whiteSpace: "nowrap",
             }}
           >
             <MessageSquare size={14} strokeWidth={2.4}/> Open messages
@@ -1483,14 +1487,33 @@ function LiveHero({ countdown, liveCount, views, claims, onNav }) {
           <button
             onClick={() => onNav("items")}
             style={{
+              flex: isMobile ? 1 : "0 0 auto",
               display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-              padding: "12px 22px", borderRadius: 999, border: "1.5px solid " + C.green + "40",
+              padding: isMobile ? "10px 14px" : "12px 22px", borderRadius: 999, border: "1.5px solid " + C.green + "40",
               cursor: "pointer", fontFamily: F.head, fontSize: 13, fontWeight: 800,
               background: C.paper, color: C.greenDeep,
+              whiteSpace: "nowrap",
             }}
           >
             <Eye size={13} strokeWidth={2.4}/> See what&apos;s live
           </button>
+          {onShare && (
+            <button
+              onClick={onShare}
+              aria-label="Share your live items"
+              title="Share"
+              style={{
+                flex: isMobile ? "0 0 auto" : "0 0 auto",
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                padding: isMobile ? "10px 14px" : "12px 22px", borderRadius: 999,
+                border: "1.5px solid " + C.green + "40", cursor: "pointer",
+                fontFamily: F.head, fontSize: 13, fontWeight: 800,
+                background: C.paper, color: C.greenDeep, whiteSpace: "nowrap",
+              }}
+            >
+              <Share2 size={13} strokeWidth={2.4}/> Share
+            </button>
+          )}
         </div>
       </div>
     </section>
@@ -1864,6 +1887,32 @@ function ImpactCard({ rehomed, earned, weight, onNav }) {
 
 // Share modal — triggered from BetweenHero's "Share what I'm bringing" CTA.
 // Generates branded text + 6 share targets (copy, WhatsApp, SMS, email, etc).
+/**
+ * One-shot share for a single inventory row (seller side). Mirrors the buyer
+ * dashboard's helper — Web Share API on mobile, clipboard fallback on
+ * desktop. Returns nothing; UI feedback is the OS sheet or browser default
+ * (the seller's inventory rows don't have a toast surface today). — BUG-051.
+ */
+async function shareSellerListing(item) {
+  const title = item?.t || item?.title || "DropYard listing";
+  const price = item?.price;
+  const priceFragment = item?.isFree
+    ? " · FREE"
+    : (typeof price === "number" && price >= 0) ? " · $" + price : "";
+  const text = "Check out \"" + title + "\"" + priceFragment + " on DropYard.";
+  const base = (typeof window !== "undefined" && window.location && window.location.origin)
+    ? window.location.origin
+    : "https://dropyard.app";
+  const url = base + "/?ref=share&item=" + encodeURIComponent(item?.id || "");
+  if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+    try { await navigator.share({ title, text, url }); return; }
+    catch (err) { if (err && err.name === "AbortError") return; }
+  }
+  if (typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.writeText) {
+    try { await navigator.clipboard.writeText(text + " " + url); } catch { /* noop */ }
+  }
+}
+
 function ShareSheet({ items, onClose }) {
   const { isMobile } = useViewport();
   const [copied, setCopied] = useState(false);
@@ -2138,28 +2187,25 @@ function Overview({ onNav, user, sellerItems = null, accessToken = null }) {
   }, [accessToken, refreshTick]);
   const lastDropRecap = recapState ?? { sold: 0, total: 0, earned: 0, top: "—", returnedCount: 0 };
 
-  // Live-phase activity metrics (still demo until we wire real-time stats).
+  // Live-phase activity metrics. `liveSaves` = sum of watcher counts across
+  // the seller's currently-live items (uses the existing `saves` field from
+  // the sellerItems adapter, which reads `_count.watchlist` from /api/items).
+  // `liveClaims` is populated from the same PENDING-claims fetch that powers
+  // the Needs Attention strip — see the useEffect below. Real view-event
+  // tracking is a separate feature (no `viewCount` column today), so the
+  // metric is labelled "saves today" instead of "views today".
   const liveCount = queuedCount + shelfCount;
-  const liveViewsToday = 142;
-  const liveClaims = 2;
+  const liveSaves = usingBackend
+    ? sellerItems
+        .filter(i => isActiveItem(i))
+        .reduce((sum, i) => sum + (typeof i?.saves === "number" ? i.saves : 0), 0)
+    : 0;
+  const [livePendingClaims, setLivePendingClaims] = useState(0);
 
-  // ShareSheet open state + Sell-with-AI opt-in state.
+  // ShareSheet open state. (Sell-with-AI opt-in state moved to SettingsView
+  // after the teaser was relocated from Overview — BUG-046.)
   const [showShare, setShowShare] = useState(false);
-  const [aiNotified, setAiNotified] = useState(false);
   function handleShare() { setShowShare(true); }
-  async function handleAINotify() {
-    try {
-      await submitSubmission({
-        type: "SELLER_AI_WAITLIST",
-        source: "seller-overview-teaser",
-        payload: { email: user?.email },
-      });
-    } catch {
-      // Optimistic — if the backend errors we still record local intent
-      // so the seller doesn't see the CTA again this session.
-    }
-    setAiNotified(true);
-  }
 
   // Lifetime impact stats (items rehomed, $ earned, lbs diverted). Derived
   // from PICKED_UP claims inside the activity-stream fetch below; no extra
@@ -2184,6 +2230,7 @@ function Overview({ onNav, user, sellerItems = null, accessToken = null }) {
   useEffect(() => {
     if (!accessToken) {
       setActionBuckets({ pickupsToday: 1, pickupsWeek: 3, messages: 2 });
+      setLivePendingClaims(2);
       setActivityEvents([
         { who: "James K.", what: "is viewing your LG TV",  when: "just now",   tone: "view"  },
         { who: "Sarah M.", what: "saved your Sofa Set",    when: "2m ago",     tone: "save"  },
@@ -2203,6 +2250,9 @@ function Overview({ onNav, user, sellerItems = null, accessToken = null }) {
       if (cancelled) return;
 
       const pending = Array.isArray(pendingRes?.claims) ? pendingRes.claims : [];
+      // LiveHero's "claims pending" badge reads from this — replaces the
+      // hardcoded `liveClaims = 2`.
+      setLivePendingClaims(pending.length);
 
       const convs = Array.isArray(convRes?.conversations) ? convRes.conversations : [];
       const mineId = user?.id;
@@ -2327,9 +2377,10 @@ function Overview({ onNav, user, sellerItems = null, accessToken = null }) {
         <LiveHero
           countdown={countdownToClose}
           liveCount={liveCount}
-          views={liveViewsToday}
-          claims={liveClaims}
+          saves={liveSaves}
+          claims={livePendingClaims}
           onNav={onNav}
+          onShare={handleShare}
         />
       )}
       {dropPhase === "closing" && (
@@ -2358,9 +2409,9 @@ function Overview({ onNav, user, sellerItems = null, accessToken = null }) {
           queued:      queuedCount,
           drafts:      draftsCount,
           shelf:       shelfCount,
-          views:       liveViewsToday,
-          claims:      liveClaims,
-          pickupsUp:   0,
+          views:       liveSaves,
+          claims:      livePendingClaims,
+          pickupsUp:   actionBuckets.pickupsToday + actionBuckets.pickupsWeek,
           sold:        lastDropRecap.sold,
           unsold:      Math.max(0, liveCount - 1),
           timeLeft:    countdownToClose,
@@ -2404,8 +2455,7 @@ function Overview({ onNav, user, sellerItems = null, accessToken = null }) {
         <LiveActivity events={activityEvents} onNav={onNav}/>
       )}
 
-      {/* Sell-with-AI teaser — compact rotating ticker, real waitlist hook. */}
-      <SellWithAITeaser notified={aiNotified} onNotify={handleAINotify}/>
+      {/* Sell-with-AI teaser — moved to Settings → Sell with AI (BUG-046). */}
 
       {/* Needs your attention — discrete metric tiles (v2 ActionItems pattern).
           One tile per category: pickups today, pickups this week, unread
@@ -2510,9 +2560,12 @@ function ContextualStats({ dropPhase, isFreshRecap, data }) {
       { icon: Package,       label: "ON SHELF", value: String(data.shelf)  },
     ],
     live: [
-      { icon: Eye,    label: "VIEWS TODAY", value: String(data.views) },
-      { icon: Tag,    label: "CLAIMS",      value: String(data.claims) },
-      { icon: MapPin, label: "PICKUPS",     value: String(data.pickupsUp) },
+      // Label switched from "VIEWS TODAY" to "WATCHING" — the value is the sum
+      // of watcher counts across the seller's live items (BUG-044). There's no
+      // view-event tracking yet, so labelling it "views" was misleading.
+      { icon: Heart,  label: "WATCHING", value: String(data.views) },
+      { icon: Tag,    label: "CLAIMS",   value: String(data.claims) },
+      { icon: MapPin, label: "PICKUPS",  value: String(data.pickupsUp) },
     ],
     closing: [
       { icon: CheckCircle, label: "SOLD",      value: String(data.sold) },
@@ -3273,8 +3326,11 @@ function ManualItemForm({ onDone, onBack, onGoToItems, onEnhanceAI, aiSettings =
     if (!desc || desc.trim().length < 10) return setSubmitError("Description must be at least 10 characters.");
     if (!cat) return setSubmitError("Pick a category.");
     if (!cond) return setSubmitError("Pick a condition.");
+    // Accept 0 — sellers list "Free pile" giveaways at $0. The empty-string
+    // case still needs to be caught, so we parse explicitly first.
     const numericPrice = parseFloat(price);
-    if (!numericPrice || numericPrice <= 0) return setSubmitError("Enter a price greater than 0.");
+    if (!Number.isFinite(numericPrice) || numericPrice < 0) return setSubmitError("Enter a price (0 for a free giveaway).");
+    if (numericPrice > 100000) return setSubmitError("Price seems too high — double-check the value.");
     if (photos.some(p => p.uploading)) return setSubmitError("Wait for photos to finish uploading.");
 
     const photoKeys = photos.map(p => p.key).filter(Boolean);
@@ -3368,9 +3424,26 @@ function ManualItemForm({ onDone, onBack, onGoToItems, onEnhanceAI, aiSettings =
       </button>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
         <h2 style={{ fontSize: 20, fontWeight: 800, color: C.ink, fontFamily: F.head }}>List New Item</h2>
-        <button disabled aria-disabled="true" style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 16px", borderRadius: 50, border: "1px solid " + C.fawn, cursor: "not-allowed", background: C.sand, color: C.ash, fontSize: 12, fontWeight: 700, fontFamily: F.body, opacity: 0.7 }}>
+        {/* Wired in audit pass — `onEnhanceAI` prop (passed by the seller
+            dashboard root) navigates to either the AIPhotoFlow view (if AI
+            settings are configured) or AISetup (if not). Previously this
+            button was permanently disabled. */}
+        <button
+          onClick={() => onEnhanceAI && onEnhanceAI()}
+          disabled={!onEnhanceAI}
+          style={{
+            display: "flex", alignItems: "center", gap: 6,
+            padding: "9px 16px", borderRadius: 50,
+            border: "1px solid " + (onEnhanceAI ? C.ai + "40" : C.fawn),
+            cursor: onEnhanceAI ? "pointer" : "not-allowed",
+            background: onEnhanceAI ? C.aiMist : C.sand,
+            color: onEnhanceAI ? C.ai : C.ash,
+            fontSize: 12, fontWeight: 700, fontFamily: F.body,
+            opacity: onEnhanceAI ? 1 : 0.7,
+          }}
+        >
           <Sparkles size={14}/> Enhance with AI
-          <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 10, backgroundColor: C.smoke, color: "#fff", fontFamily: F.body }}>5 free/mo</span>
+          <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 10, backgroundColor: onEnhanceAI ? C.ai : C.smoke, color: "#fff", fontFamily: F.body }}>5 free/mo</span>
         </button>
       </div>
 
@@ -4017,6 +4090,36 @@ function MyItemsView({ onNav, onEdit, onView, sellerItems, onItemsChange, seller
   const [publishChooserItem, setPublishChooserItem] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
 
+  // Pickups badge on the Inventory → Orders tab. Real counts replace the
+  // previously-hardcoded "7 orders · 1 urgent" (BUG-052/audit). Same fetch
+  // shape PickupsView uses — see line 6099. Socket events refresh both.
+  const [pickupsCount, setPickupsCount] = useState(0);
+  const [pickupsTodayCount, setPickupsTodayCount] = useState(0);
+  const [pickupsTick, setPickupsTick] = useState(0);
+  useSocketEvent("claim:updated", () => setPickupsTick((t) => t + 1));
+  useSocketEvent("claim:new",     () => setPickupsTick((t) => t + 1));
+  useEffect(() => {
+    if (!accessToken) { setPickupsCount(0); setPickupsTodayCount(0); return; }
+    let cancelled = false;
+    apiRequest("/api/claims/incoming?status=CONFIRMED", { token: accessToken })
+      .then((data) => {
+        if (cancelled) return;
+        const claims = Array.isArray(data?.claims) ? data.claims : [];
+        setPickupsCount(claims.length);
+        // "Urgent" === pickup scheduled for today. Same heuristic as
+        // PickupsView's todayCount filter at line 5999.
+        const SHORT_DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+        const todayShort = SHORT_DAYS[new Date().getDay()].toLowerCase();
+        const todayN = claims.filter((c) => {
+          const slot = String(c?.pickupSlot || "").trim().toLowerCase();
+          return slot.startsWith(todayShort) || slot.startsWith("today");
+        }).length;
+        setPickupsTodayCount(todayN);
+      })
+      .catch(() => { /* keep last known counts on transient network blip */ });
+    return () => { cancelled = true; };
+  }, [accessToken, pickupsTick]);
+
   // Items now carry publishedTo (queue target) + status (draft | published)
   // Derived "lifecycle" tells the UI what state to render
   const [items, setItems] = useState([
@@ -4280,7 +4383,7 @@ function MyItemsView({ onNav, onEdit, onView, sellerItems, onItemsChange, seller
 
   return (
     <div className="fade-in" style={{ maxWidth: isMobile ? "100%" : 1160, margin: "0 auto" }}>
-      <InventoryTabs activeView="items" onNav={onNav} ordersCount={7} ordersUrgent={1}/>
+      <InventoryTabs activeView="items" onNav={onNav} ordersCount={pickupsCount} ordersUrgent={pickupsTodayCount}/>
 
       {/* Phase-aware Drop strip — closing window swaps to the bulk-discount banner. */}
       {isClosing ? (
@@ -4602,6 +4705,18 @@ function MyItemsView({ onNav, onEdit, onView, sellerItems, onItemsChange, seller
 
               {/* Col 6 — Row actions, lifecycle-aware */}
               <div style={{ display: "flex", gap: 6, alignItems: "center", justifyContent: "flex-end" }}>
+                {/* Share icon — visible for every published lifecycle (queued / live / shelf).
+                    Hidden on drafts since they're not publicly viewable. — BUG-051. */}
+                {lc !== "draft" && (
+                  <button
+                    onClick={async (e) => { e.stopPropagation(); await shareSellerListing(item); }}
+                    aria-label="Share this listing"
+                    title="Share"
+                    style={actionBtnIcon}
+                  >
+                    <Share2 size={13} style={{ color: C.greenDeep }} strokeWidth={2.4}/>
+                  </button>
+                )}
                 {lc === "draft" && (
                   <>
                     <button onClick={() => openPublishChooser(item)} className="cta-primary" style={actionBtnSolid(C.green, C.greenDeep)}>Publish</button>
@@ -6983,8 +7098,11 @@ function EditItemView({ onBack, editingItem, aiSettings = {}, accessToken = null
     if (!desc  || String(desc).trim().length < 10) return setSubmitError("Description must be at least 10 characters.");
     if (!cat)  return setSubmitError("Pick a category.");
     if (!cond) return setSubmitError("Pick a condition.");
+    // Accept 0 — sellers list "Free pile" giveaways at $0. The empty-string
+    // case still needs to be caught, so we parse explicitly first.
     const numericPrice = parseFloat(price);
-    if (!numericPrice || numericPrice <= 0) return setSubmitError("Enter a price greater than 0.");
+    if (!Number.isFinite(numericPrice) || numericPrice < 0) return setSubmitError("Enter a price (0 for a free giveaway).");
+    if (numericPrice > 100000) return setSubmitError("Price seems too high — double-check the value.");
     if (photos.some(p => p.uploading)) return setSubmitError("Wait for photos to finish uploading.");
 
     const photoKeys = photos.map(p => p.key).filter(Boolean);
@@ -8628,11 +8746,29 @@ function SettingsView({ user }) {
   const [mobileViewingSection, setMobileViewingSection] = useState(null);
   const [toast, setToast] = useState(null);
 
+  // Sell-with-AI waitlist opt-in — local-to-Settings since the teaser was
+  // moved out of Overview (BUG-046). Persists for the session only; the
+  // backend submission is the durable record.
+  const [aiNotified, setAiNotified] = useState(false);
+  async function handleAINotify() {
+    try {
+      await submitSubmission({
+        type:    "SELLER_AI_WAITLIST",
+        source:  "seller-settings-sell-with-ai",
+        payload: { email: user?.email },
+      });
+    } catch {
+      // Optimistic — backend error doesn't block the local "Notified ✓" state.
+    }
+    setAiNotified(true);
+  }
+
   const sections = [
     { id: "account",       label: "Account",       icon: User,       desc: "Name, email, password" },
     { id: "notifications", label: "Notifications", icon: Bell,       desc: "Email, WhatsApp, push" },
     { id: "payments",      label: "Payments",      icon: DollarSign, desc: "How buyers can pay" },
     { id: "pickup",        label: "Pickup",        icon: MapPin,     desc: "Default address" },
+    { id: "sellWithAi",    label: "Sell with AI",  icon: Sparkles,   desc: "AI agent that negotiates offers — coming soon" },
     { id: "subscription",  label: "Subscription",  icon: Award,      desc: "Plan and upgrades" },
   ];
 
@@ -8644,6 +8780,7 @@ function SettingsView({ user }) {
     if (id === "notifications") return <SettingsNotifications user={user} onSuccess={setToast}/>;
     if (id === "payments")      return <SettingsPayments user={user} onSuccess={setToast}/>;
     if (id === "pickup")        return <SettingsPickup user={user} onSuccess={setToast}/>;
+    if (id === "sellWithAi")    return <SellWithAITeaser notified={aiNotified} onNotify={handleAINotify}/>;
     if (id === "subscription")  return <SubscriptionTab user={user} onSuccess={setToast}/>;
     return null;
   }

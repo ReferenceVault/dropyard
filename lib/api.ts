@@ -107,18 +107,68 @@ export async function apiRequest<T = unknown>(
   return data as T;
 }
 
+// Internal one-shot S3 upload — used by `uploadItemPhoto` below. Separated so
+// the auto-refresh path can call this twice (original attempt + retry after
+// refresh) without copy-pasting the FormData/headers code.
+async function doUpload(file: File, token: string | null): Promise<Response> {
+  const form = new FormData();
+  form.append('file', file);
+  return fetch(`${BASE_URL}/api/uploads/s3`, {
+    method:  'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body:    form,
+  });
+}
+
 export async function uploadItemPhoto(
   file: File
 ): Promise<{ key: string; publicUrl: string; maxFilesPerItem: number }> {
-  const token =
-    typeof window !== 'undefined' ? localStorage.getItem(ACCESS_TOKEN_KEY) : null;
-  const form = new FormData();
-  form.append('file', file);
-  const res = await fetch(`${BASE_URL}/api/uploads/s3`, {
-    method: 'POST',
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-    body: form,
-  });
+  let token = typeof window !== 'undefined' ? localStorage.getItem(ACCESS_TOKEN_KEY) : null;
+  let res = await doUpload(file, token);
+
+  // Mirror apiRequest's auto-refresh path so a long-form item creation flow
+  // doesn't fail just because the 15-minute access token expired while the
+  // seller was typing. On 401: try /api/auth/refresh once. On success, retry
+  // the upload with the fresh token. On failure, clear the session and
+  // redirect to the sign-in page the same way apiRequest does — otherwise
+  // the user gets the raw "Token expired or invalid" surface on the form.
+  if (res.status === 401 && typeof window !== 'undefined') {
+    const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
+    if (refreshToken) {
+      try {
+        const refreshRes = await fetch(`${BASE_URL}/api/auth/refresh`, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ refreshToken }),
+        });
+        if (refreshRes.ok) {
+          const refreshed = await refreshRes.json() as { accessToken: string; refreshToken: string };
+          localStorage.setItem(ACCESS_TOKEN_KEY, refreshed.accessToken);
+          localStorage.setItem(REFRESH_TOKEN_KEY, refreshed.refreshToken);
+          token = refreshed.accessToken;
+          res   = await doUpload(file, token);
+        } else {
+          // Refresh token gone too — wipe session and bounce the user.
+          localStorage.removeItem(ACCESS_TOKEN_KEY);
+          localStorage.removeItem(REFRESH_TOKEN_KEY);
+          window.location.href = sessionExpiredRedirect();
+          throw new Error('Session expired. Please sign in again.');
+        }
+      } catch (err) {
+        if (err instanceof Error && err.message === 'Session expired. Please sign in again.') throw err;
+        // Network blip during refresh — fall through; res is still the 401.
+      }
+    }
+    // No refresh token (or refresh failed silently) and we still have a 401
+    // — same "session is gone" treatment as apiRequest.
+    if (res.status === 401) {
+      localStorage.removeItem(ACCESS_TOKEN_KEY);
+      localStorage.removeItem(REFRESH_TOKEN_KEY);
+      window.location.href = sessionExpiredRedirect();
+      throw new Error('Session expired. Please sign in again.');
+    }
+  }
+
   const data = (await res.json().catch(() => ({}))) as { error?: string };
   if (!res.ok) {
     throw new Error(typeof data.error === 'string' ? data.error : 'Upload failed');
