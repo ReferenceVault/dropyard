@@ -1,8 +1,10 @@
 import Link from "next/link";
 
 const components: { slug: string; label: string; file: string; tag: string }[] = [
-  { slug: "buyer-dashboard",                label: "Buyer Dashboard",            file: "DropYard_BuyerDashboard.jsx",     tag: "Dashboard" },
-  { slug: "seller-dashboard",               label: "Seller Dashboard",           file: "DropYard_SellerDashboard.jsx",    tag: "Dashboard" },
+  // v1 dashboards now render directly from /buyer (mode-switched). Their
+  // /preview/buyer-dashboard and /preview/seller-dashboard routes were
+  // removed once the v1 dashboards stabilised — DropYard_BuyerDashboard.jsx
+  // and DropYard_SellerDashboard.jsx still exist as the source components.
   { slug: "buyer-dashboard-v2",             label: "Buyer Dashboard (v2)",       file: "DropYard_BuyerDashboard_v2.jsx",  tag: "Preview" },
   { slug: "seller-dashboard-v2",            label: "Seller Dashboard (v2)",      file: "DropYard_SellerDashboard_v2.jsx", tag: "Preview" },
   // Feedback batch — landing-page sections from "Feedback on Updates" folder.

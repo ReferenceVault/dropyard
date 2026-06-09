@@ -309,6 +309,37 @@ function useViewport() {
   return { width, isMobile: width <= MOBILE_BREAKPOINT };
 }
 
+// `item.img` carries either a real photo URL (when adaptBuyerItem found
+// item.photos[0]) OR a fallback category emoji like "🛋️". Every render site
+// previously stuffed the value inside a <span style="font-size: 72px">,
+// which silently broke when a URL landed there — buyers saw the URL text
+// rendered as 72px characters. This helper detects URLs (http(s) or data
+// images) and renders an <img>; everything else falls back to the emoji
+// span using the size the caller asked for. Pass `emojiSize` matching the
+// surrounding visual rhythm; img always fills its container.
+function ItemImage({ src, emojiSize, imgStyle, spanStyle }) {
+  const isUrl = typeof src === "string" && /^(https?:\/\/|data:image\/)/i.test(src);
+  if (isUrl) {
+    return (
+      <img
+        src={src}
+        alt=""
+        style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", ...(imgStyle || {}) }}
+        onError={(e) => {
+          // If the URL fails (S3 misconfig, removed file), hide the broken
+          // image so it doesn't leak its alt text or default browser glyph.
+          e.currentTarget.style.display = "none";
+        }}
+      />
+    );
+  }
+  return (
+    <span style={{ fontSize: emojiSize, lineHeight: 1, ...(spanStyle || {}) }}>
+      {src || "📦"}
+    </span>
+  );
+}
+
 function GlobalStyle() {
   const css = "*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; } body { background: #FFFFFF; color: #1F1D19; font-family: 'Nunito', sans-serif; -webkit-font-smoothing: antialiased; } ::selection { background: #D8EDD2; color: #1F5A18; } button { font-family: inherit; } input, textarea { font-family: inherit; } @keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } } @keyframes pulseGreen { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } } @keyframes pulseAmber { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } } @keyframes slideIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } } .fade-in { animation: fadeUp 0.55s cubic-bezier(0.25, 1, 0.5, 1) both; } .cta-primary { transition: all 200ms cubic-bezier(0.25, 1, 0.5, 1); } .cta-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(48, 132, 36, 0.3); } .preview-scroll::-webkit-scrollbar { height: 6px; } .preview-scroll::-webkit-scrollbar-track { background: #F4EFE6; border-radius: 3px; } .preview-scroll::-webkit-scrollbar-thumb { background: #D6CFC4; border-radius: 3px; } .chip-hover:hover { border-color: #9A948B !important; } @keyframes pulseLive { 0% { transform: scale(1); opacity: 0.8; } 70% { transform: scale(2.2); opacity: 0; } 100% { transform: scale(2.2); opacity: 0; } } @keyframes aiShimmer { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } } @keyframes sellAiPulse { 0%, 100% { transform: scale(1); box-shadow: 0 4px 14px #7C3AED40; } 50% { transform: scale(1.05); box-shadow: 0 6px 20px #7C3AED60; } } @keyframes skel { 0% { background-position: -200px 0; } 100% { background-position: calc(200px + 100%) 0; } } @keyframes bump { 0% { transform: scale(1); } 30% { transform: scale(1.18); } 60% { transform: scale(0.95); } 100% { transform: scale(1); } } .skel { background: linear-gradient(90deg, #F4EFE6 0%, #FAF6EE 50%, #F4EFE6 100%); background-size: 400px 100%; animation: skel 1.6s ease-in-out infinite; border-radius: 8px; } .skel-card { background: #FFFFFF; border: 1px solid #EDE8E0; border-radius: 18px; overflow: hidden; } .bump { animation: bump 0.5s cubic-bezier(0.25, 1, 0.5, 1); }";
   return (
@@ -644,7 +675,7 @@ function PageTitle({ eyebrow, title, subtitle, action, eyebrowBg, eyebrowColor, 
    Soft amber gradient panel. Pulsing dot, eyebrow, headline,
    subtitle, "Remind me" CTA. Lighter outline (12% amber).
    ============================================================ */
-function AnticipationBand({ onRemindMe, reminded }) {
+function AnticipationBand({ onRemindMe, reminded, queuedCount = null, sellerNames = null }) {
   // Real countdown to the next drop-open moment (Saturday 8 AM by default).
   // `now` starts null on first render so SSR + initial client hydration produce
   // identical "0d 0h 0m 0s" markup; useEffect seeds the real value after mount
@@ -668,14 +699,24 @@ function AnticipationBand({ onRemindMe, reminded }) {
   };
   const pad = (n) => n < 10 ? "0" + n : "" + n;
 
-  // Mock 5 neighbour avatars — different cast than WelcomeBand for variety
-  const neighbours = [
+  // Avatar stack — derive from the actual queued sellers when we have them.
+  // Falls back to a fixed 5-name cast when the prop wasn't passed (i.e.
+  // /preview/buyer-dashboard runs without a fetch). Always 5 max so the
+  // visual rhythm holds; the +N pill below conveys overflow.
+  const fallbackNeighbours = [
     { name: "Priya M." },
     { name: "Sarah L." },
     { name: "Tom R." },
     { name: "Jane D." },
     { name: "Alex K." },
   ];
+  const neighbours = (Array.isArray(sellerNames) && sellerNames.length > 0)
+    ? sellerNames.slice(0, 5).map(n => ({ name: n }))
+    : fallbackNeighbours;
+  // Display count: prefer the real queued seller count when provided; fall
+  // back to the demo's "47 neighbours" only when no prop was passed (i.e.
+  // the standalone /preview/buyer-dashboard route).
+  const displayCount = queuedCount == null ? 47 : queuedCount;
 
   return (
     <section className="fade-in" style={{
@@ -724,22 +765,36 @@ function AnticipationBand({ onRemindMe, reminded }) {
             {" "}at {dropOpenHour()}
           </h1>
 
-          {/* Body — concise, with bold stat */}
+          {/* Body — concise, with bold stat. When no items are queued yet,
+              swap the copy to something honest instead of a fake count. */}
           <p style={{ fontFamily: F.body, fontSize: 14, fontWeight: 600, color: C.ink, maxWidth: 520, lineHeight: 1.55, marginBottom: 12 }}>
-            <b style={{ color: C.ink, fontWeight: 900 }}>47 neighbours</b> have items lined up. Save your favourites from the Sneak Peek to get a head start.
+            {displayCount > 0 ? (
+              <>
+                <b style={{ color: C.ink, fontWeight: 900 }}>{displayCount} neighbour{displayCount === 1 ? "" : "s"}</b>
+                {" "}{displayCount === 1 ? "has" : "have"} items lined up. Save your favourites from the Sneak Peek to get a head start.
+              </>
+            ) : (
+              <>Items aren&apos;t queued yet — we&apos;ll notify you the moment the Drop opens. Tap <b style={{ color: C.ink, fontWeight: 900 }}>Remind me</b> below to lock it in.</>
+            )}
           </p>
 
-          {/* Avatar stack — same pattern as WelcomeBand, with cream borders */}
-          <div style={{ display: "flex", alignItems: "center" }}>
-            {neighbours.map((n, i) => (
-              <div key={i} style={{ width: 32, height: 32, borderRadius: "50%", background: avatarBg(n.name), color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: F.head, fontSize: 10, fontWeight: 800, border: "2px solid #FFF4E0", marginLeft: i === 0 ? 0 : -8, zIndex: neighbours.length - i }}>
-                {initialsOf(n.name)}
-              </div>
-            ))}
-            <div style={{ width: 32, height: 32, borderRadius: "50%", background: C.amberDeep, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: F.head, fontSize: 10, fontWeight: 800, border: "2px solid #FFF4E0", marginLeft: -8 }}>
-              +42
+          {/* Avatar stack — only render when at least one neighbour has queued
+              items. The "+N" pill computes overflow from displayCount instead
+              of the hardcoded "+42". */}
+          {displayCount > 0 && (
+            <div style={{ display: "flex", alignItems: "center" }}>
+              {neighbours.map((n, i) => (
+                <div key={i} style={{ width: 32, height: 32, borderRadius: "50%", background: avatarBg(n.name), color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: F.head, fontSize: 10, fontWeight: 800, border: "2px solid #FFF4E0", marginLeft: i === 0 ? 0 : -8, zIndex: neighbours.length - i }}>
+                  {initialsOf(n.name)}
+                </div>
+              ))}
+              {displayCount > neighbours.length && (
+                <div style={{ width: 32, height: 32, borderRadius: "50%", background: C.amberDeep, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: F.head, fontSize: 10, fontWeight: 800, border: "2px solid #FFF4E0", marginLeft: -8 }}>
+                  +{displayCount - neighbours.length}
+                </div>
+              )}
             </div>
-          </div>
+          )}
         </div>
 
         {/* Right: countdown panel — translucent ink card, mirror of WelcomeBand structure */}
@@ -1338,6 +1393,51 @@ function FilterRail({ filter, setFilter, search, setSearch, cat, setCat, sort, s
   );
 }
 
+/**
+ * One-shot share for a single listing card. Uses the Web Share API on mobile
+ * (where the OS sheet handles WhatsApp / SMS / Messenger natively) and falls
+ * back to copying the link to the clipboard with a transient confirmation
+ * for desktop. Returns the message the caller can surface as a toast. Kept
+ * as a module-level helper so both ItemCard (buyer view) and the seller's
+ * inventory cards can use the same code path. — BUG-051.
+ */
+function getPublicItemUrl(item) {
+  const base = (typeof window !== "undefined" && window.location && window.location.origin)
+    ? window.location.origin
+    : "https://dropyard.app";
+  // No public per-item route exists yet — link to the marketing root so the
+  // recipient at least lands on the right surface. Wiring this to a
+  // /item/<id> deep link is a small follow-up once the public route ships.
+  return base + "/?ref=share&item=" + encodeURIComponent(item?.id || "");
+}
+async function shareListing(item) {
+  const title = item?.title || item?.t || "DropYard listing";
+  const price = item?.p ?? item?.price;
+  const priceFragment = (typeof price === "number" && price >= 0) ? " · $" + price : "";
+  const text = "Check out \"" + title + "\"" + priceFragment + " on DropYard.";
+  const url = getPublicItemUrl(item);
+
+  if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+    try {
+      await navigator.share({ title, text, url });
+      return null; // success — OS sheet already gave feedback
+    } catch (err) {
+      // User dismissed — don't bubble as an error.
+      if (err && err.name === "AbortError") return null;
+      // Fall through to clipboard.
+    }
+  }
+  if (typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.writeText) {
+    try {
+      await navigator.clipboard.writeText(text + " " + url);
+      return "Link copied to clipboard.";
+    } catch {
+      // Final fallback below.
+    }
+  }
+  return "Couldn't share — copy the link manually: " + url;
+}
+
 /* ============================================================
    ITEM CARD  — works for drop / shelf
    ============================================================ */
@@ -1363,10 +1463,29 @@ function ItemCard({ item, saved, onToggleSave, onOpen, onClaimNow, index, liveMo
   return (
     <article onClick={onOpen} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} className="fade-in" style={{ background: C.paper, borderRadius: 20, overflow: "hidden", border: "1px solid " + (fromPeek ? C.amber + "60" : hovered ? C.fawn : C.fawn + "80"), cursor: "pointer", transition: "all 250ms cubic-bezier(0.25, 1, 0.5, 1)", transform: hovered ? "translateY(-3px)" : "translateY(0)", boxShadow: fromPeek ? (hovered ? "inset 4px 0 0 " + C.amber + ", 0 12px 32px rgba(31, 29, 25, 0.08)" : "inset 4px 0 0 " + C.amber + ", 0 1px 0 " + C.fawn + "60") : (hovered ? "0 12px 32px rgba(31, 29, 25, 0.08)" : "0 1px 0 " + C.fawn + "60"), animationDelay: Math.min(index * 40, 400) + "ms", display:"flex", flexDirection:"column" }}>
       <div style={{ position: "relative", aspectRatio: "4/3", background: "linear-gradient(135deg, " + badgeBg + ", " + C.sand + ")", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
-        <span style={{ fontSize: 72, filter: "saturate(1.05)", transform: hovered ? "scale(1.05)" : "scale(1)", transition: "transform 400ms ease" }}>{item.img}</span>
-        <button onClick={e => { e.stopPropagation(); onToggleSave(item.id); }} style={{ position: "absolute", top: 14, right: 14, width: 36, height: 36, borderRadius: "50%", border: "none", background: saved ? C.paper : "rgba(255,255,255,0.95)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", backdropFilter: "blur(8px)", boxShadow: "0 2px 8px rgba(31,29,25,0.1)" }}>
-          <Heart size={16} style={{ color: saved ? C.claret : C.ink, fill: saved ? C.claret : "none", strokeWidth: 2 }}/>
-        </button>
+        <ItemImage
+          src={item.img}
+          emojiSize={72}
+          imgStyle={{ filter: "saturate(1.05)", transform: hovered ? "scale(1.05)" : "scale(1)", transition: "transform 400ms ease" }}
+          spanStyle={{ filter: "saturate(1.05)", transform: hovered ? "scale(1.05)" : "scale(1)", transition: "transform 400ms ease" }}
+        />
+        <div style={{ position: "absolute", top: 14, right: 14, display: "flex", gap: 6 }}>
+          {/* Share button (BUG-051). Uses Web Share API on mobile so users
+              get the native iOS/Android share sheet; clipboard fallback on
+              desktop. Stop propagation so the click doesn't also open the
+              item detail. */}
+          <button
+            onClick={async (e) => { e.stopPropagation(); await shareListing(item); }}
+            aria-label="Share this listing"
+            title="Share"
+            style={{ width: 36, height: 36, borderRadius: "50%", border: "none", background: "rgba(255,255,255,0.95)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", backdropFilter: "blur(8px)", boxShadow: "0 2px 8px rgba(31,29,25,0.1)" }}
+          >
+            <Share2 size={15} style={{ color: C.ink, strokeWidth: 2 }}/>
+          </button>
+          <button onClick={e => { e.stopPropagation(); onToggleSave(item.id); }} style={{ width: 36, height: 36, borderRadius: "50%", border: "none", background: saved ? C.paper : "rgba(255,255,255,0.95)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", backdropFilter: "blur(8px)", boxShadow: "0 2px 8px rgba(31,29,25,0.1)" }}>
+            <Heart size={16} style={{ color: saved ? C.claret : C.ink, fill: saved ? C.claret : "none", strokeWidth: 2 }}/>
+          </button>
+        </div>
         <span style={{ position: "absolute", top: 14, left: 14, fontFamily: F.head, fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", padding: "5px 11px", borderRadius: 999, background: C.paper, color: badgeColor, border: "1.5px solid " + badgeColor + "30" }}>
           {badgeLabel}
         </span>
@@ -1475,7 +1594,12 @@ function PreviewItemDetail({ item, onBack, savedPreview, togglePreview }) {
         <div>
           <div style={{ position: "relative", aspectRatio: "4/3", borderRadius: 24, background: "linear-gradient(135deg, " + C.amberMist + " 0%, " + C.sand + " 100%)", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid " + C.fawn + "80", marginBottom: 24, overflow: "hidden" }}>
             <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at center, transparent 40%, " + C.amber + "12 100%)", pointerEvents: "none" }}/>
-            <span style={{ fontSize: 160, filter: "saturate(0.85)", opacity: 0.92 }}>{item.img}</span>
+            <ItemImage
+              src={item.img}
+              emojiSize={160}
+              imgStyle={{ filter: "saturate(0.85)", opacity: 0.92 }}
+              spanStyle={{ filter: "saturate(0.85)", opacity: 0.92 }}
+            />
 
             {/* Drop-day banner — bigger version of the card badge */}
             <div style={{ position: "absolute", top: 18, left: 18, padding: "8px 14px", borderRadius: 999, background: C.amber, color: "#fff", fontFamily: F.head, fontSize: 12, fontWeight: 900, letterSpacing: "0.1em", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 3px 10px " + C.amber + "55" }}>
@@ -1505,7 +1629,7 @@ function PreviewItemDetail({ item, onBack, savedPreview, togglePreview }) {
               </div>
               <div>
                 <p style={{ fontFamily: F.head, fontSize: 11, fontWeight: 800, color: C.ash, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 3 }}>Approximate price</p>
-                <p style={{ fontFamily: F.body, fontSize: 14, fontWeight: 700, color: C.ink }}>Around \${item.estPrice}</p>
+                <p style={{ fontFamily: F.body, fontSize: 14, fontWeight: 700, color: C.ink }}>Around ${item.estPrice}</p>
               </div>
               <div>
                 <p style={{ fontFamily: F.head, fontSize: 11, fontWeight: 800, color: C.ash, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 3 }}>Neighbourhood</p>
@@ -1534,7 +1658,7 @@ function PreviewItemDetail({ item, onBack, savedPreview, togglePreview }) {
               </p>
               <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 4 }}>
                 <span style={{ fontFamily: F.head, fontSize: 12, fontWeight: 700, color: C.ash, letterSpacing: "0.08em", textTransform: "uppercase" }}>Around</span>
-                <span style={{ fontFamily: F.head, fontSize: 36, fontWeight: 900, color: C.ink, letterSpacing: "-0.025em" }}>\${item.estPrice}</span>
+                <span style={{ fontFamily: F.head, fontSize: 36, fontWeight: 900, color: C.ink, letterSpacing: "-0.025em" }}>${item.estPrice}</span>
               </div>
             </div>
 
@@ -1588,10 +1712,14 @@ function PreviewItemDetail({ item, onBack, savedPreview, togglePreview }) {
 /* ============================================================
    SNEAK PEEK LIST PAGE — full grid of items dropping Saturday
    ============================================================ */
-function SneakPeekListPage({ savedPreview, togglePreview, onPreviewItem, onBack }) {
+function SneakPeekListPage({ savedPreview, togglePreview, onPreviewItem, onBack, sneakPeekSource = null }) {
   const [filter, setFilter] = useState("all"); // "all" | "saved"
-  const items = filter === "saved" ? sneakPeekItems.filter(i => savedPreview.has(i.id)) : sneakPeekItems;
-  const savedCount = sneakPeekItems.filter(i => savedPreview.has(i.id)).length;
+  // Use the live API-sourced sneak peek when provided (authed user); fall
+  // back to the hardcoded demo array only when nothing was passed (i.e.
+  // /preview/buyer-dashboard runs without auth).
+  const source = Array.isArray(sneakPeekSource) ? sneakPeekSource : sneakPeekItems;
+  const items = filter === "saved" ? source.filter(i => savedPreview.has(i.id)) : source;
+  const savedCount = source.filter(i => savedPreview.has(i.id)).length;
 
   return (
     <div style={{ paddingBottom: 40 }}>
@@ -1621,7 +1749,7 @@ function SneakPeekListPage({ savedPreview, togglePreview, onPreviewItem, onBack 
             color: filter === "all" ? "#fff" : C.mink,
             fontFamily: F.head, fontSize: 13, fontWeight: 800, cursor: "pointer",
           }}>
-            All items <span style={{ fontWeight: 600, opacity: 0.7 }}>· {sneakPeekItems.length}</span>
+            All items <span style={{ fontWeight: 600, opacity: 0.7 }}>· {source.length}</span>
           </button>
           <button onClick={() => setFilter("saved")} style={{
             padding: "9px 16px", borderRadius: 999,
@@ -1642,14 +1770,24 @@ function SneakPeekListPage({ savedPreview, togglePreview, onPreviewItem, onBack 
 
       {/* Grid */}
       {items.length === 0 ? (
-        <div style={{ padding: "60px 20px", textAlign: "center", borderRadius: 18, background: C.sand, border: "1px solid " + C.fawn }}>
-          <Heart size={32} style={{ color: C.smoke, margin: "0 auto 12px", display: "block" }} strokeWidth={1.8}/>
-          <p style={{ fontFamily: F.head, fontSize: 16, fontWeight: 800, color: C.ink, marginBottom: 6 }}>No saved items yet</p>
-          <p style={{ fontFamily: F.body, fontSize: 13, fontWeight: 500, color: C.mink, marginBottom: 16 }}>Save items from the preview to be reminded Saturday morning.</p>
-          <button onClick={() => setFilter("all")} style={{ padding: "10px 18px", borderRadius: 999, border: "none", background: C.ink, color: "#fff", fontFamily: F.head, fontSize: 13, fontWeight: 800, cursor: "pointer" }}>
-            Browse all sneak peeks
-          </button>
-        </div>
+        source.length === 0 ? (
+          // No queued items at all — different copy from "filtered to Saved
+          // but you haven't saved anything yet."
+          <div style={{ padding: "60px 20px", textAlign: "center", borderRadius: 18, background: C.sand, border: "1px solid " + C.fawn }}>
+            <Package size={32} style={{ color: C.smoke, margin: "0 auto 12px", display: "block" }} strokeWidth={1.8}/>
+            <p style={{ fontFamily: F.head, fontSize: 16, fontWeight: 800, color: C.ink, marginBottom: 6 }}>No sneak peeks yet</p>
+            <p style={{ fontFamily: F.body, fontSize: 13, fontWeight: 500, color: C.mink, marginBottom: 16 }}>Neighbours haven&apos;t queued items for this {"Saturday's"} Drop yet. Check back later.</p>
+          </div>
+        ) : (
+          <div style={{ padding: "60px 20px", textAlign: "center", borderRadius: 18, background: C.sand, border: "1px solid " + C.fawn }}>
+            <Heart size={32} style={{ color: C.smoke, margin: "0 auto 12px", display: "block" }} strokeWidth={1.8}/>
+            <p style={{ fontFamily: F.head, fontSize: 16, fontWeight: 800, color: C.ink, marginBottom: 6 }}>No saved items yet</p>
+            <p style={{ fontFamily: F.body, fontSize: 13, fontWeight: 500, color: C.mink, marginBottom: 16 }}>Save items from the preview to be reminded Saturday morning.</p>
+            <button onClick={() => setFilter("all")} style={{ padding: "10px 18px", borderRadius: 999, border: "none", background: C.ink, color: "#fff", fontFamily: F.head, fontSize: 13, fontWeight: 800, cursor: "pointer" }}>
+              Browse all sneak peeks
+            </button>
+          </div>
+        )
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 16 }}>
           {items.map((item, i) => {
@@ -1668,7 +1806,12 @@ function SneakPeekListPage({ savedPreview, togglePreview, onPreviewItem, onBack 
               }}>
                 <div style={{ position: "relative", aspectRatio: "4/3", background: "linear-gradient(135deg, " + C.amberMist + " 0%, " + C.sand + " 100%)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
                   <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at center, transparent 40%, " + C.amber + "12 100%)" }}/>
-                  <span style={{ fontSize: 60, filter: "saturate(0.85)", opacity: 0.92 }}>{item.img}</span>
+                  <ItemImage
+                    src={item.img}
+                    emojiSize={60}
+                    imgStyle={{ filter: "saturate(0.85)", opacity: 0.92 }}
+                    spanStyle={{ filter: "saturate(0.85)", opacity: 0.92 }}
+                  />
                   <div style={{ position: "absolute", top: 10, left: 10, padding: "4px 9px", borderRadius: 999, background: C.amber, color: "#fff", fontFamily: F.head, fontSize: 10, fontWeight: 900, letterSpacing: "0.08em", display: "flex", alignItems: "center", gap: 4, boxShadow: "0 2px 6px " + C.amber + "50" }}>
                     <Clock size={10} strokeWidth={2.6}/> {dropOpenDay(true).toUpperCase()} {dropOpenHourBadge()}
                   </div>
@@ -1684,7 +1827,7 @@ function SneakPeekListPage({ savedPreview, togglePreview, onPreviewItem, onBack 
                   </p>
                   <div style={{ marginTop: "auto", display: "flex", alignItems: "baseline", gap: 5 }}>
                     <span style={{ fontFamily: F.head, fontSize: 10, fontWeight: 700, color: C.ash, letterSpacing: "0.06em", textTransform: "uppercase" }}>Around</span>
-                    <span style={{ fontFamily: F.head, fontSize: 18, fontWeight: 900, color: C.ink, letterSpacing: "-0.02em" }}>\${item.estPrice}</span>
+                    <span style={{ fontFamily: F.head, fontSize: 18, fontWeight: 900, color: C.ink, letterSpacing: "-0.02em" }}>${item.estPrice}</span>
                   </div>
                 </div>
               </article>
@@ -1696,15 +1839,24 @@ function SneakPeekListPage({ savedPreview, togglePreview, onPreviewItem, onBack 
   );
 }
 
-function PreviewStrip({ savedPreview, togglePreview, onPreviewItem, onSeeAllPreviews }) {
+function PreviewStrip({ savedPreview, togglePreview, onPreviewItem, onSeeAllPreviews, sneakPeekSource = null }) {
   // "Sneak Peek from Saturday's Drop" — item-centric preview that turns
   // mid-week browsing into a real Saturday-morning hit list.
   //
-  // Each card represents an item dropping Saturday. Buyers save items 
+  // Each card represents an item dropping Saturday. Buyers save items
   // (not sellers) to a watchlist so they wake up knowing exactly what to claim.
   //
   // Visual language: amber "SAT 8AM" badge + soft lock overlay on photos to
   // signal these are not-yet-live previews, distinct from live item cards.
+
+  // Live data flows in via `sneakPeekSource`; fall back to the demo array
+  // when no source is provided (i.e. /preview/buyer-dashboard).
+  const source = Array.isArray(sneakPeekSource) ? sneakPeekSource : sneakPeekItems;
+
+  // Hide the whole section when there's nothing to preview. Authed users
+  // with zero queued items shouldn't see a header with no content beneath
+  // — that reads as broken UI.
+  if (source.length === 0) return null;
 
   return (
     <section className="fade-in" style={{ paddingTop: 44 }}>
@@ -1729,7 +1881,7 @@ function PreviewStrip({ savedPreview, togglePreview, onPreviewItem, onSeeAllPrev
 
       {/* Horizontal scroll of item preview cards */}
       <div className="preview-scroll" style={{ display: "flex", gap: 14, overflowX: "auto", paddingBottom: 12, paddingTop: 4, scrollbarWidth: "thin", scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch", scrollPadding: "0 16px" }}>
-        {sneakPeekItems.map((item, i) => {
+        {source.map((item, i) => {
           const isSaved = savedPreview.has(item.id);
           return (
             <article key={item.id} onClick={() => onPreviewItem && onPreviewItem(item)} className="fade-in" style={{
@@ -1761,7 +1913,12 @@ function PreviewStrip({ savedPreview, togglePreview, onPreviewItem, onSeeAllPrev
                 <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at center, transparent 40%, " + C.amber + "12 100%)", pointerEvents: "none" }}/>
 
                 {/* The emoji/photo */}
-                <span style={{ fontSize: 54, filter: "saturate(0.85)", opacity: 0.92 }}>{item.img}</span>
+                <ItemImage
+                  src={item.img}
+                  emojiSize={54}
+                  imgStyle={{ filter: "saturate(0.85)", opacity: 0.92 }}
+                  spanStyle={{ filter: "saturate(0.85)", opacity: 0.92 }}
+                />
 
                 {/* SAT 8AM badge — top left */}
                 <div style={{
@@ -2098,7 +2255,7 @@ function Toast({ message, onClose }) {
 /* ============================================================
    CLAIM MODAL — buyer selects a pickup slot
    ============================================================ */
-function ClaimModal({ item, onClose, onConfirm }) {
+function ClaimModal({ item, onClose, onConfirm, accessToken = null, onGoToMessages = null }) {
   const { isMobile } = useViewport();
   const [step, setStep] = useState("confirm"); // "confirm" | "offer-sent" | "done"
   const [mode, setMode] = useState("listed"); // "listed" | "offer"
@@ -2106,11 +2263,66 @@ function ClaimModal({ item, onClose, onConfirm }) {
   const [slot, setSlot] = useState("Saturday 2:00 PM");
   const [whatsapp, setWhatsapp] = useState(true);
   const [waPhone, setWaPhone] = useState("");
+  const [sending, setSending] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
+  // Holds the backend response after a successful claim POST so the parent's
+  // onConfirm can hand the real claim id to the Claims-tab insert (instead of
+  // a temporary "bc-..." id that would block cancel/refetch flows).
+  const [realClaim, setRealClaim] = useState(null);
   const slots = ["Saturday 10:00 AM", "Saturday 2:00 PM", "Sunday 11:00 AM", "Sunday 4:00 PM"];
 
-  const handlePrimary = () => {
-    if (mode === "offer") { setStep("offer-sent"); }
-    else { setStep("done"); }
+  // Real-item heuristic — backend cuids are non-numeric strings longer than 8
+  // chars. Demo data uses numeric IDs ("c1", "c2"...) which we leave alone.
+  const isRealItem = !!accessToken && typeof item.id === "string" && item.id.length > 8 && !item.id.startsWith("bc");
+
+  const handlePrimary = async () => {
+    setErrorMsg("");
+
+    if (mode === "offer") {
+      // ── Counter-offer path — POST to /api/conversations with messageType=OFFER ──
+      if (!isRealItem) { setStep("offer-sent"); return; }
+      const trimmedOffer = Math.max(1, Math.round(Number(offer) || 0));
+      if (trimmedOffer < 1) { setErrorMsg("Enter a valid offer amount."); return; }
+      setSending(true);
+      try {
+        await apiRequest("/api/conversations", {
+          method: "POST",
+          token:  accessToken,
+          body:   JSON.stringify({
+            itemId:      item.id,
+            body:        "I'd like to offer $" + trimmedOffer + " for this item.",
+            messageType: "OFFER",
+            amount:      trimmedOffer,
+          }),
+        });
+        setStep("offer-sent");
+      } catch (err) {
+        setErrorMsg((err && err.message) ? err.message : "Could not send your offer. Please try again.");
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
+
+    // ── Claim-at-listed-price path — POST to /api/claims ──
+    // Demo items skip the API and just transition to the success screen so
+    // /preview/buyer-dashboard still walks the flow.
+    if (!isRealItem) { setStep("done"); return; }
+    setSending(true);
+    try {
+      const resp = await apiRequest("/api/claims", {
+        method: "POST",
+        token:  accessToken,
+        body:   JSON.stringify({ itemId: item.id, pickupSlot: slot || "" }),
+      });
+      // Cache the backend claim for the parent's optimistic-insert in onConfirm.
+      setRealClaim(resp && resp.claim ? resp.claim : null);
+      setStep("done");
+    } catch (err) {
+      setErrorMsg((err && err.message) ? err.message : "Could not claim the item. Please try again.");
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -2128,7 +2340,9 @@ function ClaimModal({ item, onClose, onConfirm }) {
 
         {/* Item summary card (always) */}
         <div style={{ margin: isMobile ? "0 18px 16px 18px" : "0 28px 20px 28px", display: "flex", gap: 14, padding: "14px 16px", borderRadius: 14, background: C.sand, border: "1px solid " + C.fawn }}>
-          <div style={{ fontSize: 40, width: 58, height: 58, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{item.img}</div>
+          <div style={{ width: 58, height: 58, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, overflow: "hidden", borderRadius: 10 }}>
+            <ItemImage src={item.img} emojiSize={40}/>
+          </div>
           <div style={{ flex: 1 }}>
             <p style={{ fontFamily: F.head, fontSize: 15, fontWeight: 800, color: C.ink }}>{item.title}</p>
             <p style={{ fontFamily: F.body, fontSize: 12, fontWeight: 600, color: C.mink }}>{item.seller.name} · {item.seller.dist}</p>
@@ -2277,11 +2491,23 @@ function ClaimModal({ item, onClose, onConfirm }) {
               </div>
             )}
 
+            {/* Inline error from the API (only shown when sending an offer fails). */}
+            {errorMsg && (
+              <div style={{ marginBottom: 12, padding: "10px 14px", borderRadius: 10, background: C.claretMist, border: "1px solid " + C.claret + "33", display: "flex", alignItems: "center", gap: 8 }}>
+                <AlertCircle size={14} style={{ color: C.claret, flexShrink: 0 }}/>
+                <p style={{ fontFamily: F.body, fontSize: 12, fontWeight: 600, color: C.claret, flex: 1 }}>{errorMsg}</p>
+              </div>
+            )}
+
             {/* Action buttons */}
             <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={onClose} style={{ flex: 1, padding: "12px 0", borderRadius: 12, border: "1.5px solid " + C.fawn, background: C.paper, fontFamily: F.head, fontSize: 14, fontWeight: 700, color: C.mink, cursor: "pointer" }}>Cancel</button>
-              <button onClick={handlePrimary} className="cta-primary" style={{ flex: 2, padding: "12px 0", borderRadius: 12, border: "none", background: mode === "offer" ? C.ai : C.green, color: "#fff", fontFamily: F.head, fontSize: 14, fontWeight: 800, cursor: "pointer", boxShadow: "0 2px 0 " + (mode === "offer" ? "#6D28D9" : C.greenDeep), display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                {mode === "offer" ? (<><Sparkles size={16}/> Send offer of ${offer}</>) : (<><Check size={16}/> Claim at ${item.price}</>)}
+              <button onClick={onClose} disabled={sending} style={{ flex: 1, padding: "12px 0", borderRadius: 12, border: "1.5px solid " + C.fawn, background: C.paper, fontFamily: F.head, fontSize: 14, fontWeight: 700, color: C.mink, cursor: sending ? "not-allowed" : "pointer", opacity: sending ? 0.6 : 1 }}>Cancel</button>
+              <button onClick={handlePrimary} disabled={sending} className="cta-primary" style={{ flex: 2, padding: "12px 0", borderRadius: 12, border: "none", background: mode === "offer" ? C.ai : C.green, color: "#fff", fontFamily: F.head, fontSize: 14, fontWeight: 800, cursor: sending ? "not-allowed" : "pointer", opacity: sending ? 0.7 : 1, boxShadow: "0 2px 0 " + (mode === "offer" ? "#6D28D9" : C.greenDeep), display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                {sending
+                  ? "Sending…"
+                  : mode === "offer"
+                    ? (<><Sparkles size={16}/> Send offer of ${offer}</>)
+                    : (<><Check size={16}/> Claim at ${item.price}</>)}
               </button>
             </div>
           </div>
@@ -2305,7 +2531,17 @@ function ClaimModal({ item, onClose, onConfirm }) {
               <MessageCircle size={14} style={{ color: C.wa, flexShrink: 0 }}/>
               <p style={{ fontFamily: F.body, fontSize: 12, fontWeight: 600, color: C.mink, lineHeight: 1.5 }}>You'll also be notified on WhatsApp when the seller responds.</p>
             </div>
-            <button onClick={onClose} className="cta-primary" style={{ width: "100%", padding: "13px 0", borderRadius: 12, border: "none", background: C.green, color: "#fff", fontFamily: F.head, fontSize: 14, fontWeight: 800, cursor: "pointer", boxShadow: "0 2px 0 " + C.greenDeep }}>Got it</button>
+            <div style={{ display: "flex", gap: 10 }}>
+              {onGoToMessages && (
+                <button
+                  onClick={() => { onGoToMessages(); onClose(); }}
+                  style={{ flex: 1, padding: "13px 0", borderRadius: 12, border: "1.5px solid " + C.ai + "60", background: C.paper, fontFamily: F.head, fontSize: 14, fontWeight: 800, color: C.ai, cursor: "pointer" }}
+                >
+                  View in Messages
+                </button>
+              )}
+              <button onClick={onClose} className="cta-primary" style={{ flex: onGoToMessages ? 1 : 2, padding: "13px 0", borderRadius: 12, border: "none", background: C.green, color: "#fff", fontFamily: F.head, fontSize: 14, fontWeight: 800, cursor: "pointer", boxShadow: "0 2px 0 " + C.greenDeep }}>Got it</button>
+            </div>
           </div>
         )}
 
@@ -2336,8 +2572,11 @@ function ClaimModal({ item, onClose, onConfirm }) {
               <p style={{ fontFamily: F.body, fontSize: 12, fontWeight: 600, color: C.ai, lineHeight: 1.5 }}>The seller's AI agent confirmed your claim and will send a reminder 1 hour before pickup.</p>
             </div>
             <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={() => { onConfirm(slot, item.price); }} className="cta-primary" style={{ flex: 2, padding: "13px 0", borderRadius: 12, border: "none", background: C.green, color: "#fff", fontFamily: F.head, fontSize: 14, fontWeight: 800, cursor: "pointer", boxShadow: "0 2px 0 " + C.greenDeep }}>View in Claims</button>
-              <button onClick={onClose} style={{ flex: 1, padding: "13px 0", borderRadius: 12, border: "1.5px solid " + C.fawn, background: C.paper, fontFamily: F.head, fontSize: 14, fontWeight: 700, color: C.mink, cursor: "pointer" }}>Done</button>
+              <button onClick={() => { onConfirm(slot, item.price, realClaim); }} className="cta-primary" style={{ flex: 2, padding: "13px 0", borderRadius: 12, border: "none", background: C.green, color: "#fff", fontFamily: F.head, fontSize: 14, fontWeight: 800, cursor: "pointer", boxShadow: "0 2px 0 " + C.greenDeep }}>View in Claims</button>
+              {/* "Done" still records the claim in the parent's local state so
+                  the user finds it on the next visit to the Claims tab — the
+                  POST has already happened, this is just navigation parity. */}
+              <button onClick={() => { onConfirm(slot, item.price, realClaim); onClose(); }} style={{ flex: 1, padding: "13px 0", borderRadius: 12, border: "1.5px solid " + C.fawn, background: C.paper, fontFamily: F.head, fontSize: 14, fontWeight: 700, color: C.mink, cursor: "pointer" }}>Done</button>
             </div>
           </div>
         )}
@@ -2378,7 +2617,9 @@ function AskModal({ item, onClose, onSend }) {
 
         {/* Item summary */}
         <div style={{ display: "flex", gap: 12, padding: "12px 14px", borderRadius: 12, border: "1px solid " + C.fawn, background: C.sand, marginBottom: 16 }}>
-          <div style={{ fontSize: 30, width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{item.img}</div>
+          <div style={{ width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, overflow: "hidden", borderRadius: 8 }}>
+            <ItemImage src={item.img} emojiSize={30}/>
+          </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <p style={{ fontFamily: F.head, fontSize: 13, fontWeight: 800, color: C.ink }}>{item.title}</p>
             <p style={{ fontFamily: F.head, fontSize: 15, fontWeight: 900, color: C.green }}>${item.price}</p>
@@ -2532,7 +2773,12 @@ function formatPickupSummary(item) {
   return { days: daySummary, windows: winSummary };
 }
 
-function ItemDetail({ item, onBack, onClaimComplete, onGoToClaims, onGoToSeller, onViewSeller, savedIds, onToggleSave, accessToken = null, onGoToMessages = null }) {
+function ItemDetail({ item, onBack, onClaimComplete, onGoToClaims, onGoToSeller, onViewSeller, savedIds, onToggleSave, accessToken = null, onGoToMessages = null, currentUserId = null, onSwitchRole = null }) {
+  // BUG-050 safety net — even with the buyer feed filtering own items out
+  // (in the parent useEffect), a deep link, watchlist row, or stale cache
+  // can still land a seller on their own item detail page. Detect that and
+  // swap the Claim / Ask buttons for a "switch to Seller view" affordance.
+  const isMyOwnItem = !!currentUserId && item?.seller?.id === currentUserId;
   const { isMobile } = useViewport();
   const [showClaim, setShowClaim] = useState(false);
   const [showAsk, setShowAsk] = useState(false);
@@ -2546,9 +2792,9 @@ function ItemDetail({ item, onBack, onClaimComplete, onGoToClaims, onGoToSeller,
   const accentBg = C.greenMist;
   const discount = item.origPrice ? Math.round((1 - item.price / item.origPrice) * 100) : null;
 
-  const handleClaimConfirm = (slot, price) => {
+  const handleClaimConfirm = (slot, price, realClaim) => {
     setShowClaim(false);
-    onClaimComplete({ ...item, price }, slot);
+    onClaimComplete({ ...item, price }, slot, realClaim);
     setToast("Claim submitted! Check your Claims tab.");
     setTimeout(() => onGoToClaims(), 1200);
   };
@@ -2563,7 +2809,7 @@ function ItemDetail({ item, onBack, onClaimComplete, onGoToClaims, onGoToSeller,
         <div>
           {/* Image area with badge overlays */}
           <div style={{ position: "relative", aspectRatio: "4/3", borderRadius: isMobile ? 18 : 24, background: "linear-gradient(135deg, " + accentBg + ", " + C.sand + ")", display: "flex", alignItems: "center", justifyContent: "center", border: "1.5px solid " + C.fawn, marginBottom: isMobile ? 16 : 24, overflow: "hidden" }}>
-            <span style={{ fontSize: 160 }}>{item.img}</span>
+            <ItemImage src={item.img} emojiSize={160}/>
             {/* Top-left: stacked badges */}
             <div style={{ position: "absolute", top: 18, left: 18, display: "flex", flexDirection: "column", gap: 8 }}>
               {item.layer === "drop" && (
@@ -2729,9 +2975,11 @@ function ItemDetail({ item, onBack, onClaimComplete, onGoToClaims, onGoToSeller,
               </div>
             )}
 
-            <button onClick={() => setShowAsk(true)} className="cta-primary" style={{ width: "100%", padding: "12px 0", borderRadius: 12, border: "1.5px solid " + C.fawn, background: C.paper, color: C.ink, fontFamily: F.head, fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-              <MessageCircle size={14}/> Ask a question
-            </button>
+            {!isMyOwnItem && (
+              <button onClick={() => setShowAsk(true)} className="cta-primary" style={{ width: "100%", padding: "12px 0", borderRadius: 12, border: "1.5px solid " + C.fawn, background: C.paper, color: C.ink, fontFamily: F.head, fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                <MessageCircle size={14}/> Ask a question
+              </button>
+            )}
           </div>
         </div>
 
@@ -2770,20 +3018,41 @@ function ItemDetail({ item, onBack, onClaimComplete, onGoToClaims, onGoToSeller,
 
 
           <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 14 }}>
-            {/* Primary claim CTA — works for all item types including Shelf */}
-            <button onClick={() => setShowClaim(true)} disabled={item.status === "claimed"} className="cta-primary" style={{ padding: "14px 0", borderRadius: 14, border: "none", background: item.status === "claimed" ? C.fawn : accent, color: item.status === "claimed" ? C.ash : "#fff", fontFamily: F.head, fontSize: 15, fontWeight: 800, cursor: item.status === "claimed" ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, boxShadow: item.status === "claimed" ? "none" : "0 2px 0 " + accent + "60" }}>
-              <Check size={17}/> {item.status === "claimed" ? "Already claimed" : (isShelf ? "Claim at $" + item.price : "Claim this item")}
-            </button>
+            {isMyOwnItem ? (
+              // Self-ownership safety net — see BUG-050. Surface the right
+              // affordance instead of giving the seller buttons they can't
+              // actually use.
+              <>
+                <div style={{ padding: 14, borderRadius: 14, border: "1.5px solid " + C.amber + "55", background: C.amberMist }}>
+                  <p style={{ fontFamily: F.head, fontSize: 13, fontWeight: 800, color: C.amberDeep, marginBottom: 4 }}>This is your listing</p>
+                  <p style={{ fontFamily: F.body, fontSize: 12, fontWeight: 600, color: C.mink, lineHeight: 1.5 }}>
+                    You can&apos;t claim or message yourself. Manage edits, photos, and price in the Seller view.
+                  </p>
+                </div>
+                {onSwitchRole && (
+                  <button onClick={onSwitchRole} className="cta-primary" style={{ padding: "12px 0", borderRadius: 12, border: "none", background: accent, color: "#fff", fontFamily: F.head, fontSize: 14, fontWeight: 800, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, boxShadow: "0 2px 0 " + accent + "60" }}>
+                    Open in Seller view <ChevronRight size={15}/>
+                  </button>
+                )}
+              </>
+            ) : (
+              <>
+                {/* Primary claim CTA — works for all item types including Shelf */}
+                <button onClick={() => setShowClaim(true)} disabled={item.status === "claimed"} className="cta-primary" style={{ padding: "14px 0", borderRadius: 14, border: "none", background: item.status === "claimed" ? C.fawn : accent, color: item.status === "claimed" ? C.ash : "#fff", fontFamily: F.head, fontSize: 15, fontWeight: 800, cursor: item.status === "claimed" ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, boxShadow: item.status === "claimed" ? "none" : "0 2px 0 " + accent + "60" }}>
+                  <Check size={17}/> {item.status === "claimed" ? "Already claimed" : (isShelf ? "Claim at $" + item.price : "Claim this item")}
+                </button>
 
-            {/* Secondary row: Save + Ask */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              <button onClick={toggleSave} style={{ padding: "11px 0", borderRadius: 12, border: "1.5px solid " + (saved ? C.claret : C.fawn), background: saved ? C.claretMist : C.paper, color: saved ? C.claret : C.mink, fontFamily: F.head, fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                <Heart size={14} fill={saved ? C.claret : "none"}/> {saved ? "Saved" : "Save"}
-              </button>
-              <button onClick={() => setShowAsk(true)} style={{ padding: "11px 0", borderRadius: 12, border: "1.5px solid " + C.fawn, background: C.paper, color: C.mink, fontFamily: F.head, fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                <MessageCircle size={14}/> Ask
-              </button>
-            </div>
+                {/* Secondary row: Save + Ask */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  <button onClick={toggleSave} style={{ padding: "11px 0", borderRadius: 12, border: "1.5px solid " + (saved ? C.claret : C.fawn), background: saved ? C.claretMist : C.paper, color: saved ? C.claret : C.mink, fontFamily: F.head, fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                    <Heart size={14} fill={saved ? C.claret : "none"}/> {saved ? "Saved" : "Save"}
+                  </button>
+                  <button onClick={() => setShowAsk(true)} style={{ padding: "11px 0", borderRadius: 12, border: "1.5px solid " + C.fawn, background: C.paper, color: C.mink, fontFamily: F.head, fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                    <MessageCircle size={14}/> Ask
+                  </button>
+                </div>
+              </>
+            )}
 
             {/* Shelf items: small helper line explaining offer option */}
             {isShelf && item.status !== "claimed" && (
@@ -2796,7 +3065,7 @@ function ItemDetail({ item, onBack, onClaimComplete, onGoToClaims, onGoToSeller,
         </div>
       </div>
 
-      {showClaim && <ClaimModal item={item} onClose={() => setShowClaim(false)} onConfirm={handleClaimConfirm}/>}
+      {showClaim && <ClaimModal item={item} onClose={() => setShowClaim(false)} onConfirm={handleClaimConfirm} accessToken={accessToken} onGoToMessages={onGoToMessages}/>}
       {showAsk && <AskModal item={item} onClose={() => setShowAsk(false)} onSend={async (msg) => {
         // Wired path: create or reuse a conversation with the seller and post
         // the question as the first message, then jump to the Messages tab.
@@ -2826,7 +3095,7 @@ function ItemDetail({ item, onBack, onClaimComplete, onGoToClaims, onGoToSeller,
 /* ============================================================
    REGULAR SELLER PROFILE (non-Dedicated)
    ============================================================ */
-function RegularSellerProfile({ sellerName, onBack, onSelect, onClaimNow, savedIds, onToggleSave, itemsSource = null }) {
+function RegularSellerProfile({ sellerName, onBack, onSelect, onClaimNow, savedIds, onToggleSave, itemsSource = null, state = "between" }) {
   const source = Array.isArray(itemsSource) ? itemsSource : allItems;
   const items = source.filter(i => i.seller === sellerName);
   // Real seller stats live on the backend but we don't have a user-summary
@@ -2886,7 +3155,7 @@ function RegularSellerProfile({ sellerName, onBack, onSelect, onClaimNow, savedI
         <EmptyState illustration={<EmptySellerIllustration/>} title={"No active listings from " + firstName} message="Their stand is empty right now. Check back soon — neighbours list new items every week." accent={C.amber}/>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 20 }}>
-          {items.map((i, idx) => <ItemCard key={i.id} item={i} saved={savedIds.has(i.id)} onToggleSave={onToggleSave} onOpen={() => onSelect(toDetailItem(i))} onClaimNow={() => onClaimNow && onClaimNow(toDetailItem(i))} index={idx}/>)}
+          {items.map((i, idx) => <ItemCard key={i.id} item={i} saved={savedIds.has(i.id)} onToggleSave={onToggleSave} onOpen={() => onSelect(toDetailItem(i))} onClaimNow={() => onClaimNow && onClaimNow(toDetailItem(i))} index={idx} liveMode={state === "live"}/>)}
         </div>
       )}
 
@@ -2903,7 +3172,7 @@ function RegularSellerProfile({ sellerName, onBack, onSelect, onClaimNow, savedI
 /* ============================================================
    SAVED PAGE
    ============================================================ */
-function SavedPage({ savedIds, onSelect, onClaimNow, onToggleSave, onBrowse, onBack, claimedIds = new Set(), purchasedIds = new Set(), itemsSource = null }) {
+function SavedPage({ savedIds, onSelect, onClaimNow, onToggleSave, onBrowse, onBack, claimedIds = new Set(), purchasedIds = new Set(), itemsSource = null, state = "between" }) {
   const source = Array.isArray(itemsSource) ? itemsSource : allItems;
   const items = source.filter(i => savedIds.has(i.id));
   return (
@@ -2913,7 +3182,7 @@ function SavedPage({ savedIds, onSelect, onClaimNow, onToggleSave, onBrowse, onB
         <EmptyState illustration={<EmptySavedIllustration/>} title="Nothing saved yet" message="Tap the heart on items you’re interested in — they’ll gather here so you can claim them when the Drop opens." cta="Browse Discover" onCtaClick={onBrowse} accent={C.amber}/>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 20 }}>
-          {items.map((i, idx) => <ItemCard key={i.id} item={i} saved={true} onToggleSave={onToggleSave} onOpen={() => onSelect(toDetailItem(i))} onClaimNow={() => onClaimNow && onClaimNow(toDetailItem(i))} index={idx} claimedByMe={claimedIds.has(i.id)} purchasedByMe={purchasedIds.has(i.id)}/>)}
+          {items.map((i, idx) => <ItemCard key={i.id} item={i} saved={true} onToggleSave={onToggleSave} onOpen={() => onSelect(toDetailItem(i))} onClaimNow={() => onClaimNow && onClaimNow(toDetailItem(i))} index={idx} liveMode={state === "live"} claimedByMe={claimedIds.has(i.id)} purchasedByMe={purchasedIds.has(i.id)}/>)}
         </div>
       )}
     </>
@@ -3124,7 +3393,9 @@ function ClaimsPage({ claims, setClaims, onBrowse, onBack, onGoToMessages, onOpe
                 )}
 
                 <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-                  <div style={{ fontSize: 40, width: 64, height: 64, borderRadius: 16, background: "linear-gradient(135deg, " + C.sand + ", " + C.fawn + ")", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{c.e}</div>
+                  <div style={{ width: 64, height: 64, borderRadius: 16, background: "linear-gradient(135deg, " + C.sand + ", " + C.fawn + ")", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, overflow: "hidden" }}>
+                    <ItemImage src={c.img || c.e} emojiSize={40}/>
+                  </div>
 
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6, flexWrap: "wrap" }}>
@@ -3407,7 +3678,12 @@ function MessagesPage({ user = null, accessToken = null, claims = [], onAcceptCo
       item: {
         title: api.item?.title || "Item",
         price: api.item?.price ?? 0,
-        img:   CATEGORY_EMOJI[api.item?.category] || "\u{1F4E6}",
+        // Prefer the actual uploaded photo if available; fall back to the
+        // category emoji. Renderers downstream use <ItemImage> to handle
+        // both cases.
+        img:   (Array.isArray(api.item?.photos) && api.item.photos[0])
+                 ? api.item.photos[0]
+                 : (CATEGORY_EMOJI[api.item?.category] || "\u{1F4E6}"),
         layer,
       },
       seller: {
@@ -3739,7 +4015,9 @@ function MessagesPage({ user = null, accessToken = null, claims = [], onAcceptCo
                   <span style={{ position: "absolute", left: 0, top: 12, bottom: 12, width: 3, borderRadius: 999, background: C.green }}/>
                 )}
                 {c.unread && <span style={{ position: "absolute", left: 6, top: "50%", transform: "translateY(-50%)", width: 6, height: 6, borderRadius: "50%", background: C.green }}/>}
-                <div style={{ fontSize: 32, width: 48, height: 48, borderRadius: 12, background: C.sand, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, border: "1px solid " + C.fawn }}>{c.item.img}</div>
+                <div style={{ width: 48, height: 48, borderRadius: 12, background: C.sand, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, border: "1px solid " + C.fawn, overflow: "hidden" }}>
+                  <ItemImage src={c.item.img} emojiSize={32}/>
+                </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, marginBottom: 2 }}>
                     <p style={{ fontFamily: F.head, fontSize: 14, fontWeight: 800, color: C.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.item.title}</p>
@@ -3778,7 +4056,9 @@ function MessagesPage({ user = null, accessToken = null, claims = [], onAcceptCo
             )}
             {/* Thread header */}
             <div style={{ padding: "16px 20px", borderBottom: "1px solid " + C.fawn, display: "flex", alignItems: "center", gap: 14 }}>
-              <div style={{ fontSize: 30, width: 44, height: 44, borderRadius: 12, background: C.sand, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, border: "1px solid " + C.fawn }}>{active.item.img}</div>
+              <div style={{ width: 44, height: 44, borderRadius: 12, background: C.sand, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, border: "1px solid " + C.fawn, overflow: "hidden" }}>
+                <ItemImage src={active.item.img} emojiSize={30}/>
+              </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <p style={{ fontFamily: F.head, fontSize: 15, fontWeight: 800, color: C.ink }}>{active.item.title}</p>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 2, flexWrap: "wrap" }}>
@@ -4021,7 +4301,9 @@ function HistoryPage({ highlightId = null, onClearHighlight = null, onOpenThread
     return (
       <article style={{ padding: "16px 18px", borderRadius: 16, background: C.paper, border: "1.5px solid " + (highlightId === tx.id ? C.green : C.fawn), boxShadow: highlightId === tx.id ? "0 0 0 4px " + C.greenMist + ", 0 8px 24px rgba(48,132,36,0.18)" : "none", transition: "box-shadow 200ms, border-color 200ms", marginBottom: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <div style={{ width: 56, height: 56, borderRadius: 14, background: layerTint, border: "1px solid " + C.fawn, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, flexShrink: 0 }}>{tx.img}</div>
+          <div style={{ width: 56, height: 56, borderRadius: 14, background: layerTint, border: "1px solid " + C.fawn, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, overflow: "hidden" }}>
+            <ItemImage src={tx.img} emojiSize={28}/>
+          </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3, flexWrap: "wrap" }}>
               <p style={{ fontFamily: F.head, fontSize: 15, fontWeight: 800, color: C.ink }}>{tx.title}</p>
@@ -4260,17 +4542,26 @@ function SellWithAICta({ onSwitchRole }) {
           </div>
         </div>
 
-        <button disabled aria-disabled="true" style={{
-          display: "flex", alignItems: "center", gap: 8,
-          padding: "13px 24px", borderRadius: 999, border: "none",
-          background: C.smoke,
-          color: C.mink,
-          fontFamily: F.head, fontSize: 14, fontWeight: 800,
-          cursor: "not-allowed",
-          opacity: 0.7,
-          position: "relative",
-          whiteSpace: "nowrap",
-        }}>
+        {/* "Sell with AI" CTA — flips the dashboard into seller mode so the
+            buyer can land on the seller Overview where the AI agent
+            waitlist (Settings → Sell with AI) lives. Previously this was
+            a permanently-disabled stub with no handler. */}
+        <button
+          onClick={() => onSwitchRole && onSwitchRole()}
+          disabled={!onSwitchRole}
+          style={{
+            display: "flex", alignItems: "center", gap: 8,
+            padding: "13px 24px", borderRadius: 999, border: "none",
+            background: onSwitchRole ? "linear-gradient(135deg, " + C.ai + " 0%, #6D28D9 100%)" : C.smoke,
+            color: onSwitchRole ? "#fff" : C.mink,
+            fontFamily: F.head, fontSize: 14, fontWeight: 800,
+            cursor: onSwitchRole ? "pointer" : "not-allowed",
+            opacity: onSwitchRole ? 1 : 0.7,
+            position: "relative",
+            whiteSpace: "nowrap",
+            boxShadow: onSwitchRole ? "0 2px 0 #6D28D9, 0 4px 12px " + C.ai + "40" : "none",
+          }}
+        >
           <Sparkles size={15}/> Sell with AI <ArrowRight size={15}/>
         </button>
       </div>
@@ -4281,12 +4572,18 @@ function SellWithAICta({ onSwitchRole }) {
 /* ============================================================
    DISCOVER — Between Drops state
    ============================================================ */
-function DiscoverPage({ savedIds, onToggleSave, onSelect, onClaimNow, state, reminded, onRemindMe, savedPreview, togglePreview, onSwitchRole, onPreviewItem, onSeeAllPreviews, claimedIds = new Set(), purchasedIds = new Set(), itemsSource = null, itemsLoading = false }) {
+function DiscoverPage({ savedIds, onToggleSave, onSelect, onClaimNow, state, reminded, onRemindMe, savedPreview, togglePreview, onSwitchRole, onPreviewItem, onSeeAllPreviews, claimedIds = new Set(), purchasedIds = new Set(), itemsSource = null, itemsLoading = false, sneakPeekSource = null }) {
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [cat, setCat] = useState("All");
   const [sort, setSort] = useState("newest");
   const [panelOpen, setPanelOpen] = useState(false);
+
+  // Unique-seller count for the AnticipationBand "X neighbours have items
+  // lined up" line. Null when no source was passed (i.e. preview routes) so
+  // AnticipationBand can keep its own demo fallback.
+  const queuedSellerCount = Array.isArray(sneakPeekSource) ? new Set(sneakPeekSource.map(i => i.seller).filter(Boolean)).size : null;
+  const queuedSellerNames = Array.isArray(sneakPeekSource) ? Array.from(new Set(sneakPeekSource.map(i => i.seller).filter(Boolean))) : null;
   const dropOpenCountdown = useDropOpenCountdownString();
 
   // Show the cardboard-box skeleton on the initial backend load — empty
@@ -4294,7 +4591,7 @@ function DiscoverPage({ savedIds, onToggleSave, onSelect, onClaimNow, state, rem
   if (itemsLoading) {
     return (
       <>
-        {state === "between" && <AnticipationBand onRemindMe={onRemindMe} reminded={reminded}/>}
+        {state === "between" && <AnticipationBand onRemindMe={onRemindMe} reminded={reminded} queuedCount={queuedSellerCount} sellerNames={queuedSellerNames}/>}
         {state === "live" && <WelcomeBand/>}
         <FilterRail filter={filter} setFilter={setFilter} search={search} setSearch={setSearch} cat={cat} setCat={setCat} sort={sort} setSort={setSort} panelOpen={panelOpen} setPanelOpen={setPanelOpen} state={state}/>
         <DiscoverSkeleton/>
@@ -4338,14 +4635,14 @@ function DiscoverPage({ savedIds, onToggleSave, onSelect, onClaimNow, state, rem
 
   return (
     <>
-      {state === "between" && <AnticipationBand onRemindMe={onRemindMe} reminded={reminded}/>}
+      {state === "between" && <AnticipationBand onRemindMe={onRemindMe} reminded={reminded} queuedCount={queuedSellerCount} sellerNames={queuedSellerNames}/>}
       {state === "live" && <WelcomeBand/>}
 
       <FilterRail filter={filter} setFilter={setFilter} search={search} setSearch={setSearch} cat={cat} setCat={setCat} sort={sort} setSort={setSort} panelOpen={panelOpen} setPanelOpen={setPanelOpen} state={state}/>
 
       {/* Preview strip — only when Between Drops */}
       {state === "between" && filter === "all" && (
-        <PreviewStrip savedPreview={savedPreview} togglePreview={togglePreview} onPreviewItem={onPreviewItem} onSeeAllPreviews={onSeeAllPreviews}/>
+        <PreviewStrip savedPreview={savedPreview} togglePreview={togglePreview} onPreviewItem={onPreviewItem} onSeeAllPreviews={onSeeAllPreviews} sneakPeekSource={sneakPeekSource}/>
       )}
 
 {/* LIVE DROP unified pool: drop + shelf items mixed together.
@@ -4785,18 +5082,67 @@ export default function DropYardBuyerDashboard({
       .then(data => {
         if (cancelled) return;
         const list = Array.isArray(data?.items) ? data.items : [];
-        setLiveItems(list.map(adaptBuyerItem).filter(Boolean));
+        // Drop the seller's own items from the buyer feed — they can't claim
+        // or message themselves about their own listing (backend enforces
+        // both), so surfacing them only invites the "Couldn't send" toast.
+        // BUG-050. Sellers can still preview their item in Seller-mode UI.
+        const mineFiltered = user?.id ? list.filter((i) => i?.seller?.id !== user.id) : list;
+        setLiveItems(mineFiltered.map(adaptBuyerItem).filter(Boolean));
       })
       .catch(() => { if (!cancelled) setLiveItems([]); })
       .finally(() => { if (!cancelled) setItemsLoading(false); });
     return () => { cancelled = true; };
   }, [accessToken]);
   const itemsForUI = Array.isArray(liveItems) ? liveItems : allItems;
+
+  // Sneak peek — items queued for the upcoming Drop. Same fetch pattern as
+  // liveItems above, but hits the dedicated /api/items/sneak-peek route so
+  // it doesn't have to wait for PREVIEW phase. In standalone preview mode
+  // (no accessToken) we fall back to the hardcoded `sneakPeekItems` demo
+  // data so /preview/buyer-dashboard still has visible cards.
+  const [sneakPeekFromApi, setSneakPeekFromApi] = useState(null);
+  useEffect(() => {
+    if (!accessToken) { setSneakPeekFromApi(null); return; }
+    let cancelled = false;
+    apiRequest("/api/items/sneak-peek", { token: accessToken })
+      .then(data => {
+        if (cancelled) return;
+        const list = Array.isArray(data?.items) ? data.items : [];
+        // Same self-filter as the main feed (BUG-050) — the seller's own
+        // queued items belong in the Seller-mode inventory, not the buyer
+        // Sneak Peek strip.
+        const mineFiltered = user?.id ? list.filter((i) => i?.seller?.id !== user.id) : list;
+        const adapted = mineFiltered.map((api, i) => {
+          const photos = Array.isArray(api?.photos) ? api.photos.filter(Boolean) : [];
+          return {
+            id:       api.id ?? ("api-peek-" + i),
+            t:        api.title || "Item",
+            estPrice: api.originalPrice ?? api.price ?? 0,
+            img:      photos[0] || CATEGORY_EMOJI[api.category] || "📦",
+            cat:      BUYER_ENUM_TO_CATEGORY[api.category] || "Other",
+            seller:   api.seller?.name || "Neighbour",
+            hood:     api.seller?.neighborhood || "Nearby",
+            dist:     "Nearby",
+          };
+        });
+        setSneakPeekFromApi(adapted);
+      })
+      .catch(() => { if (!cancelled) setSneakPeekFromApi([]); });
+    return () => { cancelled = true; };
+  }, [accessToken]);
+  // For authed users, only show real API data — even if it's empty. The
+  // hardcoded `sneakPeekItems` array is reserved for /preview/buyer-dashboard
+  // (where there's no token) so real users never see fake content.
+  const sneakPeekForUI = accessToken
+    ? (Array.isArray(sneakPeekFromApi) ? sneakPeekFromApi : [])
+    : sneakPeekItems;
   const [viewingItem, setViewingItem] = useState(null);
   const [viewingSellerName, setViewingSellerName] = useState(null);
-  // Watchlist — seeded with the demo set so /preview/buyer-dashboard still
-  // looks populated; replaced with the buyer's real watchlist when auth'd.
-  const [savedIds, setSavedIds] = useState(() => new Set([1, 6, 13, 9, 4, 20]));
+  // Watchlist — demo set populates /preview/buyer-dashboard so the cards
+  // look interactive; real users start with an empty Set and hydrate from
+  // /api/watchlist so the topbar Saved badge doesn't briefly show "6" of
+  // fake demo items before the fetch lands.
+  const [savedIds, setSavedIds] = useState(() => accessToken ? new Set() : new Set([1, 6, 13, 9, 4, 20]));
   useEffect(() => {
     if (!accessToken) return;
     let cancelled = false;
@@ -4806,10 +5152,15 @@ export default function DropYardBuyerDashboard({
         const items = Array.isArray(data?.items) ? data.items : [];
         setSavedIds(new Set(items.map((i) => i.id)));
       })
-      .catch(() => { /* keep current set on network blip */ });
+      .catch(() => {
+        // Real-user network blip — keep the empty set rather than fake data.
+        if (!cancelled) setSavedIds(new Set());
+      });
     return () => { cancelled = true; };
   }, [accessToken]);
-  const [savedPreview, setSavedPreview] = useState(new Set([101, 104]));
+  // Sneak Peek "save for Saturday" — purely client-side today (no API).
+  // Same rationale: empty Set for authed users, demo IDs for /preview/buyer-dashboard.
+  const [savedPreview, setSavedPreview] = useState(() => accessToken ? new Set() : new Set([101, 104]));
   const [viewingPreview, setViewingPreview] = useState(null); // sneak peek item being previewed
   const [showSneakList, setShowSneakList] = useState(false); // full sneak peek list page
   const [reminded, setReminded] = useState(false);
@@ -4824,11 +5175,17 @@ export default function DropYardBuyerDashboard({
   }, []);
   const [claimItem, setClaimItem] = useState(null); // direct-from-card claim modal target
 
-  const [claims, setClaims] = useState([
+  // Demo claims reserved for /preview/buyer-dashboard (no accessToken). Real
+  // users start with an empty list and populate from /api/claims/mine; this
+  // avoids showing fake "Kids Bicycle / Solid Oak Table / Cuisinart Coffee
+  // Maker" stat counts in the Claims tab before the fetch finishes \u2014 and
+  // permanently if the network fails.
+  const DEMO_CLAIMS = [
     { id:"bc1", itemId: 1,  e:"\u{1F6B2}", t:"Kids Bicycle - 16 inch",    price:30,  seller:"Tom R.",  status:"pickup-overdue",   date:"Today",     time:"10:00 AM", addr:"8 Larkin Crescent",         channel:"drop",     isPastDue:true, autoCancelsIn:"1h 47m", paymentMethod:"cash"      },
     { id:"bc2", itemId: 13, e:"\u{1FAB5}", t:"Solid Oak Dining Table",    price:350, seller:"Jane D.", status:"pickup-scheduled", date:"Sat, Apr 25", time:"2:00 PM", addr:"42 Bridlewood Dr",           channel:"drop",     paymentMethod:"etransfer" },
     { id:"bc3", itemId: 9,  e:"\u2615",     t:"Cuisinart Coffee Maker",     price:15,  seller:"Sarah L.", status:"offer-pending",    date:null,         time:null,      addr:null,                         channel:"drop", counterAmount:20,  paymentMethod:"either"    },
-  ]);
+  ];
+  const [claims, setClaims] = useState(accessToken ? [] : DEMO_CLAIMS);
 
   // \u2500\u2500\u2500 Buyer's claims from /api/claims/mine \u2500\u2500\u2500
   // Active claims drive ClaimsPage; PICKED_UP rows drive HistoryPage (separate
@@ -4850,7 +5207,12 @@ export default function DropYardBuyerDashboard({
           .map(adaptBuyerClaim).filter(Boolean);
         setClaims(active);
       })
-      .catch(() => { /* keep demo data on network blips */ });
+      .catch(() => {
+        // On a real-user network blip, prefer an empty list over fake data \u2014
+        // the stat counts on ClaimsPage will read 0/0/0 instead of 1/1/1,
+        // which is honest. The next socket event (or remount) retries.
+        if (!cancelled) setClaims([]);
+      });
     return () => { cancelled = true; };
   }, [accessToken, claimsTick]);
 
@@ -4899,16 +5261,18 @@ export default function DropYardBuyerDashboard({
   const togglePreview = (i) => setSavedPreview(prev => { const n = new Set(prev); if (n.has(i)) n.delete(i); else n.add(i); return n; });
   const handleRemindMe = () => { setReminded(true); setToast(`We'll ping you ${dropOpenDay()} at ${dropOpenHour()}.`); };
 
-  const handleClaimComplete = async (item, slot) => {
+  const handleClaimComplete = async (item, slot, realClaim = null) => {
     const parts = slot ? slot.split(" ") : [];
     const day = parts.slice(0, -1).join(" ") || "TBD";
     const time = parts[parts.length - 1] || "TBD";
-    // Optimistic insert so the Claims tab feels instant. Local id starts with
-    // "bc-" — the cancel flow + adaptBuyerClaim both treat string ids starting
-    // with "bc" as demo-only.
-    const tempId = "bc-" + Date.now();
-    setClaims(prev => [{ id: tempId, itemId: item.id, e: item.img, t: item.title, price: item.price, seller: item.seller.name, status: "pickup-scheduled", date: day, time: time, addr: "Address sent via WhatsApp", channel: item.layer }, ...prev]);
-    // Skip the backend call for demo items (numeric ids) and unauthed preview.
+    // Use the real backend claim id when ClaimModal has already POSTed (BUG-043).
+    // For demo/preview flows the modal skips the API and we synthesize a "bc-"
+    // id that the cancel flow + adaptBuyerClaim recognise as demo-only.
+    const insertId = realClaim?.id || ("bc-" + Date.now());
+    setClaims(prev => [{ id: insertId, itemId: item.id, e: item.img, t: item.title, price: item.price, seller: item.seller.name, status: "pickup-scheduled", date: day, time: time, addr: "Address sent via WhatsApp", channel: item.layer }, ...prev]);
+    // The POST already happened inside ClaimModal — skip it here when we have
+    // the real claim, otherwise (demo or unauthed) skip entirely.
+    if (realClaim) return;
     if (!accessToken) return;
     if (typeof item.id === "number") return;
     try {
@@ -4965,10 +5329,10 @@ export default function DropYardBuyerDashboard({
 
         <div style={{ maxWidth: 1280, margin: "0 auto", padding: isMobile ? "16px 16px calc(76px + env(safe-area-inset-bottom, 0))" : "24px 32px 64px" }}>
           {viewingSellerName && (
-            <RegularSellerProfile sellerName={viewingSellerName} onBack={() => setViewingSellerName(null)} onSelect={setViewingItem} onClaimNow={setClaimItem} savedIds={savedIds} onToggleSave={toggleSave} itemsSource={itemsForUI}/>
+            <RegularSellerProfile sellerName={viewingSellerName} onBack={() => setViewingSellerName(null)} onSelect={setViewingItem} onClaimNow={setClaimItem} savedIds={savedIds} onToggleSave={toggleSave} itemsSource={itemsForUI} state={dropState}/>
           )}
           {viewingItem && !viewingSellerName && (
-            <ItemDetail item={viewingItem} onBack={() => setViewingItem(null)} onClaimComplete={handleClaimComplete} onGoToClaims={() => { setViewingItem(null); setPage("claims"); }}  onViewSeller={(name) => setViewingSellerName(name)} savedIds={savedIds} onToggleSave={toggleSave} accessToken={accessToken} onGoToMessages={() => { setViewingItem(null); setPage("messages"); }}/>
+            <ItemDetail item={viewingItem} onBack={() => setViewingItem(null)} onClaimComplete={handleClaimComplete} onGoToClaims={() => { setViewingItem(null); setPage("claims"); }}  onViewSeller={(name) => setViewingSellerName(name)} savedIds={savedIds} onToggleSave={toggleSave} accessToken={accessToken} onGoToMessages={() => { setViewingItem(null); setPage("messages"); }} currentUserId={user?.id || null} onSwitchRole={onSwitchRole}/>
           )}
 
           {!viewingItem && !viewingSellerName && (
@@ -4977,10 +5341,10 @@ export default function DropYardBuyerDashboard({
                 <PreviewItemDetail item={viewingPreview} onBack={() => setViewingPreview(null)} savedPreview={savedPreview} togglePreview={togglePreview}/>
               )}
               {page === "discover" && !viewingPreview && showSneakList && (
-                <SneakPeekListPage savedPreview={savedPreview} togglePreview={togglePreview} onPreviewItem={setViewingPreview} onBack={() => setShowSneakList(false)}/>
+                <SneakPeekListPage savedPreview={savedPreview} togglePreview={togglePreview} onPreviewItem={setViewingPreview} onBack={() => setShowSneakList(false)} sneakPeekSource={sneakPeekForUI}/>
               )}
-              {page === "discover" && !viewingPreview && !showSneakList && <DiscoverPage savedIds={savedIds} onToggleSave={toggleSave} onSelect={setViewingItem} onClaimNow={setClaimItem} state={dropState} reminded={reminded} onRemindMe={handleRemindMe} savedPreview={savedPreview} togglePreview={togglePreview} onSwitchRole={onSwitchRole} onPreviewItem={setViewingPreview} onSeeAllPreviews={() => setShowSneakList(true)} claimedIds={claimedIds} purchasedIds={purchasedIds} itemsSource={itemsForUI} itemsLoading={itemsLoading}/>}
-              {page === "saved"    && <SavedPage savedIds={savedIds} onSelect={setViewingItem} onClaimNow={setClaimItem} onToggleSave={toggleSave} onBrowse={() => setPage("discover")} onBack={() => setPage("discover")} claimedIds={claimedIds} purchasedIds={purchasedIds} itemsSource={itemsForUI}/>}
+              {page === "discover" && !viewingPreview && !showSneakList && <DiscoverPage savedIds={savedIds} onToggleSave={toggleSave} onSelect={setViewingItem} onClaimNow={setClaimItem} state={dropState} reminded={reminded} onRemindMe={handleRemindMe} savedPreview={savedPreview} togglePreview={togglePreview} onSwitchRole={onSwitchRole} onPreviewItem={setViewingPreview} onSeeAllPreviews={() => setShowSneakList(true)} claimedIds={claimedIds} purchasedIds={purchasedIds} itemsSource={itemsForUI} itemsLoading={itemsLoading} sneakPeekSource={sneakPeekForUI}/>}
+              {page === "saved"    && <SavedPage savedIds={savedIds} onSelect={setViewingItem} onClaimNow={setClaimItem} onToggleSave={toggleSave} onBrowse={() => setPage("discover")} onBack={() => setPage("discover")} claimedIds={claimedIds} purchasedIds={purchasedIds} itemsSource={itemsForUI} state={dropState}/>}
               {page === "claims"   && <ClaimsPage claims={claims} setClaims={setClaims} onBrowse={() => setPage("discover")} onBack={() => setPage("discover")} onGoToMessages={() => setPage("messages")} onOpenThread={(itemTitle) => openMessageThread(itemTitle)} highlightId={highlightId} onClearHighlight={() => setHighlightId(null)} accessToken={accessToken}/>}
               {page === "messages" && <MessagesPage user={user} accessToken={accessToken} claims={claims} onAcceptCounter={handleAcceptCounterByItemTitle} onDeclineCounter={handleDeclineCounterByItemTitle} openThreadId={openThreadId} onConsumeOpenThread={() => setOpenThreadId(null)} onBack={() => setPage("discover")}/>}
               {page === "history"  && <HistoryPage highlightId={highlightId} onClearHighlight={() => setHighlightId(null)} onOpenThread={(itemTitle) => openMessageThread(itemTitle)} accessToken={accessToken} onBack={() => setPage("discover")}/>}
@@ -4996,7 +5360,9 @@ export default function DropYardBuyerDashboard({
           <ClaimModal
             item={claimItem}
             onClose={() => setClaimItem(null)}
-            onConfirm={(slot, price) => { handleClaimComplete({ ...claimItem, price }, slot); setClaimItem(null); setPage("claims"); }}
+            onConfirm={(slot, price, realClaim) => { handleClaimComplete({ ...claimItem, price }, slot, realClaim); setClaimItem(null); setPage("claims"); }}
+            accessToken={accessToken}
+            onGoToMessages={() => { setClaimItem(null); setPage("messages"); }}
           />
         )}
 

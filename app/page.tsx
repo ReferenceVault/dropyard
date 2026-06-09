@@ -189,8 +189,17 @@ function ItemCard({ item }: { item: typeof FEATURED_ITEMS[0] }) {
   const discount = Math.round((1 - item.price / item.originalPrice) * 100);
   return (
     <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden hover:shadow-lg hover:border-emerald-200 transition-all duration-300 group">
-      <div className="relative bg-gradient-to-br from-gray-50 to-gray-100 h-44 flex items-center justify-center">
-        <span className="text-[59px] group-hover:scale-110 transition-transform duration-300">{item.image}</span>
+      <div className="relative bg-gradient-to-br from-gray-50 to-gray-100 h-44 flex items-center justify-center overflow-hidden">
+        {/^(https?:\/\/|data:image\/)/i.test(item.image) ? (
+          <img
+            src={item.image}
+            alt={item.title}
+            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+          />
+        ) : (
+          <span className="text-[59px] group-hover:scale-110 transition-transform duration-300">{item.image}</span>
+        )}
         <div className="absolute top-3 left-3 bg-amber-500 text-white text-[11px] font-bold px-2 py-1 rounded-full">-{discount}%</div>
         <button
           onClick={() => setSaved(!saved)}
@@ -800,12 +809,17 @@ function HomePage({
           const original = Number(api.originalPrice) > price
             ? Number(api.originalPrice)
             : Math.round(price * 1.6); // synthetic anchor so the discount badge still reads
+          // Prefer the first uploaded photo (a full S3 URL) so the homepage
+          // surfaces real listings instead of always a category emoji.
+          // ItemCard's render branches on URL vs emoji.
+          const photos = Array.isArray(api.photos) ? (api.photos as string[]).filter(Boolean) : [];
+          const photoOrEmoji = photos[0] || CATEGORY_EMOJI_HOME[(api.category as string) || "OTHER"] || "📦";
           return {
             id:            (api.id as string | number) ?? idx + 1,
             title:         (api.title as string) || "Item",
             price,
             originalPrice: original,
-            image:         CATEGORY_EMOJI_HOME[(api.category as string) || "OTHER"] || "📦",
+            image:         photoOrEmoji,
             category:      CATEGORY_LABEL_HOME[(api.category as string) || "OTHER"] || "Other",
             seller:        (seller.name as string) || "Neighbour",
             neighborhood:  (seller.neighborhood as string) || "Nearby",
