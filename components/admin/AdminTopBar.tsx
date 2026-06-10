@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { Search, Bell, Menu, ChevronDown, LogOut } from "lucide-react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { ADMIN_NAV } from "./navItems";
 import type { AuthUser } from "@/context/AuthContext";
 
@@ -16,6 +16,7 @@ export function AdminTopBar({
   onToggleSidebar: () => void;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   const allItems = ADMIN_NAV.flatMap((s) => s.items);
   const current = allItems.find((i) => i.href === pathname) ?? allItems[0];
 
@@ -81,8 +82,11 @@ export function AdminTopBar({
       {/* RIGHT — bell + user */}
       <div className="flex items-center gap-3 justify-self-end">
         <button
-          className="relative flex h-11 w-11 lg:h-9 lg:w-9 items-center justify-center rounded-full bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-600 hover:text-slate-900 transition"
-          aria-label="Notifications"
+          type="button"
+          onClick={() => router.push("/admin/inbox")}
+          className="relative flex h-11 w-11 lg:h-9 lg:w-9 items-center justify-center rounded-full bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-600 hover:text-slate-900 transition cursor-pointer"
+          aria-label="Notifications — open inbox"
+          title="Open inbox"
         >
           <Bell size={15} />
           <span className="absolute top-2.5 right-2.5 lg:top-1.5 lg:right-1.5 w-2 h-2 rounded-full bg-[#ff9412] ring-2 ring-white" />

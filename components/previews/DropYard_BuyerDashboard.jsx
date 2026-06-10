@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { apiRequest } from "@/lib/api";
 import { useSocketEvent } from "@/context/SocketContext";
@@ -43,6 +43,47 @@ import {
 
 // Short relative-time string used in inbox previews ("3h ago"). Mirrors the
 // helper in the seller dashboard.
+// Lifted from MessagesPage to module scope so the dashboard root can adapt
+// the conversation list before MessagesPage even mounts (the nav badge needs
+// to count from this lifted state). Buyer-perspective adapter — `from === "you"`
+// for messages this user sent.
+function adaptBuyerConversation(api, myId) {
+  if (!api) return null;
+  const layer = api.item?.placement === "SHELF" ? "shelf" : "drop";
+  const lastFromMe = api.lastMessage && api.lastMessage.senderId === myId;
+  const status = (api.unreadCount || 0) > 0
+    ? "pending"
+    : (lastFromMe ? "answered" : "answered");
+  return {
+    id:     api.id,
+    type:   "question",
+    status,
+    unread: (api.unreadCount || 0) > 0,
+    unreadCount: api.unreadCount || 0,
+    group:  "active",
+    item: {
+      title: api.item?.title || "Item",
+      price: api.item?.price ?? 0,
+      img:   (Array.isArray(api.item?.photos) && api.item.photos[0])
+               ? api.item.photos[0]
+               : (CATEGORY_EMOJI[api.item?.category] || "\u{1F4E6}"),
+      layer,
+      // Raw backend status (LIVE / CLAIMED / SOLD / DRAFT) so the chat
+      // composer can lock once the transaction completes (item SOLD after
+      // pickup). LIVE / CLAIMED keep chat open for pickup coordination.
+      status: api.item?.status || null,
+    },
+    seller: {
+      name:   api.otherUser?.name || "Seller",
+      hood:   api.otherUser?.neighborhood || "—",
+      usesAI: false,
+    },
+    lastMsg:  api.lastMessage?.body || "",
+    lastTime: relativeTimeShort(api.lastMessageAt),
+    messages: [],
+  };
+}
+
 function relativeTimeShort(iso) {
   if (!iso) return "";
   const ms = Date.now() - new Date(iso).getTime();
@@ -122,7 +163,11 @@ function adaptBuyerClaim(api) {
     e:             CATEGORY_EMOJI[api.item?.category] || "📦",
     img:           Array.isArray(api.item?.photos) && api.item.photos[0] ? api.item.photos[0] : null,
     t:             api.item?.title || "Item",
-    price:         api.item?.price ?? 0,
+    // Prefer the agreed sale price stored on the Claim (BUG-053). Falls back
+    // to the item's listed price when null — i.e. for regular claims at
+    // listed price the field stays null and we keep showing the sticker.
+    price:         (typeof api.price === "number" ? api.price : api.item?.price) ?? 0,
+    listedPrice:   api.item?.price ?? null,
     seller:        api.seller?.name || "Seller",
     status:        uiStatus,
     date:          isToday ? "Today" : (day || null),
@@ -141,11 +186,18 @@ function adaptBuyerClaim(api) {
 function adaptBuyerHistory(api) {
   if (!api || !api.item) return null;
   const photos = Array.isArray(api.item.photos) ? api.item.photos.filter(Boolean) : [];
-  const origPrice = api.item.originalPrice && api.item.originalPrice > api.item.price ? api.item.originalPrice : null;
+  // Prefer the agreed sale price (BUG-053). If the buyer got a discount via
+  // an accepted offer, the strike-through shows the original list price so
+  // they can see the savings ("$9 was $15").
+  const soldPrice = typeof api.price === "number" ? api.price : (api.item.price ?? 0);
+  const listedPrice = api.item.price ?? null;
+  const origPrice = listedPrice && listedPrice > soldPrice
+    ? listedPrice
+    : (api.item.originalPrice && api.item.originalPrice > soldPrice ? api.item.originalPrice : null);
   return {
     id:        api.id,
     title:     api.item.title || "Item",
-    price:     api.item.price ?? 0,
+    price:     soldPrice,
     origPrice: origPrice,
     img:       photos[0] || CATEGORY_EMOJI[api.item.category] || "📦",
     cat:       BUYER_ENUM_TO_CATEGORY[api.item.category] || "Other",
@@ -569,13 +621,13 @@ function MobileBottomNav({ page, setPage, savedCount, claimsCount, unreadCount =
   );
 }
 
-function TopBar({ page, setPage, savedCount, claimsCount, onSwitchRole, onReset, dropState, user, onSignout }) {
+function TopBar({ page, setPage, savedCount, claimsCount, messagesUnread = 0, onSwitchRole, onReset, dropState, user, onSignout }) {
   const { isMobile } = useViewport();
   const navItems = [
     { id:"discover", label:"Discover" },
     { id:"saved",    label:"Saved",    badge: savedCount  > 0 ? savedCount  : null },
     { id:"claims",   label:"Claims",   badge: claimsCount > 0 ? claimsCount : null },
-    { id:"messages", label:"Messages" },
+    { id:"messages", label:"Messages", badge: messagesUnread > 0 ? messagesUnread : null },
     { id:"history",  label:"History" },
   ];
   return (
@@ -2284,19 +2336,34 @@ function ClaimModal({ item, onClose, onConfirm, accessToken = null, onGoToMessag
       const trimmedOffer = Math.max(1, Math.round(Number(offer) || 0));
       if (trimmedOffer < 1) { setErrorMsg("Enter a valid offer amount."); return; }
       setSending(true);
+      // Hard 20s timeout — if the network or refresh path stalls (CORS,
+      // unreachable backend, slow refresh), the user gets a clear error
+      // instead of a button stuck on "Sending…" forever. fetch() has no
+      // default timeout, so without this guard the await can hang.
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Request timed out. Please try again.")), 20000)
+      );
       try {
-        await apiRequest("/api/conversations", {
-          method: "POST",
-          token:  accessToken,
-          body:   JSON.stringify({
-            itemId:      item.id,
-            body:        "I'd like to offer $" + trimmedOffer + " for this item.",
-            messageType: "OFFER",
-            amount:      trimmedOffer,
+        await Promise.race([
+          apiRequest("/api/conversations", {
+            method: "POST",
+            token:  accessToken,
+            body:   JSON.stringify({
+              itemId:      item.id,
+              body:        "I'd like to offer $" + trimmedOffer + " for this item.",
+              messageType: "OFFER",
+              amount:      trimmedOffer,
+            }),
           }),
-        });
+          timeoutPromise,
+        ]);
         setStep("offer-sent");
       } catch (err) {
+        // Surface raw error to console so the tester can paste it back if
+        // it keeps happening — the inline banner shows the user-friendly
+        // message, but devtools tells us *why*.
+        // eslint-disable-next-line no-console
+        if (typeof console !== "undefined") console.error("[ClaimModal] offer failed:", err);
         setErrorMsg((err && err.message) ? err.message : "Could not send your offer. Please try again.");
       } finally {
         setSending(false);
@@ -2309,16 +2376,24 @@ function ClaimModal({ item, onClose, onConfirm, accessToken = null, onGoToMessag
     // /preview/buyer-dashboard still walks the flow.
     if (!isRealItem) { setStep("done"); return; }
     setSending(true);
+    const claimTimeout = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Request timed out. Please try again.")), 20000)
+    );
     try {
-      const resp = await apiRequest("/api/claims", {
-        method: "POST",
-        token:  accessToken,
-        body:   JSON.stringify({ itemId: item.id, pickupSlot: slot || "" }),
-      });
+      const resp = await Promise.race([
+        apiRequest("/api/claims", {
+          method: "POST",
+          token:  accessToken,
+          body:   JSON.stringify({ itemId: item.id, pickupSlot: slot || "" }),
+        }),
+        claimTimeout,
+      ]);
       // Cache the backend claim for the parent's optimistic-insert in onConfirm.
       setRealClaim(resp && resp.claim ? resp.claim : null);
       setStep("done");
     } catch (err) {
+      // eslint-disable-next-line no-console
+      if (typeof console !== "undefined") console.error("[ClaimModal] claim failed:", err);
       setErrorMsg((err && err.message) ? err.message : "Could not claim the item. Please try again.");
     } finally {
       setSending(false);
@@ -3172,9 +3247,14 @@ function RegularSellerProfile({ sellerName, onBack, onSelect, onClaimNow, savedI
 /* ============================================================
    SAVED PAGE
    ============================================================ */
-function SavedPage({ savedIds, onSelect, onClaimNow, onToggleSave, onBrowse, onBack, claimedIds = new Set(), purchasedIds = new Set(), itemsSource = null, state = "between" }) {
-  const source = Array.isArray(itemsSource) ? itemsSource : allItems;
-  const items = source.filter(i => savedIds.has(i.id));
+function SavedPage({ savedIds, savedItems = null, onSelect, onClaimNow, onToggleSave, onBrowse, onBack, claimedIds = new Set(), purchasedIds = new Set(), itemsSource = null, state = "between" }) {
+  // Authed users render directly from the watchlist API result (full Item
+  // objects, including SOLD ones + ones the user owns themselves). Preview
+  // mode falls back to filtering the demo pool by savedIds — the original
+  // behaviour preserved for /preview/buyer-dashboard.
+  const items = Array.isArray(savedItems)
+    ? savedItems
+    : (Array.isArray(itemsSource) ? itemsSource : allItems).filter(i => savedIds.has(i.id));
   return (
     <>
       <PageTitle onBack={onBack} eyebrow="Your saves" eyebrowColor={C.claret} title="Saved items" subtitle={items.length + " item" + (items.length !== 1 ? "s" : "") + " you're watching"} icon={Heart} iconBg={C.claretMist} iconColor={C.claret}/>
@@ -3222,13 +3302,35 @@ function ClaimsPage({ claims, setClaims, onBrowse, onBack, onGoToMessages, onOpe
     setRatingNote("");
   };
 
+  // BUG-054 — both submit-with-rating and skip-rating now actually flip the
+  // claim server-side via PATCH /picked-up. Before this change the buyer's
+  // "Picked up" button was purely cosmetic: it removed the row from local
+  // state but never marked anything on the backend, so a refresh fetched
+  // the still-CONFIRMED claim and the row came back. And /review failed
+  // with "You can only review claims that have been picked up" because the
+  // status never flipped.
+  const persistPickedUp = async (claim) => {
+    const isReal = accessToken && typeof claim.id === "string" && !claim.id.startsWith("bc");
+    if (!isReal) return true; // demo path — no-op success
+    try {
+      await apiRequest("/api/claims/" + encodeURIComponent(claim.id) + "/picked-up", {
+        method: "PATCH",
+        token:  accessToken,
+      });
+      return true;
+    } catch (err) {
+      flash("Couldn't confirm pickup — " + (err?.message || "try again"));
+      return false;
+    }
+  };
+
   const submitRating = async () => {
     const claim = claims.find(c => c.id === ratingId);
     if (!claim) return;
-    // Persist the review to the backend if we have a real session and a
-    // non-demo claim id. The optimistic remove from the local Claims list
-    // happens AFTER success — if the post fails we keep the row so the
-    // buyer can retry or skip.
+    // Step 1 — confirm pickup on the backend (idempotent if seller already did).
+    const okPickup = await persistPickedUp(claim);
+    if (!okPickup) return;
+    // Step 2 — post the review, only if the buyer rated.
     const isReal = accessToken && typeof claim.id === "string" && !claim.id.startsWith("bc");
     if (isReal && ratingStars > 0) {
       try {
@@ -3241,8 +3343,8 @@ function ClaimsPage({ claims, setClaims, onBrowse, onBack, onGoToMessages, onOpe
           }),
         });
       } catch (err) {
-        flash("Couldn't save your review — " + (err?.message || "try again"));
-        return;
+        // Pickup already persisted — review failed but the claim is closed.
+        flash("Pickup confirmed, but couldn't save the review: " + (err?.message || "try again"));
       }
     }
     setClaims(prev => prev.filter(c => c.id !== ratingId));
@@ -3252,8 +3354,11 @@ function ClaimsPage({ claims, setClaims, onBrowse, onBack, onGoToMessages, onOpe
     setRatingNote("");
   };
 
-  const skipRating = () => {
+  const skipRating = async () => {
     const claim = claims.find(c => c.id === ratingId);
+    if (!claim) return;
+    const okPickup = await persistPickedUp(claim);
+    if (!okPickup) return;
     setClaims(prev => prev.filter(c => c.id !== ratingId));
     flash("Pickup complete. " + claim.t + " marked as picked up.");
     setRatingId(null);
@@ -3618,7 +3723,7 @@ const DEMO_BUYER_CONVERSATIONS = [
     },
 ];
 
-function MessagesPage({ user = null, accessToken = null, claims = [], onAcceptCounter = null, onDeclineCounter = null, openThreadId = null, onConsumeOpenThread = null, onBack = null }) {
+function MessagesPage({ user = null, accessToken = null, claims = [], onAcceptCounter = null, onDeclineCounter = null, openThreadId = null, onConsumeOpenThread = null, onBack = null, convList: convListProp = null, onConvListChange = null }) {
   const { isMobile } = useViewport();
   const usingBackend = !!accessToken;
   const myId = user?.id || null;
@@ -3638,9 +3743,26 @@ function MessagesPage({ user = null, accessToken = null, claims = [], onAcceptCo
   const setDraft = (value) => setDrafts(d => ({ ...d, [activeId]: value }));
   const [sending, setSending]           = useState(false);
   const [errorMsg, setErrorMsg]         = useState(null);
+  const [successMsg, setSuccessMsg]     = useState(null);
+  // Inline "Make an offer" composer inside the chat. Lets the buyer send an
+  // OFFER message without leaving the conversation. Opens with a numeric
+  // input + Send/Cancel; submits via POST /messages with messageType OFFER.
+  const [offerComposerOpen, setOfferComposerOpen] = useState(false);
+  const [offerComposerAmt, setOfferComposerAmt]   = useState("");
 
-  const [convList, setConvList]         = useState(usingBackend ? [] : DEMO_BUYER_CONVERSATIONS);
-  const [loading, setLoading]           = useState(usingBackend);
+  // convList is owned by the dashboard root (so the nav badge stays accurate
+  // even when this page is unmounted). When provided, we use it directly; when
+  // null (e.g. tests, isolated rendering) we fall back to local state.
+  const [localConvList, setLocalConvList] = useState(usingBackend ? [] : DEMO_BUYER_CONVERSATIONS);
+  const convList = convListProp != null ? convListProp : localConvList;
+  const setConvList = (updater) => {
+    if (typeof onConvListChange === "function") {
+      onConvListChange(updater);
+    } else {
+      setLocalConvList(updater);
+    }
+  };
+  const [loading, setLoading]           = useState(usingBackend && convListProp == null);
 
   const [activeMsgs, setActiveMsgs]     = useState(null);
   const [activeLoading, setActiveLoading] = useState(false);
@@ -3659,43 +3781,10 @@ function MessagesPage({ user = null, accessToken = null, claims = [], onAcceptCo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openThreadId, convList.length]);
 
-  // Adapter: backend conversation -> UI shape consumed by the existing render.
-  // Buyer perspective — `from === "you"` for messages I sent.
-  function adaptConversation(api) {
-    if (!api) return null;
-    const layer = api.item?.placement === "SHELF" ? "shelf" : "drop";
-    const lastFromMe = api.lastMessage && api.lastMessage.senderId === myId;
-    const status = (api.unreadCount || 0) > 0
-      ? "pending"
-      : (lastFromMe ? "answered" : "answered");
-    return {
-      id:     api.id,
-      type:   "question",
-      status,
-      unread: (api.unreadCount || 0) > 0,
-      unreadCount: api.unreadCount || 0,
-      group:  "active",
-      item: {
-        title: api.item?.title || "Item",
-        price: api.item?.price ?? 0,
-        // Prefer the actual uploaded photo if available; fall back to the
-        // category emoji. Renderers downstream use <ItemImage> to handle
-        // both cases.
-        img:   (Array.isArray(api.item?.photos) && api.item.photos[0])
-                 ? api.item.photos[0]
-                 : (CATEGORY_EMOJI[api.item?.category] || "\u{1F4E6}"),
-        layer,
-      },
-      seller: {
-        name:   api.otherUser?.name || "Seller",
-        hood:   api.otherUser?.neighborhood || "—",
-        usesAI: false,
-      },
-      lastMsg:  api.lastMessage?.body || "",
-      lastTime: relativeTimeShort(api.lastMessageAt),
-      messages: [],
-    };
-  }
+  // Adapter moved to module scope as `adaptBuyerConversation(api, myId)` so
+  // the dashboard root can apply it before MessagesPage mounts. The local
+  // alias below makes the call sites read naturally without rebinding myId.
+  const adaptConversation = (api) => adaptBuyerConversation(api, myId);
   function adaptMessage(api) {
     if (!api) return null;
     const fromMe = api.senderId === myId;
@@ -3718,9 +3807,21 @@ function MessagesPage({ user = null, accessToken = null, claims = [], onAcceptCo
     };
   }
 
-  // Initial inbox fetch
+  // Initial inbox fetch — moved to the dashboard root so the nav badges
+  // stay accurate even when this page isn't mounted. We only run a fallback
+  // fetch here for the legacy "no parent owns convList" case (e.g. when
+  // rendered in isolation in /preview/buyer-dashboard with no token, where
+  // the demo seed already provides content).
   useEffect(() => {
     if (!usingBackend) return;
+    if (convListProp != null) {
+      // Parent owns the list — auto-select the first thread the first time.
+      if (Array.isArray(convListProp) && convListProp.length > 0) {
+        setActiveId(prev => prev || convListProp[0].id);
+      }
+      return;
+    }
+    // Fallback local fetch (not the production path under DropYardBuyerDashboard).
     let cancelled = false;
     setLoading(true);
     apiRequest("/api/conversations", { token: accessToken })
@@ -3738,7 +3839,7 @@ function MessagesPage({ user = null, accessToken = null, claims = [], onAcceptCo
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [usingBackend, accessToken]);
+  }, [usingBackend, accessToken, convListProp]);
 
   // Load messages on active-thread change
   useEffect(() => {
@@ -3763,7 +3864,12 @@ function MessagesPage({ user = null, accessToken = null, claims = [], onAcceptCo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeId, usingBackend, accessToken]);
 
-  // Live push: a new message landed somewhere
+  // Live push: append to the OPEN thread + mark read on the server. Inbox
+  // preview + unread badge updates now live at the dashboard root so they
+  // stay accurate even when this page isn't mounted; we don't duplicate
+  // that work here. When parent owns convList, we ALSO need to clear the
+  // active thread's unread locally so the badge doesn't double-count
+  // before the server's `conversation:read` echo arrives.
   useSocketEvent("message:new", (payload) => {
     if (!usingBackend || !payload?.conversationId || !payload.message) return;
     const { conversationId, message } = payload;
@@ -3778,33 +3884,12 @@ function MessagesPage({ user = null, accessToken = null, claims = [], onAcceptCo
         method: "PATCH",
         token:  accessToken,
       }).catch(() => {});
+      // Clear unread on the active conv up to the parent so the badge
+      // matches what's visible on screen.
+      setConvList(prev => prev.map(c => c.id === activeId
+        ? { ...c, unread: false, unreadCount: 0, status: c.status === "pending" ? "answered" : c.status }
+        : c));
     }
-
-    setConvList(prev => {
-      const exists = prev.some(c => c.id === conversationId);
-      if (!exists) {
-        apiRequest("/api/conversations", { token: accessToken })
-          .then(data => {
-            const list = Array.isArray(data?.conversations) ? data.conversations.map(adaptConversation).filter(Boolean) : [];
-            setConvList(list);
-          })
-          .catch(() => {});
-        return prev;
-      }
-      const isFromMe = message.senderId === myId;
-      return prev.map(c => {
-        if (c.id !== conversationId) return c;
-        const incrementUnread = !isFromMe && c.id !== activeId;
-        return {
-          ...c,
-          lastMsg:     message.body,
-          lastTime:    relativeTimeShort(message.createdAt),
-          unread:      incrementUnread ? true : c.unread,
-          unreadCount: incrementUnread ? (c.unreadCount || 0) + 1 : c.unreadCount,
-          status:      incrementUnread ? "pending" : c.status,
-        };
-      });
-    });
   });
 
   async function handleSend() {
@@ -3831,6 +3916,106 @@ function MessagesPage({ user = null, accessToken = null, claims = [], onAcceptCo
       setTimeout(() => setErrorMsg(null), 4500);
     } finally {
       setSending(false);
+    }
+  }
+
+  // Send a fresh OFFER message from inside the chat (composer at the bottom).
+  // The active conversation already has an `itemId` (via the conv's item
+  // relation), so the backend's POST /:id/messages route is sufficient — no
+  // need to round-trip through POST /api/conversations.
+  async function sendOfferFromChat() {
+    if (!usingBackend || !activeId) return;
+    const amt = Math.round(Number(offerComposerAmt));
+    if (!Number.isFinite(amt) || amt <= 0) {
+      setErrorMsg("Enter a valid offer amount.");
+      setTimeout(() => setErrorMsg(null), 4500);
+      return;
+    }
+    setSending(true);
+    try {
+      await apiRequest("/api/conversations/" + encodeURIComponent(activeId) + "/messages", {
+        method: "POST",
+        token:  accessToken,
+        body:   JSON.stringify({
+          body:        "I'd like to offer $" + amt + " for this item.",
+          messageType: "OFFER",
+          amount:      amt,
+        }),
+      });
+      setOfferComposerOpen(false);
+      setOfferComposerAmt("");
+    } catch (err) {
+      setErrorMsg("Couldn't send offer: " + (err?.message || "try again"));
+      setTimeout(() => setErrorMsg(null), 4500);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  // ─── Offer action handlers (BUG-052 — accept/counter/decline OFFER messages) ───
+  // Buyer-side, these typically act on COUNTER messages the seller has sent
+  // back. The `messageId` is captured on the OFFER bubble itself (see
+  // renderMessage). Backend enforces "opposite party" and "not already
+  // resolved" so client-side guards are just for UX.
+  const [offerBusyMsgId, setOfferBusyMsgId] = useState(null);
+  const [counterDraftMsgId, setCounterDraftMsgId] = useState(null);
+  const [counterDraftAmount, setCounterDraftAmount] = useState("");
+  async function acceptOffer(messageId) {
+    if (!usingBackend || !messageId) return;
+    setOfferBusyMsgId(messageId);
+    try {
+      const resp = await apiRequest("/api/conversations/messages/" + encodeURIComponent(messageId) + "/accept", {
+        method: "POST",
+        token:  accessToken,
+      });
+      // Backend emits message:new + claim:updated to both parties; root
+      // socket handlers already refresh the inbox + claims state.
+      const amt = resp?.message?.amount ?? null;
+      setSuccessMsg(amt ? `Counter accepted at $${amt}! Your claim is confirmed.` : "Counter accepted. Your claim is confirmed.");
+      setTimeout(() => setSuccessMsg(null), 4500);
+    } catch (err) {
+      setErrorMsg("Couldn't accept: " + (err?.message || "try again"));
+      setTimeout(() => setErrorMsg(null), 4500);
+    } finally {
+      setOfferBusyMsgId(null);
+    }
+  }
+  async function declineOffer(messageId) {
+    if (!usingBackend || !messageId) return;
+    setOfferBusyMsgId(messageId);
+    try {
+      await apiRequest("/api/conversations/messages/" + encodeURIComponent(messageId) + "/decline", {
+        method: "POST",
+        token:  accessToken,
+      });
+    } catch (err) {
+      setErrorMsg("Couldn't decline: " + (err?.message || "try again"));
+      setTimeout(() => setErrorMsg(null), 4500);
+    } finally {
+      setOfferBusyMsgId(null);
+    }
+  }
+  async function submitCounter(messageId) {
+    const amt = Math.round(Number(counterDraftAmount));
+    if (!Number.isFinite(amt) || amt <= 0) {
+      setErrorMsg("Enter a valid counter amount.");
+      setTimeout(() => setErrorMsg(null), 4500);
+      return;
+    }
+    setOfferBusyMsgId(messageId);
+    try {
+      await apiRequest("/api/conversations/messages/" + encodeURIComponent(messageId) + "/counter", {
+        method: "POST",
+        token:  accessToken,
+        body:   JSON.stringify({ amount: amt }),
+      });
+      setCounterDraftMsgId(null);
+      setCounterDraftAmount("");
+    } catch (err) {
+      setErrorMsg("Couldn't counter: " + (err?.message || "try again"));
+      setTimeout(() => setErrorMsg(null), 4500);
+    } finally {
+      setOfferBusyMsgId(null);
     }
   }
 
@@ -3906,6 +4091,27 @@ function MessagesPage({ user = null, accessToken = null, claims = [], onAcceptCo
       );
     }
 
+    // CLAIM-type messages render as a celebratory full-width banner across
+    // the thread instead of a chat bubble — they mark a contract milestone
+    // (offer accepted, claim created) and deserve visual weight.
+    if (m.type === "claim") {
+      return (
+        <div key={i} style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 18px", borderRadius: 14, background: "linear-gradient(135deg, " + C.greenMist + " 0%, " + C.greenMist + "80 100%)", border: "1.5px solid " + C.green + "55", maxWidth: 440, boxShadow: "0 2px 0 " + C.green + "20" }}>
+            <div style={{ width: 32, height: 32, borderRadius: "50%", background: C.green, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <Check size={17} style={{ color: "#fff" }} strokeWidth={3}/>
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ fontFamily: F.head, fontSize: 12, fontWeight: 800, color: C.greenDeep, letterSpacing: "0.04em", textTransform: "uppercase", marginBottom: 2 }}>
+                {m.amount ? "Claim confirmed · $" + m.amount : "Claim confirmed"}
+              </p>
+              <p style={{ fontFamily: F.body, fontSize: 13, fontWeight: 500, color: C.ink, lineHeight: 1.4 }}>{m.text}</p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     // Claim / offer / counter / question chat bubbles
     const bubbleBg = isYou ? C.green : (m.from === "ai" ? C.aiMist : C.paper);
     const bubbleColor = isYou ? "#fff" : C.ink;
@@ -3941,6 +4147,46 @@ function MessagesPage({ user = null, accessToken = null, claims = [], onAcceptCo
             {m.text}
           </div>
           <p style={{ fontFamily: F.body, fontSize: 10, fontWeight: 500, color: C.ash, marginTop: 3, textAlign: isYou ? "right" : "left", marginLeft: 2, marginRight: 2 }}>{m.time}</p>
+          {/* Action row — only on incoming OFFER/COUNTER that's still the
+              latest unresolved offer in the thread. Backend will 409 if
+              someone races us, so the client guard is just for UX. */}
+          {!isYou && (m.type === "offer" || m.type === "counter") && m.id && (() => {
+            const idx = activeMessages.findIndex(x => x.id === m.id);
+            if (idx < 0) return null;
+            const isLatestActionable = !activeMessages.slice(idx + 1).some(
+              x => x && (x.type === "offer" || x.type === "counter" || x.type === "claim" || x.type === "notice")
+            );
+            if (!isLatestActionable) return null;
+            const busy = offerBusyMsgId === m.id;
+            const showCounterDraft = counterDraftMsgId === m.id;
+            return (
+              <div style={{ marginTop: 8, padding: 10, borderRadius: 12, background: C.aiMist, border: "1px solid " + C.ai + "25" }}>
+                {showCounterDraft ? (
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ fontFamily: F.head, fontSize: 13, fontWeight: 800, color: C.ai }}>$</span>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      value={counterDraftAmount}
+                      onChange={e => setCounterDraftAmount(e.target.value)}
+                      placeholder={m.amount ? String(Math.max(1, Math.round(m.amount * 0.9))) : "0"}
+                      autoFocus
+                      disabled={busy}
+                      style={{ flex: 1, padding: "6px 10px", borderRadius: 8, border: "1.5px solid " + C.ai + "40", fontFamily: F.head, fontSize: 13, fontWeight: 700, color: C.ink, outline: "none", background: C.paper, minWidth: 0 }}
+                    />
+                    <button onClick={() => submitCounter(m.id)} disabled={busy} style={{ padding: "6px 12px", borderRadius: 8, border: "none", background: C.ai, color: "#fff", fontFamily: F.head, fontSize: 11, fontWeight: 800, cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.7 : 1 }}>{busy ? "…" : "Send"}</button>
+                    <button onClick={() => { setCounterDraftMsgId(null); setCounterDraftAmount(""); }} disabled={busy} style={{ padding: "6px 10px", borderRadius: 8, border: "1.5px solid " + C.fawn, background: C.paper, color: C.mink, fontFamily: F.head, fontSize: 11, fontWeight: 700, cursor: busy ? "not-allowed" : "pointer" }}>Cancel</button>
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    <button onClick={() => acceptOffer(m.id)} disabled={busy} style={{ flex: 1, minWidth: 70, padding: "8px 12px", borderRadius: 8, border: "none", background: C.green, color: "#fff", fontFamily: F.head, fontSize: 12, fontWeight: 800, cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.7 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}><Check size={13}/> Accept</button>
+                    <button onClick={() => { setCounterDraftMsgId(m.id); setCounterDraftAmount(m.amount ? String(Math.max(1, Math.round(m.amount * 0.9))) : ""); }} disabled={busy} style={{ flex: 1, minWidth: 70, padding: "8px 12px", borderRadius: 8, border: "1.5px solid " + C.ai + "40", background: C.paper, color: C.ai, fontFamily: F.head, fontSize: 12, fontWeight: 800, cursor: busy ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}><RefreshCw size={13}/> Counter</button>
+                    <button onClick={() => declineOffer(m.id)} disabled={busy} style={{ flex: 1, minWidth: 70, padding: "8px 12px", borderRadius: 8, border: "1.5px solid " + C.fawn, background: C.paper, color: C.mink, fontFamily: F.head, fontSize: 12, fontWeight: 700, cursor: busy ? "not-allowed" : "pointer" }}>Decline</button>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
       </div>
     );
@@ -3949,6 +4195,15 @@ function MessagesPage({ user = null, accessToken = null, claims = [], onAcceptCo
   return (
     <>
       <PageTitle onBack={onBack} eyebrow="Messages" eyebrowColor={C.ai} title="Conversations" subtitle={unreadCount > 0 ? (unreadCount + " unread · " + conversations.length + " active thread" + (conversations.length !== 1 ? "s" : "")) : (conversations.length + " active thread" + (conversations.length !== 1 ? "s" : ""))} icon={MessageSquare} iconBg={C.aiMist} iconColor={C.ai}/>
+
+      {/* Success toast — celebration banner when an offer/counter is accepted. */}
+      {successMsg && (
+        <div className="fade-in" style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", borderRadius: 12, background: C.greenMist, border: "1px solid " + C.green + "44", marginBottom: 16, boxShadow: "0 2px 0 " + C.green + "20" }}>
+          <CheckCircle size={18} style={{ color: C.greenDeep }}/>
+          <p style={{ fontSize: 13, fontWeight: 700, color: C.greenDeep, fontFamily: F.body, flex: 1 }}>{successMsg}</p>
+          <button onClick={() => setSuccessMsg(null)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}><X size={14} style={{ color: C.greenDeep }}/></button>
+        </div>
+      )}
 
       {/* Error toast */}
       {errorMsg && (
@@ -4148,19 +4403,74 @@ function MessagesPage({ user = null, accessToken = null, claims = [], onAcceptCo
                   </div>
                 );
               }
+              const itemSold = active.item?.status === "SOLD";
+              if (itemSold) {
+                // Pickup complete — lock the conversation. Show a clear
+                // notice in place of the composer so it's obvious why text
+                // input is gone. The thread above remains visible as a
+                // history record.
+                return (
+                  <div style={{ padding: "16px 18px", borderTop: "1px solid " + C.fawn, background: C.greenMist + "60", display: "flex", alignItems: "center", gap: 10 }}>
+                    <CheckCircle size={18} style={{ color: C.greenDeep, flexShrink: 0 }}/>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontFamily: F.head, fontSize: 12, fontWeight: 800, color: C.greenDeep, letterSpacing: "0.04em", textTransform: "uppercase" }}>Conversation closed</p>
+                      <p style={{ fontFamily: F.body, fontSize: 12, fontWeight: 500, color: C.mink, marginTop: 2 }}>This item has been picked up. The thread is kept as a record.</p>
+                    </div>
+                  </div>
+                );
+              }
               return (
-                <div style={{ padding: "12px 16px", borderTop: "1px solid " + C.fawn, display: "flex", gap: 10, alignItems: "center", background: C.paper }}>
-                  <input
-                    value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-                    placeholder={"Message " + active.seller.name.split(" ")[0] + "..."}
-                    disabled={sending}
-                    style={{ flex: 1, padding: "10px 14px", borderRadius: 999, border: "1.5px solid " + C.fawn, fontFamily: F.body, fontSize: 13, fontWeight: 500, color: C.ink, outline: "none", background: C.paper }}
-                  />
-                  <button onClick={handleSend} disabled={sending || !draft.trim()} style={{ width: 42, height: 42, borderRadius: "50%", border: "none", background: C.green, color: "#fff", cursor: (sending || !draft.trim()) ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 0 " + C.greenDeep, flexShrink: 0, opacity: (sending || !draft.trim()) ? 0.5 : 1 }}>
-                    <Send size={16}/>
-                  </button>
+                <div style={{ borderTop: "1px solid " + C.fawn, background: C.paper }}>
+                  {/* Inline offer composer — opens above the text input when
+                      the buyer taps "$ Offer". Lets them propose a counter
+                      price directly from the conversation without leaving
+                      for Discover. Backend stores it as a real OFFER message
+                      so the seller's Accept/Counter/Decline buttons apply. */}
+                  {offerComposerOpen && usingBackend && (
+                    <div style={{ padding: "10px 16px", borderBottom: "1px solid " + C.fawn, background: C.aiMist + "60", display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontFamily: F.head, fontSize: 11, fontWeight: 800, color: C.ai, letterSpacing: "0.06em", textTransform: "uppercase" }}>Your offer</span>
+                      <span style={{ fontFamily: F.head, fontSize: 16, fontWeight: 900, color: C.ai }}>$</span>
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        autoFocus
+                        value={offerComposerAmt}
+                        onChange={e => setOfferComposerAmt(e.target.value)}
+                        onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); sendOfferFromChat(); } if (e.key === "Escape") { setOfferComposerOpen(false); setOfferComposerAmt(""); } }}
+                        placeholder={active.item?.price ? String(Math.max(1, Math.round(active.item.price * 0.9))) : "0"}
+                        disabled={sending}
+                        style={{ flex: 1, minWidth: 0, padding: "8px 12px", borderRadius: 10, border: "1.5px solid " + C.ai + "40", fontFamily: F.head, fontSize: 14, fontWeight: 700, color: C.ink, outline: "none", background: C.paper }}
+                      />
+                      {active.item?.price && (
+                        <span style={{ fontFamily: F.body, fontSize: 11, fontWeight: 600, color: C.mink, whiteSpace: "nowrap" }}>vs ${active.item.price} asking</span>
+                      )}
+                      <button onClick={sendOfferFromChat} disabled={sending || !offerComposerAmt} style={{ padding: "8px 14px", borderRadius: 999, border: "none", background: C.ai, color: "#fff", fontFamily: F.head, fontSize: 12, fontWeight: 800, cursor: (sending || !offerComposerAmt) ? "not-allowed" : "pointer", opacity: (sending || !offerComposerAmt) ? 0.6 : 1, flexShrink: 0 }}>{sending ? "…" : "Send offer"}</button>
+                      <button onClick={() => { setOfferComposerOpen(false); setOfferComposerAmt(""); }} disabled={sending} style={{ padding: "8px 10px", borderRadius: 999, border: "1.5px solid " + C.fawn, background: C.paper, color: C.mink, fontFamily: F.head, fontSize: 12, fontWeight: 700, cursor: sending ? "not-allowed" : "pointer", flexShrink: 0 }}><X size={12}/></button>
+                    </div>
+                  )}
+                  <div style={{ padding: "12px 16px", display: "flex", gap: 8, alignItems: "center" }}>
+                    {usingBackend && !offerComposerOpen && (
+                      <button
+                        onClick={() => { setOfferComposerOpen(true); setOfferComposerAmt(active.item?.price ? String(Math.max(1, Math.round(active.item.price * 0.9))) : ""); }}
+                        disabled={sending}
+                        title="Make an offer"
+                        style={{ display: "flex", alignItems: "center", gap: 4, padding: "8px 12px", borderRadius: 999, border: "1.5px solid " + C.ai + "40", background: C.aiMist + "80", color: C.ai, fontFamily: F.head, fontSize: 12, fontWeight: 800, cursor: sending ? "not-allowed" : "pointer", opacity: sending ? 0.5 : 1, flexShrink: 0, whiteSpace: "nowrap" }}
+                      >
+                        <DollarSign size={13} strokeWidth={2.4}/> Offer
+                      </button>
+                    )}
+                    <input
+                      value={draft}
+                      onChange={(e) => setDraft(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+                      placeholder={"Message " + active.seller.name.split(" ")[0] + "..."}
+                      disabled={sending}
+                      style={{ flex: 1, padding: "10px 14px", borderRadius: 999, border: "1.5px solid " + C.fawn, fontFamily: F.body, fontSize: 13, fontWeight: 500, color: C.ink, outline: "none", background: C.paper }}
+                    />
+                    <button onClick={handleSend} disabled={sending || !draft.trim()} style={{ width: 42, height: 42, borderRadius: "50%", border: "none", background: C.green, color: "#fff", cursor: (sending || !draft.trim()) ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 0 " + C.greenDeep, flexShrink: 0, opacity: (sending || !draft.trim()) ? 0.5 : 1 }}>
+                      <Send size={16}/>
+                    </button>
+                  </div>
                 </div>
               );
             })()}
@@ -4655,7 +4965,7 @@ function DiscoverPage({ savedIds, onToggleSave, onSelect, onClaimNow, state, rem
               ? (peekLiveCount === 1
                   ? "1 item from your Sneak Peek is live and shown first. " + liveUnifiedPool.length + " items total."
                   : peekLiveCount + " items from your Sneak Peek are live and shown first. " + liveUnifiedPool.length + " items total.")
-              : liveUnifiedPool.length + " items claimable this weekend. Claim by Sunday 6 pm or they carry over to next week's Drop.";
+              : liveUnifiedPool.length + " item" + (liveUnifiedPool.length === 1 ? "" : "s") + " up for grabs. The window closes Sunday 6pm — claim now before they're gone.";
             return <SectionHeader eyebrow="Live Drop" eyebrowBg={C.green} title="Your neighbours right now" subtitle={subtitle} pulse={true}/>;
           })()}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 20 }}>
@@ -5074,6 +5384,13 @@ export default function DropYardBuyerDashboard({
   // empty array + loading flag drives the DiscoverSkeleton.
   const [liveItems, setLiveItems] = useState(null);
   const [itemsLoading, setItemsLoading] = useState(!!accessToken);
+  // Bumped on claim:updated / claim:new socket events so the Discover feed
+  // refetches whenever an item changes status (LIVE → CLAIMED → SOLD).
+  // Without this, the buyer keeps seeing SOLD items in their cached state
+  // until they navigate away and back.
+  const [itemsTick, setItemsTick] = useState(0);
+  useSocketEvent("claim:new",     () => setItemsTick(t => t + 1));
+  useSocketEvent("claim:updated", () => setItemsTick(t => t + 1));
   useEffect(() => {
     if (!accessToken) { setLiveItems(null); setItemsLoading(false); return; }
     let cancelled = false;
@@ -5092,7 +5409,7 @@ export default function DropYardBuyerDashboard({
       .catch(() => { if (!cancelled) setLiveItems([]); })
       .finally(() => { if (!cancelled) setItemsLoading(false); });
     return () => { cancelled = true; };
-  }, [accessToken]);
+  }, [accessToken, itemsTick]);
   const itemsForUI = Array.isArray(liveItems) ? liveItems : allItems;
 
   // Sneak peek — items queued for the upcoming Drop. Same fetch pattern as
@@ -5143,6 +5460,12 @@ export default function DropYardBuyerDashboard({
   // /api/watchlist so the topbar Saved badge doesn't briefly show "6" of
   // fake demo items before the fetch lands.
   const [savedIds, setSavedIds] = useState(() => accessToken ? new Set() : new Set([1, 6, 13, 9, 4, 20]));
+  // Full watchlist items in adapted UI shape. SavedPage renders directly
+  // from this — NOT from `itemsForUI` filtered by savedIds. The old approach
+  // hid saved items that were SOLD or owned by the user (after BUG-050's
+  // self-filter removed them from the buyer feed), making the Saved badge
+  // count diverge from what was actually shown on the Saved page.
+  const [savedItems, setSavedItems] = useState([]);
   useEffect(() => {
     if (!accessToken) return;
     let cancelled = false;
@@ -5151,13 +5474,17 @@ export default function DropYardBuyerDashboard({
         if (cancelled) return;
         const items = Array.isArray(data?.items) ? data.items : [];
         setSavedIds(new Set(items.map((i) => i.id)));
+        setSavedItems(items.map(adaptBuyerItem).filter(Boolean));
       })
       .catch(() => {
         // Real-user network blip — keep the empty set rather than fake data.
-        if (!cancelled) setSavedIds(new Set());
+        if (!cancelled) { setSavedIds(new Set()); setSavedItems([]); }
       });
     return () => { cancelled = true; };
-  }, [accessToken]);
+    // Refetches when itemsTick bumps (claim:new / claim:updated) so SOLD
+    // items the buyer had saved get refreshed with current state too.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessToken, itemsTick]);
   // Sneak Peek "save for Saturday" — purely client-side today (no API).
   // Same rationale: empty Set for authed users, demo IDs for /preview/buyer-dashboard.
   const [savedPreview, setSavedPreview] = useState(() => accessToken ? new Set() : new Set([101, 104]));
@@ -5216,6 +5543,132 @@ export default function DropYardBuyerDashboard({
     return () => { cancelled = true; };
   }, [accessToken, claimsTick]);
 
+  // ─── Conversation inbox (lifted to root for nav badges) ───
+  // Owns the buyer's conversation list at the root level so the navigation
+  // badges (TopBar + MobileBottomNav Messages tab) can show the unread count
+  // regardless of which page is active. MessagesPage receives this through
+  // props and stays in sync. Without this, the Messages page would unmount
+  // on tab switch and the badge would have nothing to read from.
+  // Demo data seeds /preview/buyer-dashboard (no accessToken); real users
+  // start empty and hydrate via the fetch effect below.
+  const [convList, setConvList] = useState(accessToken ? [] : DEMO_BUYER_CONVERSATIONS);
+  const myUserId = user?.id || null;
+
+  // Helper: insert/refresh a single conversation from a socket payload.
+  // The payload's `message` is the new message; we update the matching conv
+  // in the adapted shape (so MessagesPage can render without re-adapting).
+  // Unknown conversation → refetch the inbox so metadata fills in correctly.
+  const upsertConvFromSocket = useCallback((prev, payload) => {
+    if (!payload?.conversationId || !payload.message) return prev;
+    const { conversationId, message } = payload;
+    const isFromMe = message.senderId === myUserId;
+    const existing = prev.find((c) => c.id === conversationId);
+    if (!existing) {
+      if (accessToken) {
+        apiRequest("/api/conversations", { token: accessToken })
+          .then((data) => {
+            const list = Array.isArray(data?.conversations) ? data.conversations : [];
+            setConvList(list.map((api) => adaptBuyerConversation(api, myUserId)).filter(Boolean));
+          })
+          .catch(() => { /* keep current list on transient blip */ });
+      }
+      return prev;
+    }
+    return prev.map((c) => {
+      if (c.id !== conversationId) return c;
+      const newUnread = isFromMe ? (c.unreadCount || 0) : (c.unreadCount || 0) + 1;
+      return {
+        ...c,
+        lastMsg:     message.body || c.lastMsg,
+        lastTime:    relativeTimeShort(message.createdAt),
+        unread:      newUnread > 0,
+        unreadCount: newUnread,
+        status:      newUnread > 0 ? "pending" : c.status,
+      };
+    });
+  }, [accessToken, myUserId]);
+
+  // Initial fetch — adapts the raw API list into the UI shape MessagesPage
+  // (and the existing badge logic) already expect. Refetches when itemsTick
+  // bumps (claim:new / claim:updated) so the embedded item.status reflects
+  // pickup completion — the composer locks once item flips to SOLD.
+  useEffect(() => {
+    if (!accessToken) { setConvList([]); return; }
+    let cancelled = false;
+    apiRequest("/api/conversations", { token: accessToken })
+      .then((data) => {
+        if (cancelled) return;
+        const list = Array.isArray(data?.conversations) ? data.conversations : [];
+        setConvList(list.map((api) => adaptBuyerConversation(api, myUserId)).filter(Boolean));
+      })
+      .catch(() => { if (!cancelled) setConvList([]); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessToken, myUserId, itemsTick]);
+
+  // Socket: new message → update the matching conv (or refetch if unknown).
+  useSocketEvent("message:new", (payload) => {
+    setConvList((prev) => upsertConvFromSocket(prev, payload));
+  });
+
+  // Socket: the OTHER side opened the thread → clear unread on their end is
+  // their concern; we receive `conversation:read` only when WE open a thread
+  // on another device. Either way, clearing unread on the matching conv is
+  // safe — it just won't fire unless we have multi-device.
+  useSocketEvent("conversation:read", (payload) => {
+    const cid = payload?.conversationId;
+    if (!cid) return;
+    setConvList((prev) => prev.map((c) => c.id === cid
+      ? { ...c, unreadCount: 0, unread: false, status: c.status === "pending" ? "answered" : c.status }
+      : c
+    ));
+  });
+
+  // Count of conversations with at least one unread message. Drives the
+  // notification badge on TopBar + MobileBottomNav.
+  const messagesUnreadCount = useMemo(
+    () => convList.filter((c) => (c.unreadCount || 0) > 0).length,
+    [convList],
+  );
+
+  // Browser-level notification on incoming message. Fires once per real
+  // incoming message (skips messages we sent ourselves, and skips messages
+  // for the thread the user is actively viewing). Best-effort — silently
+  // skipped if the user hasn't granted permission.
+  useSocketEvent("message:new", (payload) => {
+    if (typeof window === "undefined" || typeof Notification === "undefined") return;
+    if (Notification.permission !== "granted") return;
+    const msg = payload?.message;
+    if (!msg || msg.senderId === myUserId) return;
+    const conv = convList.find((c) => c.id === payload.conversationId);
+    const itemTitle = conv?.item?.title || "your message";
+    const senderName = conv?.otherUser?.name || "Someone";
+    try {
+      new Notification(senderName + " · DropYard", {
+        body: msg.body ? String(msg.body).slice(0, 120) : `New message about ${itemTitle}`,
+        tag:  "dropyard-msg-" + payload.conversationId,
+      });
+    } catch { /* notifications can fail in restricted contexts */ }
+  });
+
+  // In-app green celebration toast when an OFFER we sent gets ACCEPTED.
+  // The backend's accept route posts a CLAIM-type system message describing
+  // the new claim — that's our signal. Skip if WE posted it (server-side
+  // mirror) and skip if it's our own action echo.
+  useSocketEvent("message:new", (payload) => {
+    const msg = payload?.message;
+    if (!msg || msg.messageType !== "CLAIM") return;
+    if (msg.senderId === myUserId) return;
+    const conv = convList.find((c) => c.id === payload.conversationId);
+    const itemTitle = conv?.item?.title || "this item";
+    const amt = typeof msg.amount === "number" ? msg.amount : null;
+    setToast(
+      amt
+        ? `Offer accepted! Your purchase of ${itemTitle} is confirmed at $${amt}.`
+        : `Offer accepted! Your purchase of ${itemTitle} is confirmed.`
+    );
+  });
+
   // Derive sets of itemIds that the current buyer has either claimed (active)
   // or already picked up. Threads into ItemCard so cards show the right overlay
   // ("YOU CLAIMED THIS" / "PICKED UP") whenever the same item appears in
@@ -5242,10 +5695,21 @@ export default function DropYardBuyerDashboard({
   // Optimistic toggle: flip the local Set immediately so the heart animates,
   // then POST/DELETE in the background. Roll back on failure. Skip the network
   // call entirely for demo-only ids (numbers from the static `allItems` array)
-  // since those don't exist on the server.
+  // since those don't exist on the server. Also keeps `savedItems` (the
+  // SavedPage source) in sync so the page reflects toggles instantly.
   const toggleSave = async (id) => {
     const wasSaved = savedIds.has(id);
     setSavedIds(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+    // Keep savedItems aligned. Unsave → remove. Save → look up the full
+    // item in the buyer feed and append (so SavedPage shows it instantly
+    // without waiting for a watchlist refetch).
+    if (wasSaved) {
+      setSavedItems(prev => prev.filter(it => it.id !== id));
+    } else {
+      const pool = Array.isArray(itemsForUI) ? itemsForUI : [];
+      const found = pool.find(it => it.id === id);
+      if (found) setSavedItems(prev => prev.some(it => it.id === id) ? prev : [found, ...prev]);
+    }
     if (!accessToken) return;
     if (typeof id === "number") return; // demo items
     try {
@@ -5254,8 +5718,15 @@ export default function DropYardBuyerDashboard({
         token:  accessToken,
       });
     } catch {
-      // Rollback
+      // Rollback both savedIds and savedItems on failure.
       setSavedIds(prev => { const n = new Set(prev); if (wasSaved) n.add(id); else n.delete(id); return n; });
+      if (wasSaved) {
+        const pool = Array.isArray(itemsForUI) ? itemsForUI : [];
+        const found = pool.find(it => it.id === id);
+        if (found) setSavedItems(prev => prev.some(it => it.id === id) ? prev : [found, ...prev]);
+      } else {
+        setSavedItems(prev => prev.filter(it => it.id !== id));
+      }
     }
   };
   const togglePreview = (i) => setSavedPreview(prev => { const n = new Set(prev); if (n.has(i)) n.delete(i); else n.add(i); return n; });
@@ -5325,7 +5796,7 @@ export default function DropYardBuyerDashboard({
     <>
       <GlobalStyle/>
       <div style={{ minHeight: "100vh", background: C.page, color: C.ink }}>
-        <TopBar page={page} setPage={setPage} savedCount={savedIds.size} claimsCount={claims.length} onSwitchRole={onSwitchRole} onReset={resetNav} dropState={dropState} user={user} onSignout={onSignout}/>
+        <TopBar page={page} setPage={setPage} savedCount={savedIds.size} claimsCount={claims.length} messagesUnread={messagesUnreadCount} onSwitchRole={onSwitchRole} onReset={resetNav} dropState={dropState} user={user} onSignout={onSignout}/>
 
         <div style={{ maxWidth: 1280, margin: "0 auto", padding: isMobile ? "16px 16px calc(76px + env(safe-area-inset-bottom, 0))" : "24px 32px 64px" }}>
           {viewingSellerName && (
@@ -5344,9 +5815,9 @@ export default function DropYardBuyerDashboard({
                 <SneakPeekListPage savedPreview={savedPreview} togglePreview={togglePreview} onPreviewItem={setViewingPreview} onBack={() => setShowSneakList(false)} sneakPeekSource={sneakPeekForUI}/>
               )}
               {page === "discover" && !viewingPreview && !showSneakList && <DiscoverPage savedIds={savedIds} onToggleSave={toggleSave} onSelect={setViewingItem} onClaimNow={setClaimItem} state={dropState} reminded={reminded} onRemindMe={handleRemindMe} savedPreview={savedPreview} togglePreview={togglePreview} onSwitchRole={onSwitchRole} onPreviewItem={setViewingPreview} onSeeAllPreviews={() => setShowSneakList(true)} claimedIds={claimedIds} purchasedIds={purchasedIds} itemsSource={itemsForUI} itemsLoading={itemsLoading} sneakPeekSource={sneakPeekForUI}/>}
-              {page === "saved"    && <SavedPage savedIds={savedIds} onSelect={setViewingItem} onClaimNow={setClaimItem} onToggleSave={toggleSave} onBrowse={() => setPage("discover")} onBack={() => setPage("discover")} claimedIds={claimedIds} purchasedIds={purchasedIds} itemsSource={itemsForUI} state={dropState}/>}
+              {page === "saved"    && <SavedPage savedIds={savedIds} savedItems={accessToken ? savedItems : null} onSelect={setViewingItem} onClaimNow={setClaimItem} onToggleSave={toggleSave} onBrowse={() => setPage("discover")} onBack={() => setPage("discover")} claimedIds={claimedIds} purchasedIds={purchasedIds} itemsSource={itemsForUI} state={dropState}/>}
               {page === "claims"   && <ClaimsPage claims={claims} setClaims={setClaims} onBrowse={() => setPage("discover")} onBack={() => setPage("discover")} onGoToMessages={() => setPage("messages")} onOpenThread={(itemTitle) => openMessageThread(itemTitle)} highlightId={highlightId} onClearHighlight={() => setHighlightId(null)} accessToken={accessToken}/>}
-              {page === "messages" && <MessagesPage user={user} accessToken={accessToken} claims={claims} onAcceptCounter={handleAcceptCounterByItemTitle} onDeclineCounter={handleDeclineCounterByItemTitle} openThreadId={openThreadId} onConsumeOpenThread={() => setOpenThreadId(null)} onBack={() => setPage("discover")}/>}
+              {page === "messages" && <MessagesPage user={user} accessToken={accessToken} claims={claims} onAcceptCounter={handleAcceptCounterByItemTitle} onDeclineCounter={handleDeclineCounterByItemTitle} openThreadId={openThreadId} onConsumeOpenThread={() => setOpenThreadId(null)} onBack={() => setPage("discover")} convList={convList} onConvListChange={setConvList}/>}
               {page === "history"  && <HistoryPage highlightId={highlightId} onClearHighlight={() => setHighlightId(null)} onOpenThread={(itemTitle) => openMessageThread(itemTitle)} accessToken={accessToken} onBack={() => setPage("discover")}/>}
               {page === "settings" && <SettingsPage user={user}/>}
             </>
@@ -5377,7 +5848,7 @@ export default function DropYardBuyerDashboard({
           setPage={(p) => { resetNav(); setPage(p); }}
           savedCount={savedIds.size}
           claimsCount={claims.length}
-          unreadCount={0}
+          unreadCount={messagesUnreadCount}
           dropState={dropState}
         />
       </div>

@@ -13,7 +13,7 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { apiRequest } from "@/lib/api";
-import { getDropCycleInfo } from "@/lib/dropCycle";
+import { getDropCycleInfo, nextDropMoment, dropCloseMoment } from "@/lib/dropCycle";
 
 // Public marketing card — every number on it now comes from the live drop
 // cycle + `/api/items`. The DEMO_* arrays below are only a fallback used when
@@ -125,11 +125,18 @@ export default function DynamicDropCard() {
 
   // Real drop cycle — Mon-Wed SUBMISSION, Thu-Fri PREVIEW, Sat 8am-Sun 8pm LIVE,
   // Sun 8pm-Mon midnight CLOSED. The card surfaces two states ("countdown" vs
-  // "live"); other phases land in "countdown" pointing at the next live moment.
+  // "live"). The countdown ALWAYS points at the next Drop-opening moment
+  // (Saturday 8 AM) when we're not live, never at intermediate phase
+  // boundaries — otherwise during SUBMISSION the label "Live in 19h" would
+  // really be counting down to PREVIEW phase, when items aren't claimable.
   const dropInfo = useMemo(() => (now ? getDropCycleInfo(now) : null), [now]);
   const isLive = dropInfo?.phase === "LIVE";
-  const remaining = dropInfo && now
-    ? Math.max(dropInfo.nextEventAt.getTime() - now.getTime(), 0)
+  const targetAt = useMemo(() => {
+    if (!now || !dropInfo) return null;
+    return isLive ? dropCloseMoment(now) : nextDropMoment(now);
+  }, [now, dropInfo, isLive]);
+  const remaining = targetAt && now
+    ? Math.max(targetAt.getTime() - now.getTime(), 0)
     : 0;
   const time = useMemo(() => formatDuration(remaining), [remaining]);
 
