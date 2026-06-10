@@ -366,20 +366,23 @@ export default function HowItWorksLanding(props) {
             {/* Week rhythm visualization — 7 day pills with Saturday highlighted */}
             <div className="mx-auto mt-12 max-w-3xl">
               <div className="flex items-stretch justify-center gap-1.5 sm:gap-2">
+                {/* Mon–Fri: Shelf is open for listing AND buying (real-time,
+                    no countdown). Sat–Sun: the weekly Drop is LIVE — both
+                    days highlighted since claiming is open the whole weekend. */}
                 {[
                   { day: "M", label: "List", featured: false },
                   { day: "T", label: "List", featured: false },
-                  { day: "W", label: "Preview", featured: false },
-                  { day: "T", label: "Preview", featured: false },
-                  { day: "F", label: "Preview", featured: false },
+                  { day: "W", label: "List", featured: false },
+                  { day: "T", label: "List", featured: false },
+                  { day: "F", label: "List", featured: false },
                   { day: "S", label: "Live Drop", featured: true },
-                  { day: "S", label: "Pickup", featured: false },
+                  { day: "S", label: "Live Drop", featured: true },
                 ].map((d, i) => (
                   <div
                     key={i}
                     className={`flex flex-1 flex-col items-center rounded-2xl px-1 py-3 transition-all duration-300 sm:px-2 ${
                       d.featured
-                        ? "scale-110 bg-[#F08A00] shadow-[0_12px_36px_rgba(240,138,0,0.55)] ring-2 ring-[#FED7AA]/60"
+                        ? "bg-[#F08A00] shadow-[0_12px_36px_rgba(240,138,0,0.55)] ring-2 ring-[#FED7AA]/60"
                         : "bg-white/10 backdrop-blur-sm hover:-translate-y-0.5 hover:bg-white/20"
                     }`}
                   >

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { apiRequest, uploadItemPhoto } from "@/lib/api";
 import { useSocketEvent } from "@/context/SocketContext";
@@ -485,7 +485,7 @@ function SwitchToBuyerButton({ onClick }) {
 // hover, premium icon tile with subtle elevation, smooth transitions.
 // In `collapsed` (rail) mode, renders icon-only with the label in `title`
 // as a native tooltip.
-function SidebarNavItem({ item, active, accent, accentMist, Icon, onClick, showBadge, collapsed = false }) {
+function SidebarNavItem({ item, active, accent, accentMist, Icon, onClick, showBadge, messageBadge = 0, collapsed = false }) {
   const [hover, setHover] = useState(false);
   const bg = active
     ? accentMist
@@ -541,6 +541,18 @@ function SidebarNavItem({ item, active, accent, accentMist, Icon, onClick, showB
             background: C.amberDeep,
             boxShadow: "0 0 0 2px " + C.paper,
           }}/>
+        )}
+        {messageBadge > 0 && (
+          <span style={{
+            position: "absolute",
+            top: 2, right: 4,
+            minWidth: 14, height: 14, padding: "0 4px",
+            borderRadius: 999,
+            background: C.claret, color: "#fff",
+            fontFamily: F.head, fontSize: 9, fontWeight: 800,
+            display: "inline-flex", alignItems: "center", justifyContent: "center",
+            boxShadow: "0 0 0 2px " + C.paper,
+          }}>{messageBadge > 99 ? "99+" : messageBadge}</span>
         )}
       </button>
     );
@@ -629,8 +641,25 @@ function SidebarNavItem({ item, active, accent, accentMist, Icon, onClick, showB
         </span>
       )}
 
+      {/* Unread messages badge (Sidebar Messages item) — claret to distinguish
+          from the amber AI-usage badge above. */}
+      {messageBadge > 0 && (
+        <span style={{
+          fontSize: 10,
+          fontWeight: 800,
+          padding: "2px 8px",
+          borderRadius: 999,
+          background: C.claret,
+          color: "#fff",
+          fontFamily: F.head,
+          lineHeight: 1.2,
+        }}>
+          {messageBadge > 99 ? "99+" : messageBadge}
+        </span>
+      )}
+
       {/* Sliding chevron on active OR hover (not when badge is showing) */}
-      {!showBadge && (active || hover) && (
+      {!showBadge && messageBadge === 0 && (active || hover) && (
         <ChevronRight
           size={13}
           style={{
@@ -649,12 +678,12 @@ function SidebarNavItem({ item, active, accent, accentMist, Icon, onClick, showB
 // Mobile primary nav — fixed to the bottom of the viewport, replaces the
 // sidebar on small screens. 5 tabs with the Sell action elevated to a green
 // pill so creating listings is one thumb-tap away. Respects iOS safe-area.
-function MobileBottomNav({ activeView, onNav }) {
+function MobileBottomNav({ activeView, onNav, messagesUnread = 0 }) {
   const navItems = [
     { id: "overview",   label: "Home",     icon: LayoutGrid,    matches: ["overview"] },
     { id: "items",      label: "Items",    icon: Box,           matches: ["items","orders","claims","pickups","edit-item","item-detail"] },
     { id: "add-manual", label: "Sell",     icon: Plus,          matches: ["add-manual","add-chooser","add-ai","ai-setup","ai-photos"], primary: true },
-    { id: "messages",   label: "Messages", icon: MessageSquare, matches: ["messages"] },
+    { id: "messages",   label: "Messages", icon: MessageSquare, matches: ["messages"], badge: messagesUnread > 0 ? messagesUnread : null },
     { id: "history",    label: "You",      icon: User,          matches: ["history","settings","ai-plan"] },
   ];
   return (
@@ -724,6 +753,16 @@ function MobileBottomNav({ activeView, onNav }) {
               )}
               <span style={{ position: "relative", display: "inline-flex", alignItems: "center", justifyContent: "center", transition: "transform 150ms", transform: active ? "scale(1.05)" : "scale(1)" }}>
                 <Ic size={22} strokeWidth={active ? 2.4 : 2}/>
+                {item.badge != null && (
+                  <span style={{
+                    position: "absolute", top: -4, right: -10,
+                    minWidth: 16, height: 16, padding: "0 4px",
+                    borderRadius: 999, background: C.claret, color: "#fff",
+                    fontFamily: F.head, fontSize: 9, fontWeight: 800,
+                    display: "inline-flex", alignItems: "center", justifyContent: "center",
+                    border: "1.5px solid " + C.paper,
+                  }}>{item.badge > 99 ? "99+" : item.badge}</span>
+                )}
               </span>
               <span style={{ fontFamily: F.head, fontSize: 10, fontWeight: active ? 800 : 600, letterSpacing: active ? "-0.005em" : "0.02em", whiteSpace: "nowrap" }}>{item.label}</span>
             </button>
@@ -734,7 +773,7 @@ function MobileBottomNav({ activeView, onNav }) {
   );
 }
 
-function Sidebar({ activeView, onNav, aiPlan, onSwitchRole, collapsed = false }) {
+function Sidebar({ activeView, onNav, aiPlan, onSwitchRole, collapsed = false, messagesUnread = 0 }) {
   const sections = [
     { header: "ACTIVITY", items: [
       { id: "overview",  label: "Overview",  icon: LayoutGrid },
@@ -837,6 +876,7 @@ function Sidebar({ activeView, onNav, aiPlan, onSwitchRole, collapsed = false })
                       Icon={Ic}
                       onClick={() => handleClick(item)}
                       showBadge={item.group === "settings" && aiPlan === "free"}
+                      messageBadge={item.id === "messages" ? messagesUnread : 0}
                       collapsed
                     />
                   );
@@ -1000,7 +1040,7 @@ function labelForView(view) {
   return (view || "").charAt(0).toUpperCase() + (view || "").slice(1).replace(/-/g, " ");
 }
 
-function TopNav({ user, onSignout, onOpenSettings, activeView, onToggleSidebar, onSwitchRole }) {
+function TopNav({ user, onSignout, onOpenSettings, activeView, onToggleSidebar, onSwitchRole, messagesUnread = 0, onOpenMessages = null }) {
   // No `useViewport()` here on purpose — layout flips between mobile/desktop
   // happen entirely via CSS media queries on the `.dy-seller-topnav*` classes
   // defined in globals.css. Gating layout on a JS hook produced a first-paint
@@ -1082,11 +1122,24 @@ function TopNav({ user, onSignout, onOpenSettings, activeView, onToggleSidebar, 
             <SwitchToBuyerButton onClick={() => onSwitchRole()}/>
           </span>
         )}
-        <button title="Notifications" aria-label="Notifications" className="dy-seller-topnav__bell"
+        <button
+          title={messagesUnread > 0 ? messagesUnread + " unread message" + (messagesUnread === 1 ? "" : "s") : "Notifications"}
+          aria-label="Notifications"
+          className="dy-seller-topnav__bell"
+          onClick={() => onOpenMessages && onOpenMessages()}
           onMouseEnter={e => { e.currentTarget.style.background = C.sand; }}
           onMouseLeave={e => { e.currentTarget.style.background = C.paper; }}>
           <Bell size={16} style={{ color: C.mink }} strokeWidth={2.2}/>
-          <span style={{ position: "absolute", top: 9, right: 9, width: 8, height: 8, borderRadius: "50%", background: C.amber, border: "2px solid " + C.paper }}/>
+          {messagesUnread > 0 ? (
+            <span style={{
+              position: "absolute", top: 4, right: 4,
+              minWidth: 16, height: 16, padding: "0 4px",
+              borderRadius: 999, background: C.claret, color: "#fff",
+              fontFamily: F.head, fontSize: 9, fontWeight: 800,
+              display: "inline-flex", alignItems: "center", justifyContent: "center",
+              border: "2px solid " + C.paper,
+            }}>{messagesUnread > 99 ? "99+" : messagesUnread}</span>
+          ) : null}
         </button>
         <SellerUserMenu user={user} onSignout={onSignout} onOpenSettings={onOpenSettings}/>
       </div>
@@ -4160,9 +4213,18 @@ function MyItemsView({ onNav, onEdit, onView, sellerItems, onItemsChange, seller
       cat:         ENUM_TO_CATEGORY_LABEL[api.category] || "Other",
       cond:        ENUM_TO_CONDITION_LABEL[api.condition] || "Used - Good",
       price:       api.price,
+      // Agreed sale price when an offer was accepted (BUG-053). Null for
+      // items that haven't been claimed yet. Inventory row + detail view
+      // prefer this over `price` so the seller sees what they'll actually
+      // be paid.
+      soldPrice:   (api.activeClaim && typeof api.activeClaim.price === "number") ? api.activeClaim.price : null,
       isFree:      api.price === 0 && !isDraft,
       photos:      Array.isArray(api.photos) ? api.photos.filter(Boolean) : [],
       description: api.description || "",
+      // BUG-053: surface the raw backend status so lifecycleOf() can route
+      // CLAIMED items to their own pill instead of leaving them looking
+      // like they're still live.
+      backendStatus: api.status,
       status:      isDraft ? "draft" : "published",
       publishedTo: isDraft ? null : placementUi,
       views:       0,
@@ -4224,6 +4286,10 @@ function MyItemsView({ onNav, onEdit, onView, sellerItems, onItemsChange, seller
   // Compute the lifecycle for each item
   function lifecycleOf(item) {
     if (item.status === "draft") return "draft";
+    // BUG-053 — CLAIMED items are no longer claimable by other buyers but
+    // still in the seller's hands until pickup. Show them with a distinct
+    // pill so the seller knows a sale is in flight.
+    if (item.backendStatus === "CLAIMED") return "claimed";
     if (item.publishedTo === "drop" && !dropIsLive) return "queued";
     if (item.publishedTo === "drop" && dropIsLive)  return "live";
     if (item.publishedTo === "shelf" && dropIsLive) return "live";  // Shelf items auto-join Live Drop
@@ -4232,27 +4298,33 @@ function MyItemsView({ onNav, onEdit, onView, sellerItems, onItemsChange, seller
   }
 
   const lifecycleMeta = {
-    draft:  { label: "Draft",                    color: C.ash,       bg: C.sand,       border: C.fawn },
-    queued: { label: "Queued for Saturday's Drop", color: C.amberDeep, bg: C.amberMist,  border: C.amber + "30" },
-    live:   { label: "Live in Drop",             color: C.greenDeep, bg: C.greenMist,  border: C.green + "40", pulse: true },
-    shelf:  { label: "On the Shelf",             color: C.ink,       bg: C.sand,       border: C.smoke },
+    draft:   { label: "Draft",                       color: C.ash,       bg: C.sand,       border: C.fawn },
+    queued:  { label: "Queued for Saturday's Drop",  color: C.amberDeep, bg: C.amberMist,  border: C.amber + "30" },
+    live:    { label: "Live in Drop",                color: C.greenDeep, bg: C.greenMist,  border: C.green + "40", pulse: true },
+    shelf:   { label: "On the Shelf",                color: C.ink,       bg: C.sand,       border: C.smoke },
+    claimed: { label: "Claimed · pickup pending",    color: C.ai,        bg: C.aiMist,     border: C.ai + "40" },
   };
 
-  // Filters follow the lifecycle
+  // Filters follow the lifecycle. "Claimed" only shows up when there's at
+  // least one such item — keeps the filter row clean while still surfacing
+  // a meaningful filter when it matters.
+  const myItemsClaimedCount = items.filter(i => lifecycleOf(i) === "claimed").length;
   const allFilters = [
     { id: "all",    label: "All" },
     { id: "draft",  label: "Drafts" },
     { id: "queued", label: "Queued for Drop" },
     { id: "live",   label: "Live in Drop" },
     { id: "shelf",  label: "On the Shelf" },
+    ...(myItemsClaimedCount > 0 ? [{ id: "claimed", label: "Claimed · pickup pending" }] : []),
   ].filter(f => f.id !== "live" || dropIsLive);
 
   const counts = {
-    all:    items.length,
-    draft:  items.filter(i => lifecycleOf(i) === "draft").length,
-    queued: items.filter(i => lifecycleOf(i) === "queued").length,
-    live:   items.filter(i => lifecycleOf(i) === "live").length,
-    shelf:  items.filter(i => lifecycleOf(i) === "shelf").length,
+    all:     items.length,
+    draft:   items.filter(i => lifecycleOf(i) === "draft").length,
+    queued:  items.filter(i => lifecycleOf(i) === "queued").length,
+    live:    items.filter(i => lifecycleOf(i) === "live").length,
+    shelf:   items.filter(i => lifecycleOf(i) === "shelf").length,
+    claimed: myItemsClaimedCount,
   };
 
   const filtered = filter === "all" ? items : items.filter(i => lifecycleOf(i) === filter);
@@ -4551,7 +4623,16 @@ function MyItemsView({ onNav, onEdit, onView, sellerItems, onItemsChange, seller
                           style={{ width: 56, padding: "2px 6px", borderRadius: 6, border: "1.5px solid " + C.green, fontFamily: F.head, fontSize: 14, fontWeight: 900, color: C.green, outline: "none", background: C.paper, textAlign: "center" }}/>
                       </div>
                     ) : (
-                      <p style={{ fontFamily: F.head, fontSize: 17, fontWeight: 900, color: item.isFree ? C.claret : C.green, letterSpacing: "-0.01em" }}>{item.isFree ? "FREE" : ("$" + item.price)}</p>
+                      <p style={{ fontFamily: F.head, fontSize: 17, fontWeight: 900, color: item.isFree ? C.claret : C.green, letterSpacing: "-0.01em" }}>
+                        {item.isFree ? "FREE" : (
+                          typeof item.soldPrice === "number" && item.soldPrice !== item.price ? (
+                            <>
+                              <span>{"$" + item.soldPrice}</span>
+                              <span style={{ marginLeft: 6, fontSize: 12, fontWeight: 700, color: C.ash, textDecoration: "line-through" }}>{"$" + item.price}</span>
+                            </>
+                          ) : ("$" + item.price)
+                        )}
+                      </p>
                     )}
                     {(item.views > 0 || item.saves > 0 || (lc === "shelf" && item.shelfDays)) && (
                       <p style={{ marginTop: 4, fontFamily: F.body, fontSize: 10, fontWeight: 600, color: C.mink, display: "inline-flex", alignItems: "center", gap: 6 }}>
@@ -4699,7 +4780,16 @@ function MyItemsView({ onNav, onEdit, onView, sellerItems, onItemsChange, seller
                       style={{ width: 64, padding: "2px 6px", borderRadius: 6, border: "1.5px solid " + C.green, fontFamily: F.head, fontSize: 16, fontWeight: 900, color: C.green, outline: "none", background: C.paper, textAlign: "center" }}/>
                   </div>
                 ) : (
-                  <p style={{ fontFamily: F.head, fontSize: 19, fontWeight: 900, color: item.isFree ? C.claret : C.green, letterSpacing: "-0.01em" }}>{item.isFree ? "FREE" : ("$" + item.price)}</p>
+                  <p style={{ fontFamily: F.head, fontSize: 19, fontWeight: 900, color: item.isFree ? C.claret : C.green, letterSpacing: "-0.01em" }}>
+                    {item.isFree ? "FREE" : (
+                      typeof item.soldPrice === "number" && item.soldPrice !== item.price ? (
+                        <>
+                          <span>{"$" + item.soldPrice}</span>
+                          <span style={{ marginLeft: 6, fontSize: 13, fontWeight: 700, color: C.ash, textDecoration: "line-through" }}>{"$" + item.price}</span>
+                        </>
+                      ) : ("$" + item.price)
+                    )}
+                  </p>
                 )}
               </div>
 
@@ -5090,6 +5180,46 @@ function relativeTimeShort(iso) {
   return months + "mo ago";
 }
 
+// Lifted from SellerMessagesView to module scope so the dashboard root can
+// adapt the conversation list before SellerMessagesView even mounts (the nav
+// badge needs to count from this lifted state). Seller-perspective adapter.
+function adaptSellerConversation(api, myId) {
+  if (!api) return null;
+  const layer = api.item?.placement === "SHELF" ? "shelf" : "drop";
+  const lastFromMe = api.lastMessage && api.lastMessage.senderId === myId;
+  const status = (api.unreadCount || 0) > 0
+    ? "needs-response"
+    : (lastFromMe ? "answered" : "pending");
+  return {
+    id:     api.id,
+    type:   "question",
+    status,
+    unread: (api.unreadCount || 0) > 0,
+    unreadCount: api.unreadCount || 0,
+    group:  "active",
+    item: {
+      title: api.item?.title || "Item",
+      price: api.item?.price ?? 0,
+      img:   CATEGORY_EMOJI[api.item?.category] || "\u{1F4E6}",
+      layer,
+      // Raw backend status (LIVE / CLAIMED / SOLD). Composer locks once
+      // the item is SOLD (pickup complete).
+      status: api.item?.status || null,
+    },
+    buyer: {
+      name:   api.otherUser?.name || "Buyer",
+      hood:   api.otherUser?.neighborhood || "—",
+      rating: 0,
+      previousPurchases: typeof api.otherUser?.previousPurchases === "number"
+        ? api.otherUser.previousPurchases
+        : 0,
+    },
+    lastMsg:  api.lastMessage?.body || "",
+    lastTime: relativeTimeShort(api.lastMessageAt),
+    messages: [],
+  };
+}
+
 function ClaimsView({ onNav, embedded = false, accessToken = null, onClaimsChanged = null }) {
   const { isMobile } = useViewport();
   const [successMsg, setSuccessMsg] = useState(null);
@@ -5115,12 +5245,15 @@ function ClaimsView({ onNav, embedded = false, accessToken = null, onClaimsChang
   // present every pending claim as a full-price claim (offered === listed).
   function adaptClaim(api) {
     if (!api) return null;
+    // BUG-053 — `offered` reflects the agreed sale price (claim.price when
+    // set, falls back to the item's listed price for vanilla claims).
+    const offered = typeof api.price === "number" ? api.price : (api.item?.price ?? 0);
     return {
       id:       api.id,
       e:        "\u{1F4E6}",                    // package emoji (no category in payload)
       t:        api.item?.title || "Item",
       listed:   api.item?.price ?? 0,
-      offered:  api.item?.price ?? 0,
+      offered,
       buyer:    api.buyer?.name || api.buyer?.email || "Buyer",
       time:     relativeTimeShort(api.requestedAt || api.createdAt),
     };
@@ -5388,7 +5521,7 @@ const DEMO_SELLER_CONVERSATIONS = [
     },
 ];
 
-function SellerMessagesView({ user = null, accessToken = null }) {
+function SellerMessagesView({ user = null, accessToken = null, convList: convListProp = null, onConvListChange = null }) {
   const { isMobile } = useViewport();
   const usingBackend = !!accessToken;
   const myId = user?.id || null;
@@ -5400,55 +5533,31 @@ function SellerMessagesView({ user = null, accessToken = null }) {
   const [draft, setDraft]               = useState("");
   const [sending, setSending]           = useState(false);
   const [errorMsg, setErrorMsg]         = useState(null);
+  const [successMsg, setSuccessMsg]     = useState(null);
 
-  // Inbox list (demo or wired)
-  const [convList, setConvList]         = useState(usingBackend ? [] : DEMO_SELLER_CONVERSATIONS);
-  const [loading, setLoading]           = useState(usingBackend);
+  // Inbox list — owned by the dashboard root (so the nav badge stays in
+  // sync even when this view is unmounted). Falls back to local state for
+  // isolated rendering / preview mode.
+  const [localConvList, setLocalConvList] = useState(usingBackend ? [] : DEMO_SELLER_CONVERSATIONS);
+  const convList = convListProp != null ? convListProp : localConvList;
+  const setConvList = (updater) => {
+    if (typeof onConvListChange === "function") {
+      onConvListChange(updater);
+    } else {
+      setLocalConvList(updater);
+    }
+  };
+  const [loading, setLoading]           = useState(usingBackend && convListProp == null);
 
   // Active thread messages — only used in wired mode. In demo mode the
   // existing render path reads inline from each conversation's `messages`.
   const [activeMsgs, setActiveMsgs]     = useState(null);
   const [activeLoading, setActiveLoading] = useState(false);
 
-  // Adapter: backend conversation -> UI shape consumed by the existing render.
-  function adaptConversation(api) {
-    if (!api) return null;
-    const layer = api.item?.placement === "SHELF" ? "shelf" : "drop";
-    const lastFromMe = api.lastMessage && api.lastMessage.senderId === myId;
-    // Status is heuristic until we have richer state on the backend:
-    //   unread > 0          -> "needs-response"
-    //   last message from me -> "answered"
-    //   else                  -> "pending" (waiting on me, but not unread)
-    const status = (api.unreadCount || 0) > 0
-      ? "needs-response"
-      : (lastFromMe ? "answered" : "pending");
-    return {
-      id:     api.id,
-      type:   "question",
-      status,
-      unread: (api.unreadCount || 0) > 0,
-      unreadCount: api.unreadCount || 0,
-      group:  "active",
-      item: {
-        title: api.item?.title || "Item",
-        price: api.item?.price ?? 0,
-        img:   CATEGORY_EMOJI[api.item?.category] || "\u{1F4E6}",
-        layer,
-      },
-      buyer: {
-        name:   api.otherUser?.name || "Buyer",
-        hood:   api.otherUser?.neighborhood || "—",
-        rating: 0,
-        previousPurchases: typeof api.otherUser?.previousPurchases === "number"
-          ? api.otherUser.previousPurchases
-          : 0,
-      },
-      lastMsg:  api.lastMessage?.body || "",
-      lastTime: relativeTimeShort(api.lastMessageAt),
-      // Demo path uses this; wired path reads from activeMsgs state instead.
-      messages: [],
-    };
-  }
+  // Adapter moved to module scope as `adaptSellerConversation(api, myId)` so
+  // the dashboard root can apply it before this view mounts. Local alias
+  // below keeps existing call sites readable.
+  const adaptConversation = (api) => adaptSellerConversation(api, myId);
   function adaptMessage(api) {
     if (!api) return null;
     const fromMe = api.senderId === myId;
@@ -5469,9 +5578,18 @@ function SellerMessagesView({ user = null, accessToken = null }) {
     };
   }
 
-  // Initial inbox fetch (wired mode only)
+  // Initial inbox fetch — moved to the dashboard root so the Sidebar / TopNav
+  // / MobileBottomNav badges stay accurate when this view is unmounted. We
+  // only run a local fallback fetch when no parent owns the list (legacy
+  // path / isolated rendering).
   useEffect(() => {
     if (!usingBackend) return;
+    if (convListProp != null) {
+      if (Array.isArray(convListProp) && convListProp.length > 0) {
+        setActiveId(prev => prev || convListProp[0].id);
+      }
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     apiRequest("/api/conversations", { token: accessToken })
@@ -5489,7 +5607,7 @@ function SellerMessagesView({ user = null, accessToken = null }) {
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [usingBackend, accessToken]);
+  }, [usingBackend, accessToken, convListProp]);
 
   // Load messages for the active thread
   useEffect(() => {
@@ -5517,53 +5635,28 @@ function SellerMessagesView({ user = null, accessToken = null }) {
   }, [activeId, usingBackend, accessToken]);
 
   // Real-time push: a new message landed somewhere
+  // Live push: append to the OPEN thread + mark read on the server. Inbox
+  // preview + unread badge updates now live at the dashboard root so they
+  // stay accurate regardless of whether this view is mounted. We also clear
+  // the active conv's unread locally so the badge matches what's on screen.
   useSocketEvent("message:new", (payload) => {
     if (!usingBackend || !payload?.conversationId || !payload.message) return;
     const { conversationId, message } = payload;
 
-    // Append to the active thread if it's open
     if (conversationId === activeId) {
       setActiveMsgs(prev => {
         const list = prev || [];
         if (list.some(m => m.id === message.id)) return list;
         return [...list, adaptMessage(message)];
       });
-      // Keep my read cursor current so the other side's "seen" state stays
-      // accurate. Best-effort.
       apiRequest("/api/conversations/" + encodeURIComponent(conversationId) + "/read", {
         method: "PATCH",
         token:  accessToken,
       }).catch(() => {});
+      setConvList(prev => prev.map(c => c.id === activeId
+        ? { ...c, unread: false, unreadCount: 0, status: c.status === "needs-response" ? "answered" : c.status }
+        : c));
     }
-
-    // Update inbox preview + unread badge
-    setConvList(prev => {
-      const exists = prev.some(c => c.id === conversationId);
-      if (!exists) {
-        // Brand-new thread we don't know about (e.g. a buyer opened one) —
-        // refetch the inbox in the background so it shows up.
-        apiRequest("/api/conversations", { token: accessToken })
-          .then(data => {
-            const list = Array.isArray(data?.conversations) ? data.conversations.map(adaptConversation).filter(Boolean) : [];
-            setConvList(list);
-          })
-          .catch(() => {});
-        return prev;
-      }
-      const isFromMe = message.senderId === myId;
-      return prev.map(c => {
-        if (c.id !== conversationId) return c;
-        const incrementUnread = !isFromMe && c.id !== activeId;
-        return {
-          ...c,
-          lastMsg:     message.body,
-          lastTime:    relativeTimeShort(message.createdAt),
-          unread:      incrementUnread ? true : c.unread,
-          unreadCount: incrementUnread ? (c.unreadCount || 0) + 1 : c.unreadCount,
-          status:      incrementUnread ? "needs-response" : c.status,
-        };
-      });
-    });
   });
 
   async function handleSend() {
@@ -5593,6 +5686,71 @@ function SellerMessagesView({ user = null, accessToken = null }) {
       setTimeout(() => setErrorMsg(null), 4500);
     } finally {
       setSending(false);
+    }
+  }
+
+  // ─── Offer action handlers (BUG-052) ───
+  // Seller-side these act on OFFER messages from the buyer (and on
+  // COUNTER messages if the buyer counters back). The `messageId` is
+  // captured on the OFFER bubble itself (see renderMessage). Backend
+  // enforces "opposite party" and "not already resolved".
+  const [offerBusyMsgId, setOfferBusyMsgId] = useState(null);
+  const [counterDraftMsgId, setCounterDraftMsgId] = useState(null);
+  const [counterDraftAmount, setCounterDraftAmount] = useState("");
+  async function acceptOffer(messageId) {
+    if (!usingBackend || !messageId) return;
+    setOfferBusyMsgId(messageId);
+    try {
+      const resp = await apiRequest("/api/conversations/messages/" + encodeURIComponent(messageId) + "/accept", {
+        method: "POST",
+        token:  accessToken,
+      });
+      const amt = resp?.message?.amount ?? null;
+      setSuccessMsg(amt ? `Offer accepted at $${amt}. Pickup will appear in Pickups view.` : "Offer accepted. Pickup will appear in Pickups view.");
+      setTimeout(() => setSuccessMsg(null), 4500);
+    } catch (err) {
+      setErrorMsg("Couldn't accept: " + (err?.message || "try again"));
+      setTimeout(() => setErrorMsg(null), 4500);
+    } finally {
+      setOfferBusyMsgId(null);
+    }
+  }
+  async function declineOffer(messageId) {
+    if (!usingBackend || !messageId) return;
+    setOfferBusyMsgId(messageId);
+    try {
+      await apiRequest("/api/conversations/messages/" + encodeURIComponent(messageId) + "/decline", {
+        method: "POST",
+        token:  accessToken,
+      });
+    } catch (err) {
+      setErrorMsg("Couldn't decline: " + (err?.message || "try again"));
+      setTimeout(() => setErrorMsg(null), 4500);
+    } finally {
+      setOfferBusyMsgId(null);
+    }
+  }
+  async function submitCounter(messageId) {
+    const amt = Math.round(Number(counterDraftAmount));
+    if (!Number.isFinite(amt) || amt <= 0) {
+      setErrorMsg("Enter a valid counter amount.");
+      setTimeout(() => setErrorMsg(null), 4500);
+      return;
+    }
+    setOfferBusyMsgId(messageId);
+    try {
+      await apiRequest("/api/conversations/messages/" + encodeURIComponent(messageId) + "/counter", {
+        method: "POST",
+        token:  accessToken,
+        body:   JSON.stringify({ amount: amt }),
+      });
+      setCounterDraftMsgId(null);
+      setCounterDraftAmount("");
+    } catch (err) {
+      setErrorMsg("Couldn't counter: " + (err?.message || "try again"));
+      setTimeout(() => setErrorMsg(null), 4500);
+    } finally {
+      setOfferBusyMsgId(null);
     }
   }
 
@@ -5668,6 +5826,24 @@ function SellerMessagesView({ user = null, accessToken = null }) {
         </div>
       );
     }
+    // CLAIM-type messages render as a celebratory full-width banner.
+    if (m.type === "claim") {
+      return (
+        <div key={i} style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 18px", borderRadius: 14, background: "linear-gradient(135deg, " + C.greenMist + " 0%, " + C.greenMist + "80 100%)", border: "1.5px solid " + C.green + "55", maxWidth: 440, boxShadow: "0 2px 0 " + C.green + "20" }}>
+            <div style={{ width: 32, height: 32, borderRadius: "50%", background: C.green, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <Check size={17} style={{ color: "#fff" }} strokeWidth={3}/>
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ fontFamily: F.head, fontSize: 12, fontWeight: 800, color: C.greenDeep, letterSpacing: "0.04em", textTransform: "uppercase", marginBottom: 2 }}>
+                {m.amount ? "Claim confirmed · $" + m.amount : "Claim confirmed"}
+              </p>
+              <p style={{ fontFamily: F.body, fontSize: 13, fontWeight: 500, color: C.ink, lineHeight: 1.4 }}>{m.text}</p>
+            </div>
+          </div>
+        </div>
+      );
+    }
 
     const bubbleBg = isBuyer ? C.paper : (isAI ? C.aiMist : C.green);
     const bubbleColor = isBuyer ? C.ink : (isAI ? C.ink : "#fff");
@@ -5703,6 +5879,46 @@ function SellerMessagesView({ user = null, accessToken = null }) {
             {m.text}
           </div>
           <p style={{ fontFamily: F.body, fontSize: 10, fontWeight: 500, color: C.ash, marginTop: 3, textAlign: isBuyer ? "left" : "right", marginLeft: 2, marginRight: 2 }}>{m.time}</p>
+          {/* Action row — only on INCOMING OFFER/COUNTER from buyer that's
+              still the latest unresolved offer. Backend rejects races with
+              409, so this is just for UX cleanliness. */}
+          {isBuyer && (m.type === "offer" || m.type === "counter") && m.id && (() => {
+            const idx = activeMessages.findIndex(x => x.id === m.id);
+            if (idx < 0) return null;
+            const isLatestActionable = !activeMessages.slice(idx + 1).some(
+              x => x && (x.type === "offer" || x.type === "counter" || x.type === "claim" || x.type === "notice")
+            );
+            if (!isLatestActionable) return null;
+            const busy = offerBusyMsgId === m.id;
+            const showCounterDraft = counterDraftMsgId === m.id;
+            return (
+              <div style={{ marginTop: 8, padding: 10, borderRadius: 12, background: C.aiMist, border: "1px solid " + C.ai + "25" }}>
+                {showCounterDraft ? (
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ fontFamily: F.head, fontSize: 13, fontWeight: 800, color: C.ai }}>$</span>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      value={counterDraftAmount}
+                      onChange={e => setCounterDraftAmount(e.target.value)}
+                      placeholder={m.amount ? String(Math.max(1, Math.round(m.amount * 1.1))) : "0"}
+                      autoFocus
+                      disabled={busy}
+                      style={{ flex: 1, padding: "6px 10px", borderRadius: 8, border: "1.5px solid " + C.ai + "40", fontFamily: F.head, fontSize: 13, fontWeight: 700, color: C.ink, outline: "none", background: C.paper, minWidth: 0 }}
+                    />
+                    <button onClick={() => submitCounter(m.id)} disabled={busy} style={{ padding: "6px 12px", borderRadius: 8, border: "none", background: C.ai, color: "#fff", fontFamily: F.head, fontSize: 11, fontWeight: 800, cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.7 : 1 }}>{busy ? "…" : "Send"}</button>
+                    <button onClick={() => { setCounterDraftMsgId(null); setCounterDraftAmount(""); }} disabled={busy} style={{ padding: "6px 10px", borderRadius: 8, border: "1.5px solid " + C.fawn, background: C.paper, color: C.mink, fontFamily: F.head, fontSize: 11, fontWeight: 700, cursor: busy ? "not-allowed" : "pointer" }}>Cancel</button>
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    <button onClick={() => acceptOffer(m.id)} disabled={busy} style={{ flex: 1, minWidth: 70, padding: "8px 12px", borderRadius: 8, border: "none", background: C.green, color: "#fff", fontFamily: F.head, fontSize: 12, fontWeight: 800, cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.7 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}><Check size={13}/> Accept</button>
+                    <button onClick={() => { setCounterDraftMsgId(m.id); setCounterDraftAmount(m.amount ? String(Math.max(1, Math.round(m.amount * 1.1))) : ""); }} disabled={busy} style={{ flex: 1, minWidth: 70, padding: "8px 12px", borderRadius: 8, border: "1.5px solid " + C.ai + "40", background: C.paper, color: C.ai, fontFamily: F.head, fontSize: 12, fontWeight: 800, cursor: busy ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}><RefreshCw size={13}/> Counter</button>
+                    <button onClick={() => declineOffer(m.id)} disabled={busy} style={{ flex: 1, minWidth: 70, padding: "8px 12px", borderRadius: 8, border: "1.5px solid " + C.fawn, background: C.paper, color: C.mink, fontFamily: F.head, fontSize: 12, fontWeight: 700, cursor: busy ? "not-allowed" : "pointer" }}>Decline</button>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
       </div>
     );
@@ -5734,6 +5950,15 @@ function SellerMessagesView({ user = null, accessToken = null }) {
           </div>
         </div>
       </div>
+      )}
+
+      {/* Success toast — celebration banner when an offer/counter is accepted. */}
+      {successMsg && (
+        <div className="fade-in" style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", borderRadius: 12, background: C.greenMist, border: "1px solid " + C.green + "44", marginBottom: 16, boxShadow: "0 2px 0 " + C.green + "20" }}>
+          <CheckCircle size={18} style={{ color: C.greenDeep }}/>
+          <p style={{ fontSize: 13, fontWeight: 700, color: C.greenDeep, fontFamily: F.body, flex: 1 }}>{successMsg}</p>
+          <button onClick={() => setSuccessMsg(null)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}><X size={14} style={{ color: C.greenDeep }}/></button>
+        </div>
       )}
 
       {/* Error toast */}
@@ -5929,6 +6154,17 @@ function SellerMessagesView({ user = null, accessToken = null }) {
                   </button>
                 ))}
               </div>
+            {active.item?.status === "SOLD" ? (
+              // Pickup complete — conversation locked. Same UX as the buyer
+              // side so both parties see the same record-keeping notice.
+              <div style={{ padding: "16px 18px", borderTop: "1px solid " + C.fawn, background: C.greenMist + "60", display: "flex", alignItems: "center", gap: 10 }}>
+                <CheckCircle size={18} style={{ color: C.greenDeep, flexShrink: 0 }}/>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontFamily: F.head, fontSize: 12, fontWeight: 800, color: C.greenDeep, letterSpacing: "0.04em", textTransform: "uppercase" }}>Conversation closed</p>
+                  <p style={{ fontFamily: F.body, fontSize: 12, fontWeight: 500, color: C.mink, marginTop: 2 }}>This item has been picked up. The thread is kept as a record.</p>
+                </div>
+              </div>
+            ) : (
             <div style={{ padding: isMobile ? "10px 12px" : "12px 16px", display: "flex", gap: isMobile ? 8 : 10, alignItems: "center", background: C.paper }}>
               <input
                 value={draft}
@@ -5947,6 +6183,7 @@ function SellerMessagesView({ user = null, accessToken = null }) {
                 <Send size={isMobile ? 14 : 16}/>
               </button>
             </div>
+            )}
             </div>
           </div>
         )}
@@ -5998,11 +6235,12 @@ function PickupsView({ onNav, embedded = false, accessToken = null, onChanged = 
     const slot = api.pickupSlot || "";
     const todayName = SHORT_DAY_NAMES[new Date().getDay()];
     const isToday = slot.toLowerCase().startsWith(todayName.toLowerCase());
+    // Agreed sale price wins over the item's listed price (BUG-053).
     return {
       id:      api.id,
       e:       "\u{1F4E6}",
       t:       api.item?.title || "Item",
-      price:   api.item?.price ?? 0,
+      price:   (typeof api.price === "number" ? api.price : api.item?.price) ?? 0,
       buyer:   api.buyer?.name || api.buyer?.email || "Buyer",
       date:    isToday ? "Today" : (slot.split(/\s+/)[0] || slot),
       time:    isToday ? slot.replace(/^\S+\s*/, "") : slot.replace(/^\S+\s*/, ""),
@@ -6064,16 +6302,28 @@ function PickupsView({ onNav, embedded = false, accessToken = null, onChanged = 
     setBusyId(item.id);
     const snapshot = pickups;
     setPickups(prev => prev.filter(p => p.id !== item.id));
+    // Hard 20s timeout — same defensive measure we added to the offer / claim
+    // flows. Without it, if the network or auto-refresh path stalls, the
+    // optimistic row stays gone, busyId never clears, and the seller can't
+    // mark any more pickups until they refresh the page.
+    const pickupTimeout = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Request timed out. Please try again.")), 20000)
+    );
     try {
-      await apiRequest("/api/claims/" + encodeURIComponent(item.id) + "/picked-up", {
-        method: "PATCH",
-        token:  accessToken,
-      });
+      await Promise.race([
+        apiRequest("/api/claims/" + encodeURIComponent(item.id) + "/picked-up", {
+          method: "PATCH",
+          token:  accessToken,
+        }),
+        pickupTimeout,
+      ]);
       setSuccessMsg("Pickup complete! " + item.t + " marked as picked up.");
       setTimeout(() => setSuccessMsg(null), 4000);
       // Item flipped to SOLD server-side — refresh the parent's items list.
       if (onChanged) onChanged();
     } catch (err) {
+      // eslint-disable-next-line no-console
+      if (typeof console !== "undefined") console.error("[PickupsView] picked-up failed:", err);
       setPickups(snapshot);
       setErrorMsg("Mark picked-up failed: " + (err?.message || "try again"));
       setTimeout(() => setErrorMsg(null), 4500);
@@ -6101,12 +6351,20 @@ function PickupsView({ onNav, embedded = false, accessToken = null, onChanged = 
     const snapshot = pickups;
     setPickups(prev => prev.filter(p => p.id !== item.id));
     if (accessToken && item.id) {
+      const noShowTimeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Request timed out. Please try again.")), 20000)
+      );
       try {
-        await apiRequest("/api/claims/" + encodeURIComponent(item.id) + "/no-show", {
-          method: "PATCH",
-          token:  accessToken,
-        });
+        await Promise.race([
+          apiRequest("/api/claims/" + encodeURIComponent(item.id) + "/no-show", {
+            method: "PATCH",
+            token:  accessToken,
+          }),
+          noShowTimeout,
+        ]);
       } catch (err) {
+        // eslint-disable-next-line no-console
+        if (typeof console !== "undefined") console.error("[PickupsView] no-show failed:", err);
         setPickups(snapshot);
         setSuccessMsg("Couldn't mark as no-show: " + (err?.message || "try again"));
         setTimeout(() => setSuccessMsg(null), 4000);
@@ -6121,12 +6379,20 @@ function PickupsView({ onNav, embedded = false, accessToken = null, onChanged = 
     const snapshot = pickups;
     setPickups(prev => prev.filter(p => p.id !== item.id));
     if (accessToken && item.id) {
+      const releaseTimeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Request timed out. Please try again.")), 20000)
+      );
       try {
-        await apiRequest("/api/claims/" + encodeURIComponent(item.id) + "/release", {
-          method: "PATCH",
-          token:  accessToken,
-        });
+        await Promise.race([
+          apiRequest("/api/claims/" + encodeURIComponent(item.id) + "/release", {
+            method: "PATCH",
+            token:  accessToken,
+          }),
+          releaseTimeout,
+        ]);
       } catch (err) {
+        // eslint-disable-next-line no-console
+        if (typeof console !== "undefined") console.error("[PickupsView] release failed:", err);
         setPickups(snapshot);
         setSuccessMsg("Couldn't release the claim: " + (err?.message || "try again"));
         setTimeout(() => setSuccessMsg(null), 4000);
@@ -6462,13 +6728,19 @@ function SellerHistoryView({ embedded = false, accessToken = null }) {
   function adaptHistory(api) {
     if (!api) return null;
     const placementUi = ENUM_TO_PLACEMENT_LABEL[api.item?.placement] || "drop";
+    // Agreed sale price wins over the item's listed price (BUG-053). When
+    // there's a delta between the sale price and the listed price, the
+    // expanded row shows "Listed $X → Sold $Y" so the seller can see the
+    // negotiation outcome at a glance.
+    const soldPrice = typeof api.price === "number" ? api.price : (api.item?.price ?? 0);
+    const listedPrice = api.item?.price ?? soldPrice;
     return {
       id:     api.id,
       title:  api.item?.title || "Item",
-      price:  api.item?.price ?? 0,
-      // Asking = originalPrice when set, otherwise the sold price (no discount).
-      // Used by the expanded row to render "$95 → $80" when there's a delta.
-      asking: typeof api.item?.originalPrice === "number" ? api.item.originalPrice : (api.item?.price ?? 0),
+      price:  soldPrice,
+      // Asking = originalPrice if set, else the listed price. Used in the
+      // expanded row's strike-through.
+      asking: typeof api.item?.originalPrice === "number" ? api.item.originalPrice : listedPrice,
       img:    CATEGORY_EMOJI[api.item?.category] || "\u{1F4E6}",
       cat:    ENUM_TO_CATEGORY_LABEL[api.item?.category] || "Other",
       buyer:  api.buyer?.name || api.buyer?.email || "Buyer",
@@ -9343,6 +9615,102 @@ export default function DropYardSellerDashboard({
   function goToEdit(item) { setEditingItem(item); setView("edit-item"); }
   function goToView(item) { setEditingItem(item); setView("item-detail"); }
 
+  // ─── Conversation inbox (lifted to root for nav badges) ───
+  // Owns the seller's conversation list at the root so the Sidebar, TopNav
+  // notification bell, and MobileBottomNav Messages tab can show the unread
+  // count regardless of which view is active. SellerMessagesView receives
+  // this through props.
+  const [convList, setConvList] = useState([]);
+  const myUserId = user?.id || null;
+
+  // Helper: insert/refresh a single conversation from a socket payload.
+  // The adapted shape mirrors what SellerMessagesView already renders.
+  const upsertConvFromSocket = useCallback((prev, payload) => {
+    if (!payload?.conversationId || !payload.message) return prev;
+    const { conversationId, message } = payload;
+    const isFromMe = message.senderId === myUserId;
+    const existing = prev.find((c) => c.id === conversationId);
+    if (!existing) {
+      if (accessToken) {
+        apiRequest("/api/conversations", { token: accessToken })
+          .then((data) => {
+            const list = Array.isArray(data?.conversations) ? data.conversations : [];
+            setConvList(list.map((api) => adaptSellerConversation(api, myUserId)).filter(Boolean));
+          })
+          .catch(() => { /* keep current list on transient blip */ });
+      }
+      return prev;
+    }
+    return prev.map((c) => {
+      if (c.id !== conversationId) return c;
+      const newUnread = isFromMe ? (c.unreadCount || 0) : (c.unreadCount || 0) + 1;
+      return {
+        ...c,
+        lastMsg:     message.body || c.lastMsg,
+        lastTime:    relativeTimeShort(message.createdAt),
+        unread:      newUnread > 0,
+        unreadCount: newUnread,
+        status:      newUnread > 0 ? "needs-response" : c.status,
+      };
+    });
+  }, [accessToken, myUserId]);
+
+  // Bumped on claim socket events so the conv list refetches and the
+  // embedded item.status reflects pickup completion. The composer locks
+  // automatically once the item flips SOLD.
+  const [convListTick, setConvListTick] = useState(0);
+  useSocketEvent("claim:new",     () => setConvListTick(t => t + 1));
+  useSocketEvent("claim:updated", () => setConvListTick(t => t + 1));
+  useEffect(() => {
+    if (!accessToken) { setConvList([]); return; }
+    let cancelled = false;
+    apiRequest("/api/conversations", { token: accessToken })
+      .then((data) => {
+        if (cancelled) return;
+        const list = Array.isArray(data?.conversations) ? data.conversations : [];
+        setConvList(list.map((api) => adaptSellerConversation(api, myUserId)).filter(Boolean));
+      })
+      .catch(() => { if (!cancelled) setConvList([]); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessToken, myUserId, convListTick]);
+
+  useSocketEvent("message:new", (payload) => {
+    setConvList((prev) => upsertConvFromSocket(prev, payload));
+  });
+
+  useSocketEvent("conversation:read", (payload) => {
+    const cid = payload?.conversationId;
+    if (!cid) return;
+    setConvList((prev) => prev.map((c) => c.id === cid
+      ? { ...c, unreadCount: 0, unread: false, status: c.status === "needs-response" ? "answered" : c.status }
+      : c
+    ));
+  });
+
+  const messagesUnreadCount = useMemo(
+    () => convList.filter((c) => (c.unreadCount || 0) > 0).length,
+    [convList],
+  );
+
+  // Browser-level notification on incoming message. Gated to authed seller +
+  // granted permission + not currently viewing the active thread.
+  useSocketEvent("message:new", (payload) => {
+    if (typeof window === "undefined" || typeof Notification === "undefined") return;
+    if (Notification.permission !== "granted") return;
+    const msg = payload?.message;
+    if (!msg || msg.senderId === myUserId) return;
+    const conv = convList.find((c) => c.id === payload.conversationId);
+    const itemTitle = conv?.item?.title || "your message";
+    const buyerName = conv?.buyer?.name || "Someone";
+    try {
+      new Notification(buyerName + " · DropYard", {
+        body: msg.body ? String(msg.body).slice(0, 120) : `New message about ${itemTitle}`,
+        tag:  "dropyard-msg-" + payload.conversationId,
+      });
+    } catch { /* notifications can fail in restricted contexts */ }
+  });
+
   return (
     <>
       <GlobalStyle/>
@@ -9354,13 +9722,15 @@ export default function DropYardSellerDashboard({
           activeView={view}
           onToggleSidebar={() => setSidebarCollapsed(c => !c)}
           onSwitchRole={onSwitchRole}
+          messagesUnread={messagesUnreadCount}
+          onOpenMessages={() => safeNav("messages")}
         />
         <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
           {/* Desktop sidebar — rendered always so SSR/client markup matches; CSS
               media query (`.dy-desktop-sidebar`) hides it on mobile. Gating on
               the JS `isMobile` flag caused the sidebar to render in SSR HTML
               (defaults to desktop) and pop out on hydration, shifting layout. */}
-          <Sidebar activeView={view} onNav={safeNav} aiPlan={aiPlan} onSwitchRole={onSwitchRole} collapsed={sidebarCollapsed}/>
+          <Sidebar activeView={view} onNav={safeNav} aiPlan={aiPlan} onSwitchRole={onSwitchRole} collapsed={sidebarCollapsed} messagesUnread={messagesUnreadCount}/>
           <main className="dy-seller-main">
             {view === "overview" && <Overview onNav={safeNav} user={user} sellerItems={sellerItems} accessToken={accessToken}/>}
             {view === "items" && <MyItemsView onNav={safeNav} onEdit={goToEdit} onView={goToView} sellerItems={sellerItems} onItemsChange={onItemsChange} sellerItemsLoading={sellerItemsLoading} accessToken={accessToken}/>}
@@ -9368,7 +9738,7 @@ export default function DropYardSellerDashboard({
             {view === "orders" && <OrdersView onNav={setView} accessToken={accessToken} onClaimsChanged={onItemCreated}/>}
             {view === "claims" && <ClaimsView onNav={setView} accessToken={accessToken} onClaimsChanged={onItemCreated}/>}
             {view === "pickups" && <PickupsView onNav={setView} accessToken={accessToken} onChanged={onItemCreated}/>}
-            {view === "messages" && <SellerMessagesView user={user} accessToken={accessToken}/>}
+            {view === "messages" && <SellerMessagesView user={user} accessToken={accessToken} convList={convList} onConvListChange={setConvList}/>}
             {view === "history" && <SellerHistoryView accessToken={accessToken}/>}
             {view === "settings" && <SettingsView user={user}/>}
             {view === "edit-item" && <EditItemView onBack={() => setView("items")} editingItem={editingItem} aiSettings={aiSettings} accessToken={accessToken} onItemsChange={onItemsChange}/>}
@@ -9390,7 +9760,7 @@ export default function DropYardSellerDashboard({
           </main>
         </div>
         {/* Always render. CSS hides on desktop. See globals.css `.dy-mobile-bottom-nav`. */}
-        <MobileBottomNav activeView={view} onNav={safeNav}/>
+        <MobileBottomNav activeView={view} onNav={safeNav} messagesUnread={messagesUnreadCount}/>
       </div>
       {showOnboarding && (
         <SellerOnboardingModal
