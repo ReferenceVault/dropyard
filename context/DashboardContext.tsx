@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useCallback } from "react";
+import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
 
 export type DashboardMode = "buyer" | "seller";
 
@@ -82,7 +82,21 @@ const defaultState: DashboardState = {
 const DashboardContext = createContext<DashboardState>(defaultState);
 
 export function DashboardProvider({ children }: { children: React.ReactNode }) {
-  const [mode, setMode] = useState<DashboardMode>("buyer");
+  // Persist mode across refreshes — without this, clicking "Switch to Seller"
+  // and refreshing snaps back to buyer mode (the page lives at /buyer for
+  // both personas, so the URL alone can't recover state).
+  const [mode, setModeState] = useState<DashboardMode>("buyer");
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const saved = window.localStorage.getItem("dropyard:mode");
+    if (saved === "buyer" || saved === "seller") setModeState(saved);
+  }, []);
+  const setMode = useCallback((next: DashboardMode) => {
+    setModeState(next);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("dropyard:mode", next);
+    }
+  }, []);
   const [sellerOnboardingComplete, setSellerOnboardingComplete] = useState(false);
   const [buyerOnboardingComplete, setBuyerOnboardingComplete] = useState(false);
   const [dropType, setDropType] = useState<DropType>("weekly");

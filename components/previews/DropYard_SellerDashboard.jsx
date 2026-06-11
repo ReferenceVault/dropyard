@@ -2243,7 +2243,7 @@ function Overview({ onNav, user, sellerItems = null, accessToken = null }) {
   // Live-phase activity metrics. `liveSaves` = sum of watcher counts across
   // the seller's currently-live items (uses the existing `saves` field from
   // the sellerItems adapter, which reads `_count.watchlist` from /api/items).
-  // `liveClaims` is populated from the same PENDING-claims fetch that powers
+  // `liveClaims` is populated from the same PROPOSED-claims fetch that powers
   // the Needs Attention strip — see the useEffect below. Real view-event
   // tracking is a separate feature (no `viewCount` column today), so the
   // metric is labelled "saves today" instead of "views today".
@@ -2266,8 +2266,8 @@ function Overview({ onNav, user, sellerItems = null, accessToken = null }) {
   const [lifetimeStats, setLifetimeStats] = useState({ rehomed: 0, earned: 0, weight: 0 });
 
   // One fetch powers all three downstream surfaces:
-  //   • PENDING claims        → Needs Attention rows + activity feed
-  //   • CONFIRMED + PICKED_UP → activity events
+  //   • PROPOSED claims        → Needs Attention rows + activity feed
+  //   • ACCEPTED + PICKED_UP   → activity events
   //   • PICKED_UP             → lifetime impact stats
   //   • Conversations         → message count on the Needs-Attention strip
   const [activityEvents, setActivityEvents] = useState([]);
@@ -2295,8 +2295,8 @@ function Overview({ onNav, user, sellerItems = null, accessToken = null }) {
     }
     let cancelled = false;
     Promise.all([
-      apiRequest("/api/claims/incoming?status=PENDING",   { token: accessToken }).catch(() => ({ claims: [] })),
-      apiRequest("/api/claims/incoming?status=CONFIRMED", { token: accessToken }).catch(() => ({ claims: [] })),
+      apiRequest("/api/claims/incoming?status=PROPOSED",   { token: accessToken }).catch(() => ({ claims: [] })),
+      apiRequest("/api/claims/incoming?status=ACCEPTED", { token: accessToken }).catch(() => ({ claims: [] })),
       apiRequest("/api/claims/incoming?status=PICKED_UP", { token: accessToken }).catch(() => ({ claims: [] })),
       apiRequest("/api/conversations",                    { token: accessToken }).catch(() => ({ conversations: [] })),
     ]).then(([pendingRes, confirmedRes, pickedRes, convRes]) => {
@@ -4018,7 +4018,7 @@ function OrdersView({ onNav, accessToken = null, onClaimsChanged = null }) {
         <ClaimsView onNav={onNav} embedded={true} accessToken={accessToken} onClaimsChanged={onClaimsChanged}/>
       </div>
 
-      {/* Scheduled pickups — wired to GET /api/claims/incoming?status=CONFIRMED */}
+      {/* Scheduled pickups — wired to GET /api/claims/incoming?status=ACCEPTED */}
       <div>
         <h2 style={{ fontFamily: F.head, fontSize: 16, fontWeight: 800, color: C.ink, marginBottom: 12, letterSpacing: "-0.01em" }}>Scheduled pickups</h2>
         <PickupsView onNav={onNav} embedded={true} accessToken={accessToken} onChanged={onClaimsChanged}/>
@@ -4154,7 +4154,7 @@ function MyItemsView({ onNav, onEdit, onView, sellerItems, onItemsChange, seller
   useEffect(() => {
     if (!accessToken) { setPickupsCount(0); setPickupsTodayCount(0); return; }
     let cancelled = false;
-    apiRequest("/api/claims/incoming?status=CONFIRMED", { token: accessToken })
+    apiRequest("/api/claims/incoming?status=ACCEPTED", { token: accessToken })
       .then((data) => {
         if (cancelled) return;
         const claims = Array.isArray(data?.claims) ? data.claims : [];
@@ -4213,11 +4213,14 @@ function MyItemsView({ onNav, onEdit, onView, sellerItems, onItemsChange, seller
       cat:         ENUM_TO_CATEGORY_LABEL[api.category] || "Other",
       cond:        ENUM_TO_CONDITION_LABEL[api.condition] || "Used - Good",
       price:       api.price,
-      // Agreed sale price when an offer was accepted (BUG-053). Null for
-      // items that haven't been claimed yet. Inventory row + detail view
-      // prefer this over `price` so the seller sees what they'll actually
-      // be paid.
-      soldPrice:   (api.activeClaim && typeof api.activeClaim.price === "number") ? api.activeClaim.price : null,
+      // Agreed sale amount when a claim is active (BUG-055 — was activeClaim.price,
+      // now activeClaim.amount). Null for items without an active claim.
+      // Inventory row + detail view prefer this over the listed price so the
+      // seller sees what they'll actually be paid.
+      soldPrice:   (api.activeClaim && typeof api.activeClaim.amount === "number") ? api.activeClaim.amount : null,
+      // Surface the buyer's "Confirm receipt" flag so the inventory/pickups
+      // view can show a high-priority badge on this item.
+      buyerConfirmedReceipt: !!(api.activeClaim && api.activeClaim.buyerConfirmedReceiptAt),
       isFree:      api.price === 0 && !isDraft,
       photos:      Array.isArray(api.photos) ? api.photos.filter(Boolean) : [],
       description: api.description || "",
@@ -4289,7 +4292,10 @@ function MyItemsView({ onNav, onEdit, onView, sellerItems, onItemsChange, seller
     // BUG-053 — CLAIMED items are no longer claimable by other buyers but
     // still in the seller's hands until pickup. Show them with a distinct
     // pill so the seller knows a sale is in flight.
-    if (item.backendStatus === "CLAIMED") return "claimed";
+    // BUG-055 — CLAIMED renamed to RESERVED. Both old + new accepted during
+    // any rolling-restart window so the UI doesn't go blank if a stale
+    // response arrives.
+    if (item.backendStatus === "RESERVED" || item.backendStatus === "CLAIMED") return "claimed";
     if (item.publishedTo === "drop" && !dropIsLive) return "queued";
     if (item.publishedTo === "drop" && dropIsLive)  return "live";
     if (item.publishedTo === "shelf" && dropIsLive) return "live";  // Shelf items auto-join Live Drop
@@ -5185,6 +5191,10 @@ function relativeTimeShort(iso) {
 // badge needs to count from this lifted state). Seller-perspective adapter.
 function adaptSellerConversation(api, myId) {
   if (!api) return null;
+  // Seller view only shows conversations where the current user IS the seller.
+  // Backend returns both sides; when this user is the buyer in a thread, that
+  // belongs in the Buyer Messages view, not here.
+  if (api.sellerId && myId && api.sellerId !== myId) return null;
   const layer = api.item?.placement === "SHELF" ? "shelf" : "drop";
   const lastFromMe = api.lastMessage && api.lastMessage.senderId === myId;
   const status = (api.unreadCount || 0) > 0
@@ -5228,6 +5238,11 @@ function ClaimsView({ onNav, embedded = false, accessToken = null, onClaimsChang
   const [loading, setLoading]       = useState(!!accessToken);
   // Track in-flight accept/decline per claim so we can disable buttons
   const [busyId, setBusyId]         = useState(null);
+  // BUG-055 — counter-offer state. The seller can counter a PROPOSED claim
+  // with a new amount via PATCH /api/claims/:id/amount. counterId is the
+  // claim being countered; counterAmt is the text-input value.
+  const [counterId, setCounterId]   = useState(null);
+  const [counterAmt, setCounterAmt] = useState("");
 
   function flash(msg) {
     setSuccessMsg(msg);
@@ -5239,7 +5254,7 @@ function ClaimsView({ onNav, embedded = false, accessToken = null, onClaimsChang
   }
 
   // Adapter: backend claim -> UI claim shape used by the existing render code.
-  // Backend GET /api/claims/incoming returns only PENDING claims with
+  // Backend GET /api/claims/incoming returns only PROPOSED claims with
   //   { id, status, requestedAt, item:{id,title,price,photos}, buyer:{id,name,email} }
   // The UI didn't have an "offer below ask" concept on the backend, so we
   // present every pending claim as a full-price claim (offered === listed).
@@ -5247,15 +5262,20 @@ function ClaimsView({ onNav, embedded = false, accessToken = null, onClaimsChang
     if (!api) return null;
     // BUG-053 — `offered` reflects the agreed sale price (claim.price when
     // set, falls back to the item's listed price for vanilla claims).
-    const offered = typeof api.price === "number" ? api.price : (api.item?.price ?? 0);
+    const offered = typeof api.amount === "number" ? api.amount : (api.item?.price ?? 0);
     return {
       id:       api.id,
-      e:        "\u{1F4E6}",                    // package emoji (no category in payload)
+      e:        "\u{1F4E6}",
       t:        api.item?.title || "Item",
       listed:   api.item?.price ?? 0,
       offered,
       buyer:    api.buyer?.name || api.buyer?.email || "Buyer",
-      time:     relativeTimeShort(api.requestedAt || api.createdAt),
+      time:     relativeTimeShort(api.proposedAt || api.createdAt),
+      // BUG-055.1 — whose turn is it? GET /incoming only returns claims
+      // where I'm the seller, so lastAmountBy === sellerId means I made the
+      // last offer; ball is in the buyer's court. lastAmountBy === buyerId
+      // means buyer made the offer; ball is in my court (Accept/Counter/Decline).
+      iMadeTheOffer: api.lastAmountBy === api.sellerId,
     };
   }
 
@@ -5308,7 +5328,7 @@ function ClaimsView({ onNav, embedded = false, accessToken = null, onClaimsChang
     const snapshot = claims;
     setClaims(prev => prev.filter(c => c.id !== claim.id));
     try {
-      await apiRequest("/api/claims/" + encodeURIComponent(claim.id) + "/confirm", {
+      await apiRequest("/api/claims/" + encodeURIComponent(claim.id) + "/accept", {
         method: "PATCH",
         token:  accessToken,
       });
@@ -5333,7 +5353,7 @@ function ClaimsView({ onNav, embedded = false, accessToken = null, onClaimsChang
     const snapshot = claims;
     setClaims(prev => prev.filter(c => c.id !== claim.id));
     try {
-      await apiRequest("/api/claims/" + encodeURIComponent(claim.id) + "/reject", {
+      await apiRequest("/api/claims/" + encodeURIComponent(claim.id) + "/decline", {
         method: "PATCH",
         token:  accessToken,
       });
@@ -5342,6 +5362,38 @@ function ClaimsView({ onNav, embedded = false, accessToken = null, onClaimsChang
     } catch (err) {
       setClaims(snapshot);
       fail("Decline failed: " + (err?.message || "try again"));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  // BUG-055 — seller-side counter. Updates Claim.amount in place; status
+  // stays PROPOSED so the buyer sees the new amount and can accept/counter
+  // back. Backend resets the 36h expiry on each amount update.
+  async function handleCounter(claim) {
+    const amt = Math.round(Number(counterAmt));
+    if (!Number.isFinite(amt) || amt <= 0) {
+      fail("Enter a valid counter amount.");
+      return;
+    }
+    if (!accessToken || (typeof claim.id === "string" && claim.id.startsWith("demo-"))) {
+      setClaims(prev => prev.map(c => c.id === claim.id ? { ...c, offered: amt } : c));
+      setCounterId(null); setCounterAmt("");
+      flash("Counter offered $" + amt + " on " + claim.t + ".");
+      return;
+    }
+    setBusyId(claim.id);
+    try {
+      await apiRequest("/api/claims/" + encodeURIComponent(claim.id) + "/amount", {
+        method: "PATCH",
+        token:  accessToken,
+        body:   JSON.stringify({ amount: amt }),
+      });
+      setClaims(prev => prev.map(c => c.id === claim.id ? { ...c, offered: amt } : c));
+      setCounterId(null); setCounterAmt("");
+      flash("Counter offered $" + amt + " on " + claim.t + ". Waiting for the buyer.");
+    } catch (err) {
+      fail("Counter failed: " + (err?.message || "try again"));
     } finally {
       setBusyId(null);
     }
@@ -5420,15 +5472,47 @@ function ClaimsView({ onNav, embedded = false, accessToken = null, onClaimsChang
                   </div>
                 </div>
 
-                {/* Price */}
+                {/* Price — shows current offered amount and the listed price
+                    when the buyer's offer differs (offer or seller-counter). */}
                 <div style={{ textAlign: "right", marginRight: isMobile ? 0 : 10, flexShrink: 0 }}>
                   <p style={{ fontSize: 18, fontWeight: 900, color: C.oPrimary, fontFamily: F.head }}>${claim.offered}</p>
+                  {claim.offered !== claim.listed && (
+                    <p style={{ fontSize: 11, fontWeight: 500, color: C.ash, fontFamily: F.body, textDecoration: "line-through", marginTop: 1 }}>${claim.listed} listed</p>
+                  )}
                 </div>
 
-                {/* Actions — wrap to full-width on mobile so buttons stay tap-friendly. */}
-                <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0, width: isMobile ? "100%" : "auto", marginTop: isMobile ? 8 : 0 }}>
-                  <button onClick={() => handleAccept(claim)} disabled={isBusy} style={{ padding: "8px 14px", borderRadius: 8, border: "none", cursor: isBusy ? "not-allowed" : "pointer", fontSize: 11, fontWeight: 700, backgroundColor: C.gPrimary, color: "#fff", fontFamily: F.body, flex: isMobile ? 1 : "0 0 auto" }}>Accept ${claim.offered}</button>
-                  <button onClick={() => handleDecline(claim)} disabled={isBusy} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #FECACA", cursor: isBusy ? "not-allowed" : "pointer", fontSize: 11, fontWeight: 600, background: C.paper, color: "#DC2626", fontFamily: F.body, flex: isMobile ? 1 : "0 0 auto" }}>Decline</button>
+                {/* Actions — Accept / Counter / Decline. BUG-055.1: only
+                    visible when the BUYER made the last offer. If the seller
+                    countered, the ball is in the buyer's court — show a
+                    "Waiting for buyer" pill instead. */}
+                <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0, width: isMobile ? "100%" : "auto", marginTop: isMobile ? 8 : 0, flexWrap: "wrap" }}>
+                  {claim.iMadeTheOffer ? (
+                    <span style={{ padding: "8px 14px", borderRadius: 999, background: C.amberMist || "#fef3c7", color: C.amberDeep || "#92400e", fontFamily: F.head, fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", gap: 5, border: "1.5px solid " + (C.amber || "#f59e0b") + "30" }}>
+                      <Clock size={12}/> Waiting for buyer
+                    </span>
+                  ) : counterId === claim.id ? (
+                    <>
+                      <span style={{ fontSize: 13, fontWeight: 800, color: C.ink, fontFamily: F.head }}>$</span>
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        value={counterAmt}
+                        onChange={e => setCounterAmt(e.target.value)}
+                        placeholder={String(Math.max(1, Math.round((claim.offered + claim.listed) / 2)))}
+                        autoFocus
+                        disabled={isBusy}
+                        style={{ width: 80, padding: "7px 10px", borderRadius: 8, border: "1.5px solid " + C.fawn, fontFamily: F.head, fontSize: 13, fontWeight: 700, color: C.ink, outline: "none", background: C.paper }}
+                      />
+                      <button onClick={() => handleCounter(claim)} disabled={isBusy} className="cta-primary" style={{ padding: "8px 12px", borderRadius: 8, border: "none", background: C.gPrimary, color: "#fff", fontFamily: F.body, fontSize: 11, fontWeight: 800, cursor: isBusy ? "not-allowed" : "pointer" }}>Send</button>
+                      <button onClick={() => { setCounterId(null); setCounterAmt(""); }} disabled={isBusy} style={{ padding: "8px 10px", borderRadius: 8, border: "1.5px solid " + C.fawn, background: C.paper, color: C.mink, fontFamily: F.body, fontSize: 11, fontWeight: 700, cursor: isBusy ? "not-allowed" : "pointer" }}>Cancel</button>
+                    </>
+                  ) : (
+                    <>
+                      <button onClick={() => handleAccept(claim)} disabled={isBusy} style={{ padding: "8px 14px", borderRadius: 8, border: "none", cursor: isBusy ? "not-allowed" : "pointer", fontSize: 11, fontWeight: 700, backgroundColor: C.gPrimary, color: "#fff", fontFamily: F.body, flex: isMobile ? 1 : "0 0 auto" }}>Accept ${claim.offered}</button>
+                      <button onClick={() => { setCounterId(claim.id); setCounterAmt(String(Math.max(1, Math.round((claim.offered + claim.listed) / 2)))); }} disabled={isBusy} style={{ padding: "8px 14px", borderRadius: 8, border: "1.5px solid " + C.gPrimary + "55", background: C.gLightBg || "#ecfdf5", color: C.gPrimary, fontFamily: F.body, fontSize: 11, fontWeight: 700, cursor: isBusy ? "not-allowed" : "pointer", flex: isMobile ? 1 : "0 0 auto", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}><RefreshCw size={11}/> Counter</button>
+                      <button onClick={() => handleDecline(claim)} disabled={isBusy} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #FECACA", cursor: isBusy ? "not-allowed" : "pointer", fontSize: 11, fontWeight: 600, background: C.paper, color: "#DC2626", fontFamily: F.body, flex: isMobile ? 1 : "0 0 auto" }}>Decline</button>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -5553,6 +5637,101 @@ function SellerMessagesView({ user = null, accessToken = null, convList: convLis
   // existing render path reads inline from each conversation's `messages`.
   const [activeMsgs, setActiveMsgs]     = useState(null);
   const [activeLoading, setActiveLoading] = useState(false);
+
+  // BUG-055 — active PROPOSED claims indexed by conversationId. Powers the
+  // in-chat "Pending offer" banner so the seller can Accept/Counter/Decline
+  // without leaving the conversation view. Refreshes on every claim:updated
+  // socket event.
+  const [activeClaimByConv, setActiveClaimByConv] = useState({});
+  const [pendingClaimTick, setPendingClaimTick]   = useState(0);
+  useSocketEvent("claim:updated", () => setPendingClaimTick(t => t + 1));
+  useSocketEvent("claim:new",     () => setPendingClaimTick(t => t + 1));
+  useEffect(() => {
+    if (!accessToken) return;
+    let cancelled = false;
+    // BUG-055 — fetch PROPOSED + ACCEPTED both so the chat banner can show
+    // Accept/Counter/Decline (PROPOSED) OR Mark Picked up (ACCEPTED).
+    Promise.all([
+      apiRequest("/api/claims/incoming?status=PROPOSED", { token: accessToken }).catch(() => ({ claims: [] })),
+      apiRequest("/api/claims/incoming?status=ACCEPTED", { token: accessToken }).catch(() => ({ claims: [] })),
+    ])
+      .then(([p, a]) => {
+        if (cancelled) return;
+        const list = [...(Array.isArray(p?.claims) ? p.claims : []), ...(Array.isArray(a?.claims) ? a.claims : [])];
+        const idx = {};
+        for (const c of list) if (c.conversationId) idx[c.conversationId] = c;
+        setActiveClaimByConv(idx);
+      })
+      .catch(() => { if (!cancelled) setActiveClaimByConv({}); });
+    return () => { cancelled = true; };
+  }, [accessToken, pendingClaimTick]);
+
+  // In-chat offer action state.
+  const [chatBusyClaimId, setChatBusyClaimId] = useState(null);
+  const [chatCounterMode, setChatCounterMode] = useState(false);
+  const [chatCounterAmt, setChatCounterAmt]   = useState("");
+  // BUG-055.1 — every chat action surfaces its error so a 400/404/conflict
+  // doesn't appear as "nothing happened" to the user. flashes for ~4.5s.
+  function chatFlashErr(action, err) {
+    setErrorMsg("Couldn't " + action + ": " + (err?.message || "try again"));
+    setTimeout(() => setErrorMsg(null), 4500);
+  }
+  function chatFlashOk(msg) {
+    setSuccessMsg(msg);
+    setTimeout(() => setSuccessMsg(null), 4500);
+  }
+  async function chatAccept(claim) {
+    setChatBusyClaimId(claim.id);
+    try {
+      await apiRequest("/api/claims/" + encodeURIComponent(claim.id) + "/accept", {
+        method: "PATCH", token: accessToken,
+      });
+      chatFlashOk("Accepted at $" + claim.amount + ".");
+      setPendingClaimTick(t => t + 1);
+    } catch (err) { chatFlashErr("accept", err); }
+    finally { setChatBusyClaimId(null); }
+  }
+  async function chatDecline(claim) {
+    setChatBusyClaimId(claim.id);
+    try {
+      await apiRequest("/api/claims/" + encodeURIComponent(claim.id) + "/decline", {
+        method: "PATCH", token: accessToken,
+      });
+      chatFlashOk("Declined. Item is back on the listing.");
+      setPendingClaimTick(t => t + 1);
+    } catch (err) { chatFlashErr("decline", err); }
+    finally { setChatBusyClaimId(null); }
+  }
+  async function chatCounterSubmit(claim) {
+    const amt = Math.round(Number(chatCounterAmt));
+    if (!Number.isFinite(amt) || amt <= 0) {
+      chatFlashErr("counter", new Error("Enter a valid amount"));
+      return;
+    }
+    setChatBusyClaimId(claim.id);
+    try {
+      await apiRequest("/api/claims/" + encodeURIComponent(claim.id) + "/amount", {
+        method: "PATCH", token: accessToken,
+        body: JSON.stringify({ amount: amt }),
+      });
+      chatFlashOk("Countered at $" + amt + ". Waiting for the buyer.");
+      setChatCounterMode(false);
+      setChatCounterAmt("");
+      setPendingClaimTick(t => t + 1);
+    } catch (err) { chatFlashErr("counter", err); }
+    finally { setChatBusyClaimId(null); }
+  }
+  async function chatMarkPickedUp(claim) {
+    setChatBusyClaimId(claim.id);
+    try {
+      await apiRequest("/api/claims/" + encodeURIComponent(claim.id) + "/picked-up", {
+        method: "PATCH", token: accessToken,
+      });
+      chatFlashOk("Pickup complete. Item marked as sold.");
+      setPendingClaimTick(t => t + 1);
+    } catch (err) { chatFlashErr("mark picked up", err); }
+    finally { setChatBusyClaimId(null); }
+  }
 
   // Adapter moved to module scope as `adaptSellerConversation(api, myId)` so
   // the dashboard root can apply it before this view mounts. Local alias
@@ -5689,23 +5868,24 @@ function SellerMessagesView({ user = null, accessToken = null, convList: convLis
     }
   }
 
-  // ─── Offer action handlers (BUG-052) ───
-  // Seller-side these act on OFFER messages from the buyer (and on
-  // COUNTER messages if the buyer counters back). The `messageId` is
-  // captured on the OFFER bubble itself (see renderMessage). Backend
-  // enforces "opposite party" and "not already resolved".
+  // ─── Negotiation action handlers (BUG-055 unified lifecycle) ───
+  // The seller's in-chat Accept/Counter/Decline now acts on the conversation's
+  // active CLAIM (status PROPOSED) instead of an OFFER message. The active
+  // claim is looked up from the loaded thread's metadata. We accept either
+  // a claim id (preferred) or — if the caller still passes a message id from
+  // legacy data — fall through to a no-op.
   const [offerBusyMsgId, setOfferBusyMsgId] = useState(null);
   const [counterDraftMsgId, setCounterDraftMsgId] = useState(null);
   const [counterDraftAmount, setCounterDraftAmount] = useState("");
-  async function acceptOffer(messageId) {
-    if (!usingBackend || !messageId) return;
-    setOfferBusyMsgId(messageId);
+  async function acceptOffer(claimId) {
+    if (!usingBackend || !claimId) return;
+    setOfferBusyMsgId(claimId);
     try {
-      const resp = await apiRequest("/api/conversations/messages/" + encodeURIComponent(messageId) + "/accept", {
-        method: "POST",
+      const resp = await apiRequest("/api/claims/" + encodeURIComponent(claimId) + "/accept", {
+        method: "PATCH",
         token:  accessToken,
       });
-      const amt = resp?.message?.amount ?? null;
+      const amt = resp?.claim?.amount ?? null;
       setSuccessMsg(amt ? `Offer accepted at $${amt}. Pickup will appear in Pickups view.` : "Offer accepted. Pickup will appear in Pickups view.");
       setTimeout(() => setSuccessMsg(null), 4500);
     } catch (err) {
@@ -5715,12 +5895,12 @@ function SellerMessagesView({ user = null, accessToken = null, convList: convLis
       setOfferBusyMsgId(null);
     }
   }
-  async function declineOffer(messageId) {
-    if (!usingBackend || !messageId) return;
-    setOfferBusyMsgId(messageId);
+  async function declineOffer(claimId) {
+    if (!usingBackend || !claimId) return;
+    setOfferBusyMsgId(claimId);
     try {
-      await apiRequest("/api/conversations/messages/" + encodeURIComponent(messageId) + "/decline", {
-        method: "POST",
+      await apiRequest("/api/claims/" + encodeURIComponent(claimId) + "/decline", {
+        method: "PATCH",
         token:  accessToken,
       });
     } catch (err) {
@@ -5730,17 +5910,17 @@ function SellerMessagesView({ user = null, accessToken = null, convList: convLis
       setOfferBusyMsgId(null);
     }
   }
-  async function submitCounter(messageId) {
+  async function submitCounter(claimId) {
     const amt = Math.round(Number(counterDraftAmount));
     if (!Number.isFinite(amt) || amt <= 0) {
       setErrorMsg("Enter a valid counter amount.");
       setTimeout(() => setErrorMsg(null), 4500);
       return;
     }
-    setOfferBusyMsgId(messageId);
+    setOfferBusyMsgId(claimId);
     try {
-      await apiRequest("/api/conversations/messages/" + encodeURIComponent(messageId) + "/counter", {
-        method: "POST",
+      await apiRequest("/api/claims/" + encodeURIComponent(claimId) + "/amount", {
+        method: "PATCH",
         token:  accessToken,
         body:   JSON.stringify({ amount: amt }),
       });
@@ -5879,46 +6059,11 @@ function SellerMessagesView({ user = null, accessToken = null, convList: convLis
             {m.text}
           </div>
           <p style={{ fontFamily: F.body, fontSize: 10, fontWeight: 500, color: C.ash, marginTop: 3, textAlign: isBuyer ? "left" : "right", marginLeft: 2, marginRight: 2 }}>{m.time}</p>
-          {/* Action row — only on INCOMING OFFER/COUNTER from buyer that's
-              still the latest unresolved offer. Backend rejects races with
-              409, so this is just for UX cleanliness. */}
-          {isBuyer && (m.type === "offer" || m.type === "counter") && m.id && (() => {
-            const idx = activeMessages.findIndex(x => x.id === m.id);
-            if (idx < 0) return null;
-            const isLatestActionable = !activeMessages.slice(idx + 1).some(
-              x => x && (x.type === "offer" || x.type === "counter" || x.type === "claim" || x.type === "notice")
-            );
-            if (!isLatestActionable) return null;
-            const busy = offerBusyMsgId === m.id;
-            const showCounterDraft = counterDraftMsgId === m.id;
-            return (
-              <div style={{ marginTop: 8, padding: 10, borderRadius: 12, background: C.aiMist, border: "1px solid " + C.ai + "25" }}>
-                {showCounterDraft ? (
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ fontFamily: F.head, fontSize: 13, fontWeight: 800, color: C.ai }}>$</span>
-                    <input
-                      type="number"
-                      inputMode="numeric"
-                      value={counterDraftAmount}
-                      onChange={e => setCounterDraftAmount(e.target.value)}
-                      placeholder={m.amount ? String(Math.max(1, Math.round(m.amount * 1.1))) : "0"}
-                      autoFocus
-                      disabled={busy}
-                      style={{ flex: 1, padding: "6px 10px", borderRadius: 8, border: "1.5px solid " + C.ai + "40", fontFamily: F.head, fontSize: 13, fontWeight: 700, color: C.ink, outline: "none", background: C.paper, minWidth: 0 }}
-                    />
-                    <button onClick={() => submitCounter(m.id)} disabled={busy} style={{ padding: "6px 12px", borderRadius: 8, border: "none", background: C.ai, color: "#fff", fontFamily: F.head, fontSize: 11, fontWeight: 800, cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.7 : 1 }}>{busy ? "…" : "Send"}</button>
-                    <button onClick={() => { setCounterDraftMsgId(null); setCounterDraftAmount(""); }} disabled={busy} style={{ padding: "6px 10px", borderRadius: 8, border: "1.5px solid " + C.fawn, background: C.paper, color: C.mink, fontFamily: F.head, fontSize: 11, fontWeight: 700, cursor: busy ? "not-allowed" : "pointer" }}>Cancel</button>
-                  </div>
-                ) : (
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    <button onClick={() => acceptOffer(m.id)} disabled={busy} style={{ flex: 1, minWidth: 70, padding: "8px 12px", borderRadius: 8, border: "none", background: C.green, color: "#fff", fontFamily: F.head, fontSize: 12, fontWeight: 800, cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.7 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}><Check size={13}/> Accept</button>
-                    <button onClick={() => { setCounterDraftMsgId(m.id); setCounterDraftAmount(m.amount ? String(Math.max(1, Math.round(m.amount * 1.1))) : ""); }} disabled={busy} style={{ flex: 1, minWidth: 70, padding: "8px 12px", borderRadius: 8, border: "1.5px solid " + C.ai + "40", background: C.paper, color: C.ai, fontFamily: F.head, fontSize: 12, fontWeight: 800, cursor: busy ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}><RefreshCw size={13}/> Counter</button>
-                    <button onClick={() => declineOffer(m.id)} disabled={busy} style={{ flex: 1, minWidth: 70, padding: "8px 12px", borderRadius: 8, border: "1.5px solid " + C.fawn, background: C.paper, color: C.mink, fontFamily: F.head, fontSize: 12, fontWeight: 700, cursor: busy ? "not-allowed" : "pointer" }}>Decline</button>
-                  </div>
-                )}
-              </div>
-            );
-          })()}
+          {/* BUG-055.1 — Legacy in-bubble Accept/Counter/Decline buttons
+              REMOVED. They were keyed on message id and routed through
+              `submitCounter(m.id)` which 404'd against the new claim-id
+              endpoints. The single top-of-chat action banner now handles
+              all negotiation. */}
         </div>
       </div>
     );
@@ -6128,6 +6273,97 @@ function SellerMessagesView({ user = null, accessToken = null, convList: convLis
               </div>
             )}
 
+            {/* BUG-055 — In-chat action banner. Two variants based on claim
+                status:
+                  PROPOSED → amber banner with Accept/Counter/Decline
+                  ACCEPTED → emerald banner with Mark Picked up (high-priority
+                             orange tint when buyerConfirmedReceiptAt is set —
+                             buyer is waiting). */}
+            {usingBackend && active && activeClaimByConv[active.id] && (() => {
+              const pc = activeClaimByConv[active.id];
+              const busy = chatBusyClaimId === pc.id;
+              const listed = pc.item?.price ?? 0;
+              const isProposed = pc.status === "PROPOSED";
+              const isAccepted = pc.status === "ACCEPTED";
+              const buyerWaiting = isAccepted && pc.buyerConfirmedReceiptAt;
+              // BUG-055.1 — whoever last set the amount cannot accept it.
+              // For the seller: action buttons only show when the BUYER made
+              // the last offer. Otherwise show a "Waiting for buyer" pill.
+              const myTurn = isProposed && pc.lastAmountBy !== myId;
+
+              // Color palette per state.
+              const bg     = isProposed ? (C.amberMist || "#fef3c7") : (buyerWaiting ? (C.amberMist || "#fef3c7") : C.greenMist);
+              const border = isProposed ? (C.amber || "#f59e0b") + "30" : (buyerWaiting ? (C.amber || "#f59e0b") + "55" : C.green + "30");
+              const iconBg = isProposed ? (C.amber || "#f59e0b") : (buyerWaiting ? (C.amber || "#f59e0b") : C.green);
+              const titleColor = isProposed ? (C.amberDeep || "#92400e") : (buyerWaiting ? (C.amberDeep || "#92400e") : C.greenDeep);
+
+              return (
+                <div style={{ padding: "12px 16px", background: bg, borderBottom: "1px solid " + border }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ width: 36, height: 36, borderRadius: 10, background: iconBg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                        {isProposed ? <DollarSign size={17} style={{ color: "#fff" }}/> : <Check size={17} style={{ color: "#fff" }} strokeWidth={3}/>}
+                      </div>
+                      <div>
+                        <p style={{ fontFamily: F.head, fontSize: 13, fontWeight: 800, color: titleColor }}>
+                          {isProposed
+                            ? "Pending offer · $" + pc.amount
+                            : buyerWaiting
+                              ? "Buyer waiting — confirm pickup · $" + pc.amount
+                              : "Accepted · $" + pc.amount + " — pickup pending"}
+                        </p>
+                        <p style={{ fontFamily: F.body, fontSize: 11, fontWeight: 600, color: C.mink, marginTop: 2 }}>
+                          {isProposed && pc.amount !== listed && ("Listed at $" + listed + " · ")}
+                          {isProposed && pc.amount === listed && "At listed price · "}
+                          {isAccepted && (buyerWaiting ? "Buyer confirmed receipt — please mark pickup complete." : "Coordinate pickup in this thread.")}
+                          {isProposed && ("expires " + (pc.expiresAt ? new Date(pc.expiresAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "soon"))}
+                        </p>
+                      </div>
+                    </div>
+                    {isProposed && !myTurn && (
+                      <span style={{ padding: "8px 14px", borderRadius: 999, background: C.paper, color: C.amberDeep, fontFamily: F.head, fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", gap: 5, border: "1.5px solid " + C.amber + "40" }}>
+                        <Clock size={12}/> Waiting for buyer to respond
+                      </span>
+                    )}
+                    {isProposed && myTurn && (chatCounterMode ? (
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ fontFamily: F.head, fontSize: 13, fontWeight: 800, color: C.ink }}>$</span>
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          value={chatCounterAmt}
+                          onChange={e => setChatCounterAmt(e.target.value)}
+                          placeholder={String(Math.max(1, Math.round((pc.amount + listed) / 2)))}
+                          autoFocus
+                          disabled={busy}
+                          style={{ width: 80, padding: "7px 10px", borderRadius: 8, border: "1.5px solid " + C.fawn, fontFamily: F.head, fontSize: 13, fontWeight: 700, color: C.ink, outline: "none", background: C.paper }}
+                        />
+                        <button onClick={() => chatCounterSubmit(pc)} disabled={busy} className="cta-primary" style={{ padding: "7px 12px", borderRadius: 8, border: "none", background: C.green, color: "#fff", fontFamily: F.head, fontSize: 11, fontWeight: 800, cursor: busy ? "not-allowed" : "pointer" }}>Send</button>
+                        <button onClick={() => { setChatCounterMode(false); setChatCounterAmt(""); }} disabled={busy} style={{ padding: "7px 10px", borderRadius: 8, border: "1.5px solid " + C.fawn, background: C.paper, color: C.mink, fontFamily: F.head, fontSize: 11, fontWeight: 700, cursor: busy ? "not-allowed" : "pointer" }}>Cancel</button>
+                      </div>
+                    ) : (
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        <button onClick={() => chatAccept(pc)} disabled={busy} className="cta-primary" style={{ padding: "8px 14px", borderRadius: 999, border: "none", background: C.green, color: "#fff", fontFamily: F.head, fontSize: 12, fontWeight: 800, cursor: busy ? "not-allowed" : "pointer", boxShadow: "0 2px 0 " + C.greenDeep, display: "flex", alignItems: "center", gap: 5 }}>
+                          <Check size={12}/> Accept ${pc.amount}
+                        </button>
+                        <button onClick={() => { setChatCounterMode(true); setChatCounterAmt(String(Math.max(1, Math.round((pc.amount + listed) / 2)))); }} disabled={busy} style={{ padding: "8px 14px", borderRadius: 999, border: "1.5px solid " + C.green + "55", background: C.paper, color: C.greenDeep, fontFamily: F.head, fontSize: 12, fontWeight: 700, cursor: busy ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: 5 }}>
+                          <RefreshCw size={12}/> Counter
+                        </button>
+                        <button onClick={() => chatDecline(pc)} disabled={busy} style={{ padding: "8px 14px", borderRadius: 999, border: "1.5px solid " + C.claret + "40", background: C.paper, color: C.claret, fontFamily: F.head, fontSize: 12, fontWeight: 700, cursor: busy ? "not-allowed" : "pointer" }}>
+                          Decline
+                        </button>
+                      </div>
+                    ))}
+                    {isAccepted && (
+                      <button onClick={() => chatMarkPickedUp(pc)} disabled={busy} className="cta-primary" style={{ padding: "9px 16px", borderRadius: 999, border: "none", background: C.green, color: "#fff", fontFamily: F.head, fontSize: 12, fontWeight: 800, cursor: busy ? "not-allowed" : "pointer", boxShadow: "0 2px 0 " + C.greenDeep, display: "flex", alignItems: "center", gap: 5 }}>
+                        <Check size={13} strokeWidth={3}/> Mark Picked up
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+
             <div style={{ flex: 1, padding: isMobile ? "14px 14px" : "18px 20px", overflowY: "auto", background: C.sand + "60" }}>
               {usingBackend && activeLoading && (
                 <p style={{ fontSize: 12, color: C.ash, fontFamily: F.body, textAlign: "center", padding: "20px 0" }}>Loading thread…</p>
@@ -6235,16 +6471,19 @@ function PickupsView({ onNav, embedded = false, accessToken = null, onChanged = 
     const slot = api.pickupSlot || "";
     const todayName = SHORT_DAY_NAMES[new Date().getDay()];
     const isToday = slot.toLowerCase().startsWith(todayName.toLowerCase());
-    // Agreed sale price wins over the item's listed price (BUG-053).
     return {
       id:      api.id,
       e:       "\u{1F4E6}",
       t:       api.item?.title || "Item",
-      price:   (typeof api.price === "number" ? api.price : api.item?.price) ?? 0,
+      price:   (typeof api.amount === "number" ? api.amount : api.item?.price) ?? 0,
       buyer:   api.buyer?.name || api.buyer?.email || "Buyer",
       date:    isToday ? "Today" : (slot.split(/\s+/)[0] || slot),
       time:    isToday ? slot.replace(/^\S+\s*/, "") : slot.replace(/^\S+\s*/, ""),
       isToday,
+      // BUG-055 — buyer-side "Confirm receipt" pings the seller. Surfaces
+      // as a high-priority badge so the seller knows the buyer is waiting
+      // for them to mark the pickup complete.
+      buyerConfirmedReceipt: !!api.buyerConfirmedReceiptAt,
     };
   }
 
@@ -6252,7 +6491,7 @@ function PickupsView({ onNav, embedded = false, accessToken = null, onChanged = 
   // to the demo list defined above.
   const reloadPickups = () => {
     if (!accessToken) return;
-    apiRequest("/api/claims/incoming?status=CONFIRMED", { token: accessToken })
+    apiRequest("/api/claims/incoming?status=ACCEPTED", { token: accessToken })
       .then(data => {
         const list = Array.isArray(data?.claims) ? data.claims.map(adaptPickup).filter(Boolean) : [];
         setPickups(list);
@@ -6263,7 +6502,7 @@ function PickupsView({ onNav, embedded = false, accessToken = null, onChanged = 
     if (!accessToken) { setPickups(DEMO_PICKUPS); setLoading(false); return; }
     let cancelled = false;
     setLoading(true);
-    apiRequest("/api/claims/incoming?status=CONFIRMED", { token: accessToken })
+    apiRequest("/api/claims/incoming?status=ACCEPTED", { token: accessToken })
       .then(data => {
         if (cancelled) return;
         const list = Array.isArray(data?.claims) ? data.claims.map(adaptPickup).filter(Boolean) : [];
@@ -6277,7 +6516,7 @@ function PickupsView({ onNav, embedded = false, accessToken = null, onChanged = 
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [accessToken]);
-  // A buyer cancelled a CONFIRMED claim, or the seller confirmed a new pending
+  // A buyer cancelled a ACCEPTED claim, or the seller confirmed a new pending
   // one — either way refetch so the scheduled-pickups list stays current.
   useSocketEvent("claim:updated", () => reloadPickups());
 
@@ -6356,9 +6595,10 @@ function PickupsView({ onNav, embedded = false, accessToken = null, onChanged = 
       );
       try {
         await Promise.race([
-          apiRequest("/api/claims/" + encodeURIComponent(item.id) + "/no-show", {
+          apiRequest("/api/claims/" + encodeURIComponent(item.id) + "/cancel", {
             method: "PATCH",
             token:  accessToken,
+            body:   JSON.stringify({ reason: "no-show" }),
           }),
           noShowTimeout,
         ]);
@@ -6384,9 +6624,10 @@ function PickupsView({ onNav, embedded = false, accessToken = null, onChanged = 
       );
       try {
         await Promise.race([
-          apiRequest("/api/claims/" + encodeURIComponent(item.id) + "/release", {
+          apiRequest("/api/claims/" + encodeURIComponent(item.id) + "/cancel", {
             method: "PATCH",
             token:  accessToken,
+            body:   JSON.stringify({ reason: "released-at-pickup" }),
           }),
           releaseTimeout,
         ]);
@@ -6480,8 +6721,18 @@ function PickupsView({ onNav, embedded = false, accessToken = null, onChanged = 
         {pickups.map(p => {
           const isBusy = busyId === p.id;
           return (
-          <div key={p.id} style={{ padding: isMobile ? "14px 14px" : "16px 18px", borderRadius: 16, border: p.isToday ? "2px solid #FECACA" : "1px solid #f0f0f0", backgroundColor: p.isToday ? "#FFF5F5" : "#fff", opacity: isBusy ? 0.6 : 1 }}>
-            {p.isToday && (
+          <div key={p.id} style={{ padding: isMobile ? "14px 14px" : "16px 18px", borderRadius: 16, border: p.buyerConfirmedReceipt ? "2px solid " + (C.amber || "#f59e0b") : (p.isToday ? "2px solid #FECACA" : "1px solid #f0f0f0"), backgroundColor: p.buyerConfirmedReceipt ? (C.amberMist || "#fef3c7") : (p.isToday ? "#FFF5F5" : "#fff"), opacity: isBusy ? 0.6 : 1 }}>
+            {/* BUG-055 — buyer pinged "Confirm receipt" → high-priority badge
+                so the seller knows the buyer is waiting for them to mark
+                pickup complete. Outranks the "pickup-today" badge. */}
+            {p.buyerConfirmedReceipt && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 11px", borderRadius: 999, background: C.amber || "#f59e0b", color: "#fff", fontSize: 10, fontWeight: 800, fontFamily: F.head, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  <CheckCircle size={11}/> Buyer waiting — confirm pickup
+                </span>
+              </div>
+            )}
+            {!p.buyerConfirmedReceipt && p.isToday && (
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
                 <StatusBadge status="pickup-today" size="sm"/>
                 <span style={{ fontSize: 11, color: "#DC2626", fontWeight: 600, fontFamily: F.body }}>{p.time}</span>
@@ -6608,7 +6859,7 @@ function PickupsView({ onNav, embedded = false, accessToken = null, onChanged = 
 // Hoisted out of SellerHistoryView so it has a stable component identity
 // across renders. Without this, every collapse toggle remounted all rows
 // and replayed the fade-in animation, which looked like the list was refreshing.
-function HistoryTxRow({ tx, idx, isMobile = false, isOpen = false, onToggle = null }) {
+function HistoryTxRow({ tx, idx, isMobile = false, isOpen = false, onToggle = null, onRateBuyer = null, accessToken = null }) {
   const layerBadge = tx.layer === "drop"
     ? { label: "Drop", bg: C.green, color: "#fff" }
     : { label: "Shelf", bg: C.amber, color: "#fff" };
@@ -6685,6 +6936,30 @@ function HistoryTxRow({ tx, idx, isMobile = false, isOpen = false, onToggle = nu
               </p>
             </div>
           )}
+          {/* BUG-055 — Rate buyer CTA. Surfaces only on real claims (not demo
+              rows) and only when the seller hasn't already rated. Used for
+              marketing "X-star community" pitch on buyer profiles. */}
+          {accessToken && onRateBuyer && tx.id && typeof tx.id === "string" && tx.id.length > 8 && !tx.sellerRated && (
+            <div style={{ gridColumn: "1 / -1", padding: "10px 12px", borderRadius: 10, background: C.amberMist || "#fef3c7", border: "1px solid " + C.amber + "30" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                <div>
+                  <p style={{ fontFamily: F.head, fontSize: 11, fontWeight: 800, color: C.amberDeep, letterSpacing: "0.04em" }}>Rate {tx.buyer.split(" ")[0]}</p>
+                  <p style={{ fontFamily: F.body, fontSize: 11, fontWeight: 500, color: C.mink, marginTop: 2 }}>Help other sellers — what was the buyer like?</p>
+                </div>
+                <button onClick={() => onRateBuyer(tx)} className="cta-primary" style={{ padding: "6px 14px", borderRadius: 999, border: "none", background: C.amber, color: "#fff", fontFamily: F.head, fontSize: 11, fontWeight: 800, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
+                  <Star size={12}/> Rate buyer
+                </button>
+              </div>
+            </div>
+          )}
+          {tx.sellerRated && tx.sellerRating > 0 && (
+            <div style={{ gridColumn: "1 / -1", padding: "8px 12px", borderRadius: 10, background: C.greenMist, border: "1px solid " + C.green + "20", display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontFamily: F.head, fontSize: 10, fontWeight: 800, color: C.greenDeep, letterSpacing: "0.04em", textTransform: "uppercase" }}>You rated {tx.buyer.split(" ")[0]}</span>
+              <div style={{ display: "flex", gap: 1 }}>
+                {[1,2,3,4,5].map(n => <Star key={n} size={11} style={{ color: n <= tx.sellerRating ? C.amber : C.fawn }} fill={n <= tx.sellerRating ? C.amber : "none"}/>)}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </article>
@@ -6710,8 +6985,6 @@ function SellerHistoryView({ embedded = false, accessToken = null }) {
   const { isMobile } = useViewport();
   const [collapsed, setCollapsed] = useState({});
   const toggleCollapse = (key) => setCollapsed(p => ({ ...p, [key]: !p[key] }));
-  // Per-row expand state — tx.id → open. Lifted here so toggling one row
-  // doesn't remount the others (HistoryTxRow is hoisted to module scope).
   const [expandedIds, setExpandedIds] = useState(() => new Set());
   const toggleExpand = (id) => setExpandedIds(prev => {
     const next = new Set(prev);
@@ -6723,32 +6996,57 @@ function SellerHistoryView({ embedded = false, accessToken = null }) {
   const [loading, setLoading]           = useState(!!accessToken);
   const [errorMsg, setErrorMsg]         = useState(null);
 
+  // BUG-055 — seller's "Rate buyer" modal state. Opens from the expanded
+  // history row's Rate buyer CTA; POSTs to /api/claims/:id/review where the
+  // backend writes to sellerReviewX fields (mirrors buyer's buyerReviewX).
+  const [rateTx, setRateTx]       = useState(null);
+  const [rateStars, setRateStars] = useState(0);
+  const [rateNote, setRateNote]   = useState("");
+  const openRateBuyer = (tx) => { setRateTx(tx); setRateStars(0); setRateNote(""); };
+  const cancelRate    = () => { setRateTx(null); setRateStars(0); setRateNote(""); };
+  const submitRate    = async () => {
+    if (!rateTx || rateStars < 1) { cancelRate(); return; }
+    try {
+      await apiRequest("/api/claims/" + encodeURIComponent(rateTx.id) + "/review", {
+        method: "POST",
+        token:  accessToken,
+        body:   JSON.stringify({ rating: rateStars, text: rateNote.trim() || undefined }),
+      });
+      // Optimistic update — flip the row to sellerRated locally.
+      setTransactions(prev => prev.map(t => t.id === rateTx.id ? { ...t, sellerRated: true, sellerRating: rateStars } : t));
+    } catch (err) {
+      setErrorMsg("Couldn't save rating: " + (err?.message || "try again"));
+      setTimeout(() => setErrorMsg(null), 4500);
+    }
+    cancelRate();
+  };
+
   // Adapter: backend PICKED_UP claim -> UI transaction shape used by the row
-  // renderer. Backend doesn't store buyer ratings yet, so we drop them.
+  // renderer. BUG-055 — split buyer's review (rating the seller — surfaced
+  // as `rating`/`review` for marketing) vs. seller's own rating of the
+  // buyer (`sellerRated`/`sellerRating` — drives the "Rate buyer" button).
   function adaptHistory(api) {
     if (!api) return null;
     const placementUi = ENUM_TO_PLACEMENT_LABEL[api.item?.placement] || "drop";
-    // Agreed sale price wins over the item's listed price (BUG-053). When
-    // there's a delta between the sale price and the listed price, the
-    // expanded row shows "Listed $X → Sold $Y" so the seller can see the
-    // negotiation outcome at a glance.
-    const soldPrice = typeof api.price === "number" ? api.price : (api.item?.price ?? 0);
+    const soldPrice = typeof api.amount === "number" ? api.amount : (api.item?.price ?? 0);
     const listedPrice = api.item?.price ?? soldPrice;
     return {
       id:     api.id,
       title:  api.item?.title || "Item",
       price:  soldPrice,
-      // Asking = originalPrice if set, else the listed price. Used in the
-      // expanded row's strike-through.
       asking: typeof api.item?.originalPrice === "number" ? api.item.originalPrice : listedPrice,
       img:    CATEGORY_EMOJI[api.item?.category] || "\u{1F4E6}",
       cat:    ENUM_TO_CATEGORY_LABEL[api.item?.category] || "Other",
       buyer:  api.buyer?.name || api.buyer?.email || "Buyer",
       hood:   api.buyer?.neighborhood || "—",
-      date:   api.completedAt || api.updatedAt || api.createdAt,
+      date:   api.pickedUpAt || api.updatedAt || api.createdAt,
       layer:  placementUi === "shelf" ? "shelf" : "drop",
-      rating: typeof api.reviewRating === "number" ? api.reviewRating : 0,
-      review: api.reviewText || null,
+      // Buyer's review of the seller — shown as a testimonial on the row.
+      rating: typeof api.buyerReviewRating === "number" ? api.buyerReviewRating : 0,
+      review: api.buyerReviewText || null,
+      // Seller's review of the buyer — drives "Rate buyer" CTA.
+      sellerRated:  typeof api.sellerReviewRating === "number",
+      sellerRating: typeof api.sellerReviewRating === "number" ? api.sellerReviewRating : 0,
     };
   }
 
@@ -6904,7 +7202,7 @@ function SellerHistoryView({ embedded = false, accessToken = null }) {
                       <span style={{ fontFamily: F.head, fontSize: 12, fontWeight: 800, color: C.green }}>${monthRev}</span>
                     </div>
                   </button>
-                  {!monthCollapsed && monthTxs.map((tx, idx) => <HistoryTxRow key={tx.id} tx={tx} idx={idx} isMobile={isMobile} isOpen={expandedIds.has(tx.id)} onToggle={toggleExpand}/>)}
+                  {!monthCollapsed && monthTxs.map((tx, idx) => <HistoryTxRow key={tx.id} tx={tx} idx={idx} isMobile={isMobile} isOpen={expandedIds.has(tx.id)} onToggle={toggleExpand} onRateBuyer={openRateBuyer} accessToken={accessToken}/>)}
                 </div>
               );
             })}
@@ -6936,6 +7234,29 @@ function SellerHistoryView({ embedded = false, accessToken = null }) {
           </div>
         </div>
       </div>
+
+      {/* BUG-055 — Rate buyer modal. Opens from HistoryTxRow's CTA, POSTs to
+          /api/claims/:id/review. Backend writes to sellerReviewX fields. */}
+      {rateTx && (
+        <div onClick={cancelRate} style={{ position: "fixed", inset: 0, background: "rgba(11,47,32,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: C.paper, borderRadius: 20, padding: 24, width: "100%", maxWidth: 420, boxShadow: "0 20px 60px rgba(11,47,32,0.25)" }}>
+            <h3 style={{ fontFamily: F.head, fontSize: 18, fontWeight: 900, color: C.ink, marginBottom: 6 }}>Rate {rateTx.buyer}</h3>
+            <p style={{ fontFamily: F.body, fontSize: 13, color: C.mink, marginBottom: 16 }}>How was the transaction? Your rating helps other sellers and shows on {rateTx.buyer.split(" ")[0]}&rsquo;s buyer profile.</p>
+            <div style={{ display: "flex", gap: 4, marginBottom: 16, justifyContent: "center" }}>
+              {[1,2,3,4,5].map(n => (
+                <button key={n} onClick={() => setRateStars(n)} style={{ background: "none", border: "none", padding: 4, cursor: "pointer" }}>
+                  <Star size={32} style={{ color: n <= rateStars ? C.amber : C.fawn }} fill={n <= rateStars ? C.amber : "none"} strokeWidth={n <= rateStars ? 0 : 1.5}/>
+                </button>
+              ))}
+            </div>
+            <textarea value={rateNote} onChange={e => setRateNote(e.target.value)} placeholder="Optional — share a quick note about the buyer" maxLength={500} rows={3} style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1.5px solid " + C.fawn, fontFamily: F.body, fontSize: 13, color: C.ink, resize: "vertical", outline: "none", marginBottom: 16 }}/>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button onClick={cancelRate} style={{ padding: "9px 16px", borderRadius: 999, border: "1.5px solid " + C.fawn, background: C.paper, color: C.mink, fontFamily: F.head, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Cancel</button>
+              <button onClick={submitRate} disabled={rateStars < 1} className="cta-primary" style={{ padding: "9px 18px", borderRadius: 999, border: "none", background: rateStars < 1 ? C.fawn : C.green, color: "#fff", fontFamily: F.head, fontSize: 12, fontWeight: 800, cursor: rateStars < 1 ? "not-allowed" : "pointer", boxShadow: rateStars < 1 ? "none" : "0 2px 0 " + C.greenDeep }}>Submit rating</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -9596,6 +9917,16 @@ export default function DropYardSellerDashboard({
   const [aiEntryPoint, setAiEntryPoint] = useState("overview");
   const aiConfigured = !!aiSettings.priceFloor;
 
+  // BUG-057 — Sign-out confirmation. All Sign-out paths (TopNav, Sidebar
+  // dropdown, etc.) go through onSignoutRequest which opens the modal;
+  // only the modal's primary button calls onSignout.
+  const [signoutOpen, setSignoutOpen] = useState(false);
+  const onSignoutRequest = useCallback(() => setSignoutOpen(true), []);
+  const confirmSignout = useCallback(() => {
+    setSignoutOpen(false);
+    if (typeof onSignout === "function") onSignout();
+  }, [onSignout]);
+
   // Seller-onboarding gate: any nav to a listing flow checks whether the user
   // is already a seller. If not, we pop the onboarding modal and remember
   // where they were trying to go, then navigate there after success.
@@ -9641,18 +9972,25 @@ export default function DropYardSellerDashboard({
       }
       return prev;
     }
-    return prev.map((c) => {
+    // Update the matching conversation AND move it to the top so the inbox
+    // stays sorted by latest activity. Without the reordering, new messages
+    // refresh the data but the row stays put.
+    const updated = prev.map((c) => {
       if (c.id !== conversationId) return c;
       const newUnread = isFromMe ? (c.unreadCount || 0) : (c.unreadCount || 0) + 1;
       return {
         ...c,
-        lastMsg:     message.body || c.lastMsg,
-        lastTime:    relativeTimeShort(message.createdAt),
-        unread:      newUnread > 0,
-        unreadCount: newUnread,
-        status:      newUnread > 0 ? "needs-response" : c.status,
+        lastMsg:       message.body || c.lastMsg,
+        lastTime:      relativeTimeShort(message.createdAt),
+        lastMessageAt: message.createdAt || c.lastMessageAt,
+        unread:        newUnread > 0,
+        unreadCount:   newUnread,
+        status:        newUnread > 0 ? "needs-response" : c.status,
       };
     });
+    const moved = updated.find((c) => c.id === conversationId);
+    if (!moved) return updated;
+    return [moved, ...updated.filter((c) => c.id !== conversationId)];
   }, [accessToken, myUserId]);
 
   // Bumped on claim socket events so the conv list refetches and the
@@ -9717,7 +10055,7 @@ export default function DropYardSellerDashboard({
       <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: C.paper, fontFamily: F.body, color: C.ink }}>
         <TopNav
           user={user}
-          onSignout={onSignout}
+          onSignout={onSignoutRequest}
           onOpenSettings={() => setView("settings")}
           activeView={view}
           onToggleSidebar={() => setSidebarCollapsed(c => !c)}
@@ -9779,6 +10117,21 @@ export default function DropYardSellerDashboard({
             if (target) setView(target);
           }}
         />
+      )}
+
+      {/* BUG-057 — Sign-out confirmation modal. Covers TopNav, SellerUserMenu,
+          and any future call site that wires to onSignoutRequest. */}
+      {signoutOpen && (
+        <div onClick={() => setSignoutOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(11,47,32,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999, padding: 16 }}>
+          <div onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="seller-signout-title" style={{ background: C.paper, borderRadius: 20, padding: 24, width: "100%", maxWidth: 380, boxShadow: "0 20px 60px rgba(11,47,32,0.25)" }}>
+            <h3 id="seller-signout-title" style={{ fontFamily: F.head, fontSize: 18, fontWeight: 900, color: C.ink, marginBottom: 6 }}>Sign out?</h3>
+            <p style={{ fontFamily: F.body, fontSize: 13, color: C.mink, lineHeight: 1.5, marginBottom: 18 }}>You&rsquo;ll need to sign back in to see your inventory, claims, and messages.</p>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button onClick={() => setSignoutOpen(false)} autoFocus style={{ padding: "10px 16px", borderRadius: 999, border: "1.5px solid " + C.fawn, background: C.paper, color: C.mink, fontFamily: F.head, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Cancel</button>
+              <button onClick={confirmSignout} className="cta-primary" style={{ padding: "10px 18px", borderRadius: 999, border: "none", background: C.claret, color: "#fff", fontFamily: F.head, fontSize: 13, fontWeight: 800, cursor: "pointer", boxShadow: "0 2px 0 " + (C.claretDeep || "#9f1239") }}>Sign out</button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );
