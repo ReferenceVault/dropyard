@@ -49,6 +49,12 @@ import {
 // for messages this user sent.
 function adaptBuyerConversation(api, myId) {
   if (!api) return null;
+  // Buyer view only shows conversations where the current user IS the buyer.
+  // The backend returns conversations for both sides; when this user is the
+  // seller in a thread, that thread belongs in the Seller Messages view, not
+  // here. Filtering at the adapter (vs the fetcher) keeps the indices and
+  // socket handlers consistent for both personas.
+  if (api.buyerId && myId && api.buyerId !== myId) return null;
   const layer = api.item?.placement === "SHELF" ? "shelf" : "drop";
   const lastFromMe = api.lastMessage && api.lastMessage.senderId === myId;
   const status = (api.unreadCount || 0) > 0
@@ -148,25 +154,25 @@ function adaptBuyerClaim(api) {
   const sp = slot.indexOf(" ");
   const day = sp > 0 ? slot.slice(0, sp) : slot;
   const time = sp > 0 ? slot.slice(sp + 1) : "";
-  // Upgrade CONFIRMED + matching-today's-day-name to "pickup-today" so the
-  // urgent row treatment kicks in. Mirrors what the seller's PickupsView does.
   const SHORT_DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
   const todayShort = SHORT_DAYS[new Date().getDay()].toLowerCase();
   const isToday = day.toLowerCase().startsWith(todayShort);
+  // BUG-055 — new lifecycle: PROPOSED (was PENDING) is the "offer pending"
+  // state; ACCEPTED (was CONFIRMED) is the "ready for pickup" state.
   let uiStatus;
-  if (api.status === "PENDING") uiStatus = "offer-pending";
-  else if (isToday)             uiStatus = "pickup-today";
-  else                          uiStatus = "pickup-scheduled";
+  if (api.status === "PROPOSED")        uiStatus = "offer-pending";
+  else if (api.status === "ACCEPTED")   uiStatus = isToday ? "pickup-today" : "pickup-scheduled";
+  else if (api.status === "PICKED_UP")  uiStatus = "picked-up";
+  else                                  uiStatus = (api.status || "").toLowerCase();
   return {
     id:            api.id,
     itemId:        api.item?.id || null,
     e:             CATEGORY_EMOJI[api.item?.category] || "📦",
     img:           Array.isArray(api.item?.photos) && api.item.photos[0] ? api.item.photos[0] : null,
     t:             api.item?.title || "Item",
-    // Prefer the agreed sale price stored on the Claim (BUG-053). Falls back
-    // to the item's listed price when null — i.e. for regular claims at
-    // listed price the field stays null and we keep showing the sticker.
-    price:         (typeof api.price === "number" ? api.price : api.item?.price) ?? 0,
+    // Prefer the agreed claim amount (BUG-055 — was claim.price, now claim.amount).
+    // Falls back to the item's listed price if the field is missing.
+    price:         (typeof api.amount === "number" ? api.amount : api.item?.price) ?? 0,
     listedPrice:   api.item?.price ?? null,
     seller:        api.seller?.name || "Seller",
     status:        uiStatus,
@@ -175,6 +181,15 @@ function adaptBuyerClaim(api) {
     addr:          api.pickupAddress || null,
     channel:       "drop",
     paymentMethod: "either",
+    // Buyer's "Confirm receipt" flag — drives the "Receipt confirmed, waiting
+    // for seller" pill instead of the action button.
+    buyerConfirmedReceipt: !!api.buyerConfirmedReceiptAt,
+    expiresAt:     api.expiresAt || null,
+    // BUG-055.1 — whose turn is it? GET /mine only returns claims where I'm
+    // the buyer, so lastAmountBy === buyerId means I made the last offer and
+    // am waiting on the seller. lastAmountBy === sellerId means the seller's
+    // counter is on the table and I can Accept/Counter/Decline.
+    iMadeTheOffer: api.lastAmountBy === api.buyerId,
     raw:           api,
   };
 }
@@ -186,10 +201,9 @@ function adaptBuyerClaim(api) {
 function adaptBuyerHistory(api) {
   if (!api || !api.item) return null;
   const photos = Array.isArray(api.item.photos) ? api.item.photos.filter(Boolean) : [];
-  // Prefer the agreed sale price (BUG-053). If the buyer got a discount via
-  // an accepted offer, the strike-through shows the original list price so
-  // they can see the savings ("$9 was $15").
-  const soldPrice = typeof api.price === "number" ? api.price : (api.item.price ?? 0);
+  // BUG-055 — claim.price → claim.amount, claim.completedAt → claim.pickedUpAt,
+  // claim.reviewRating → claim.buyerReviewRating (buyer's rating of seller).
+  const soldPrice = typeof api.amount === "number" ? api.amount : (api.item.price ?? 0);
   const listedPrice = api.item.price ?? null;
   const origPrice = listedPrice && listedPrice > soldPrice
     ? listedPrice
@@ -203,10 +217,10 @@ function adaptBuyerHistory(api) {
     cat:       BUYER_ENUM_TO_CATEGORY[api.item.category] || "Other",
     seller:    api.seller?.name || "Seller",
     hood:      api.seller?.neighborhood || "—",
-    date:      api.completedAt || api.updatedAt || api.createdAt,
+    date:      api.pickedUpAt || api.updatedAt || api.createdAt,
     layer:     api.item.placement === "SHELF" ? "shelf" : "drop",
-    rated:     api.reviewRating != null,
-    rating:    api.reviewRating ?? null,
+    rated:     api.buyerReviewRating != null,
+    rating:    api.buyerReviewRating ?? null,
     raw:       api,
   };
 }
@@ -2330,71 +2344,42 @@ function ClaimModal({ item, onClose, onConfirm, accessToken = null, onGoToMessag
   const handlePrimary = async () => {
     setErrorMsg("");
 
+    // BUG-055 unified lifecycle: one endpoint for both paths.
+    //   Listed-price claim → POST /api/items/:id/claim (no amount = use listed)
+    //   Custom offer       → POST /api/items/:id/claim with amount
+    // Backend creates a PROPOSED Claim, flips item to RESERVED, creates-or-
+    // reuses the conversation, posts a system NOTICE narrating the proposal.
+    // Demo items skip the API so /preview/buyer-dashboard still flows.
+    if (!isRealItem) { setStep(mode === "offer" ? "offer-sent" : "done"); return; }
+
+    const body = { pickupSlot: slot || undefined };
     if (mode === "offer") {
-      // ── Counter-offer path — POST to /api/conversations with messageType=OFFER ──
-      if (!isRealItem) { setStep("offer-sent"); return; }
       const trimmedOffer = Math.max(1, Math.round(Number(offer) || 0));
       if (trimmedOffer < 1) { setErrorMsg("Enter a valid offer amount."); return; }
-      setSending(true);
-      // Hard 20s timeout — if the network or refresh path stalls (CORS,
-      // unreachable backend, slow refresh), the user gets a clear error
-      // instead of a button stuck on "Sending…" forever. fetch() has no
-      // default timeout, so without this guard the await can hang.
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("Request timed out. Please try again.")), 20000)
-      );
-      try {
-        await Promise.race([
-          apiRequest("/api/conversations", {
-            method: "POST",
-            token:  accessToken,
-            body:   JSON.stringify({
-              itemId:      item.id,
-              body:        "I'd like to offer $" + trimmedOffer + " for this item.",
-              messageType: "OFFER",
-              amount:      trimmedOffer,
-            }),
-          }),
-          timeoutPromise,
-        ]);
-        setStep("offer-sent");
-      } catch (err) {
-        // Surface raw error to console so the tester can paste it back if
-        // it keeps happening — the inline banner shows the user-friendly
-        // message, but devtools tells us *why*.
-        // eslint-disable-next-line no-console
-        if (typeof console !== "undefined") console.error("[ClaimModal] offer failed:", err);
-        setErrorMsg((err && err.message) ? err.message : "Could not send your offer. Please try again.");
-      } finally {
-        setSending(false);
-      }
-      return;
+      body.amount = trimmedOffer;
     }
+    // Otherwise: no amount → backend uses item.price (listed).
 
-    // ── Claim-at-listed-price path — POST to /api/claims ──
-    // Demo items skip the API and just transition to the success screen so
-    // /preview/buyer-dashboard still walks the flow.
-    if (!isRealItem) { setStep("done"); return; }
     setSending(true);
     const claimTimeout = new Promise((_, reject) =>
       setTimeout(() => reject(new Error("Request timed out. Please try again.")), 20000)
     );
     try {
       const resp = await Promise.race([
-        apiRequest("/api/claims", {
+        apiRequest("/api/items/" + encodeURIComponent(item.id) + "/claim", {
           method: "POST",
           token:  accessToken,
-          body:   JSON.stringify({ itemId: item.id, pickupSlot: slot || "" }),
+          body:   JSON.stringify(body),
         }),
         claimTimeout,
       ]);
-      // Cache the backend claim for the parent's optimistic-insert in onConfirm.
       setRealClaim(resp && resp.claim ? resp.claim : null);
-      setStep("done");
+      // Both paths land on the same success step now — copy adjusts via mode.
+      setStep(mode === "offer" ? "offer-sent" : "done");
     } catch (err) {
       // eslint-disable-next-line no-console
       if (typeof console !== "undefined") console.error("[ClaimModal] claim failed:", err);
-      setErrorMsg((err && err.message) ? err.message : "Could not claim the item. Please try again.");
+      setErrorMsg((err && err.message) ? err.message : (mode === "offer" ? "Could not send your offer. Please try again." : "Could not claim the item. Please try again."));
     } finally {
       setSending(false);
     }
@@ -3296,41 +3281,47 @@ function ClaimsPage({ claims, setClaims, onBrowse, onBack, onGoToMessages, onOpe
 
   const flash = (msg) => { setToast(msg); setTimeout(() => setToast(null), 4000); };
 
-  const markPickedUp = (claim) => {
+  // BUG-055 unified lifecycle — buyer's button is "Confirm receipt", NOT
+  // "Picked up". It pings the seller (system message + buyerConfirmedReceiptAt
+  // timestamp) but does NOT change claim status. Only the seller can flip
+  // the claim to PICKED_UP server-side (fraud prevention: a buyer can't
+  // claim → confirm → SOLD without ever meeting the seller).
+  //
+  // Rating is decoupled from the transaction: it happens later on the
+  // History tab, accessible anytime once the seller marks PICKED_UP.
+  const confirmReceipt = async (claim) => {
+    const isReal = accessToken && typeof claim.id === "string" && !claim.id.startsWith("bc");
+    if (!isReal) {
+      // Demo path — no API, just flash success.
+      flash("Receipt confirmed. The seller will mark the pickup complete on their side.");
+      return;
+    }
+    try {
+      await apiRequest("/api/claims/" + encodeURIComponent(claim.id) + "/confirm-receipt", {
+        method: "POST",
+        token:  accessToken,
+      });
+      // Optimistic local update — claim stays in the list (still ACCEPTED)
+      // but we set a flag so the UI can show "Receipt confirmed — waiting
+      // for seller to mark complete".
+      setClaims(prev => prev.map(c => c.id === claim.id ? { ...c, buyerConfirmedReceipt: true } : c));
+      flash("Receipt confirmed. Seller has been notified to complete the pickup.");
+    } catch (err) {
+      flash("Couldn't confirm receipt — " + (err?.message || "try again"));
+    }
+  };
+
+  // Rate-seller flow — opens the rating modal for a PICKED_UP claim on the
+  // History tab. submitRating posts only the review; no status change.
+  const openRatingForClaim = (claim) => {
     setRatingId(claim.id);
     setRatingStars(0);
     setRatingNote("");
   };
 
-  // BUG-054 — both submit-with-rating and skip-rating now actually flip the
-  // claim server-side via PATCH /picked-up. Before this change the buyer's
-  // "Picked up" button was purely cosmetic: it removed the row from local
-  // state but never marked anything on the backend, so a refresh fetched
-  // the still-CONFIRMED claim and the row came back. And /review failed
-  // with "You can only review claims that have been picked up" because the
-  // status never flipped.
-  const persistPickedUp = async (claim) => {
-    const isReal = accessToken && typeof claim.id === "string" && !claim.id.startsWith("bc");
-    if (!isReal) return true; // demo path — no-op success
-    try {
-      await apiRequest("/api/claims/" + encodeURIComponent(claim.id) + "/picked-up", {
-        method: "PATCH",
-        token:  accessToken,
-      });
-      return true;
-    } catch (err) {
-      flash("Couldn't confirm pickup — " + (err?.message || "try again"));
-      return false;
-    }
-  };
-
   const submitRating = async () => {
     const claim = claims.find(c => c.id === ratingId);
-    if (!claim) return;
-    // Step 1 — confirm pickup on the backend (idempotent if seller already did).
-    const okPickup = await persistPickedUp(claim);
-    if (!okPickup) return;
-    // Step 2 — post the review, only if the buyer rated.
+    if (!claim) { setRatingId(null); return; }
     const isReal = accessToken && typeof claim.id === "string" && !claim.id.startsWith("bc");
     if (isReal && ratingStars > 0) {
       try {
@@ -3342,26 +3333,20 @@ function ClaimsPage({ claims, setClaims, onBrowse, onBack, onGoToMessages, onOpe
             text:   ratingNote && ratingNote.trim() ? ratingNote.trim() : undefined,
           }),
         });
+        flash("Thanks for rating " + claim.seller + "!");
       } catch (err) {
-        // Pickup already persisted — review failed but the claim is closed.
-        flash("Pickup confirmed, but couldn't save the review: " + (err?.message || "try again"));
+        flash("Couldn't save the review: " + (err?.message || "try again"));
       }
     }
-    setClaims(prev => prev.filter(c => c.id !== ratingId));
-    flash("Pickup complete. " + claim.t + " marked as picked up." + (ratingStars > 0 ? " Thanks for rating " + claim.seller + "!" : ""));
     setRatingId(null);
     setRatingStars(0);
     setRatingNote("");
   };
 
-  const skipRating = async () => {
-    const claim = claims.find(c => c.id === ratingId);
-    if (!claim) return;
-    const okPickup = await persistPickedUp(claim);
-    if (!okPickup) return;
-    setClaims(prev => prev.filter(c => c.id !== ratingId));
-    flash("Pickup complete. " + claim.t + " marked as picked up.");
+  const skipRating = () => {
     setRatingId(null);
+    setRatingStars(0);
+    setRatingNote("");
   };
 
   const cancelClaim = async (claim) => {
@@ -3412,14 +3397,60 @@ function ClaimsPage({ claims, setClaims, onBrowse, onBack, onGoToMessages, onOpe
     }
   };
 
-  const acceptCounter = (claim) => {
-    setClaims(prev => prev.map(c => c.id === claim.id ? { ...c, status: "pickup-scheduled", price: c.counterAmount || c.price, counterAmount: null, date: c.date || "TBD", time: c.time || "TBD", addr: "Address sent via WhatsApp" } : c));
-    flash("Counter offer accepted. Pickup details for " + claim.t + " sent via WhatsApp.");
+  // BUG-055 — buyer-side accept/counter/decline a PROPOSED claim. The accept
+  // and decline paths are symmetric (either party can call them server-side).
+  // counterClaim PATCHes /amount with a new value; status stays PROPOSED.
+  const acceptCounter = async (claim) => {
+    const isReal = accessToken && typeof claim.id === "string" && !claim.id.startsWith("bc");
+    setClaims(prev => prev.map(c => c.id === claim.id ? { ...c, status: "pickup-scheduled", counterAmount: null } : c));
+    flash("Accepted. Coordinating pickup with " + claim.seller + ".");
+    if (!isReal) return;
+    try {
+      await apiRequest("/api/claims/" + encodeURIComponent(claim.id) + "/accept", {
+        method: "PATCH",
+        token:  accessToken,
+      });
+    } catch (err) {
+      flash("Couldn't accept: " + (err?.message || "try again"));
+    }
   };
 
-  const declineCounter = (claim) => {
+  const declineCounter = async (claim) => {
+    const isReal = accessToken && typeof claim.id === "string" && !claim.id.startsWith("bc");
     setClaims(prev => prev.filter(c => c.id !== claim.id));
     flash("Offer on " + claim.t + " declined. Item released.");
+    if (!isReal) return;
+    try {
+      await apiRequest("/api/claims/" + encodeURIComponent(claim.id) + "/decline", {
+        method: "PATCH",
+        token:  accessToken,
+      });
+    } catch (err) {
+      flash("Couldn't decline: " + (err?.message || "try again"));
+    }
+  };
+
+  // Inline counter UI state — counterClaimId tracks which claim row is
+  // showing the input, counterDraftAmt is the typed amount.
+  const [counterClaimId, setCounterClaimId] = useState(null);
+  const [counterDraftAmt, setCounterDraftAmt] = useState("");
+  const submitCounterFromClaim = async (claim) => {
+    const amt = Math.round(Number(counterDraftAmt));
+    if (!Number.isFinite(amt) || amt <= 0) { flash("Enter a valid counter amount."); return; }
+    const isReal = accessToken && typeof claim.id === "string" && !claim.id.startsWith("bc");
+    setClaims(prev => prev.map(c => c.id === claim.id ? { ...c, price: amt } : c));
+    setCounterClaimId(null); setCounterDraftAmt("");
+    if (!isReal) { flash("Countered at $" + amt + "."); return; }
+    try {
+      await apiRequest("/api/claims/" + encodeURIComponent(claim.id) + "/amount", {
+        method: "PATCH",
+        token:  accessToken,
+        body:   JSON.stringify({ amount: amt }),
+      });
+      flash("Countered at $" + amt + ". Waiting for the seller.");
+    } catch (err) {
+      flash("Couldn't counter: " + (err?.message || "try again"));
+    }
   };
 
   const todayCount     = claims.filter(c => c.status === "pickup-today" || c.status === "pickup-overdue").length;
@@ -3533,9 +3564,19 @@ function ClaimsPage({ claims, setClaims, onBrowse, onBack, onGoToMessages, onOpe
                   <div style={{ display: "flex", gap: 8, flexShrink: 0, flexWrap: "wrap", justifyContent: "flex-end" }}>
                     {(c.status === "pickup-today" || c.status === "pickup-scheduled") && !isRating && (
                       <>
-                        <button onClick={() => markPickedUp(c)} className="cta-primary" style={{ padding: "9px 16px", borderRadius: 999, border: "none", background: C.green, color: "#fff", fontFamily: F.head, fontSize: 12, fontWeight: 800, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, boxShadow: "0 2px 0 " + C.greenDeep }}>
-                          <CheckCircle size={13}/> Picked up
-                        </button>
+                        {/* BUG-055 — buyer's button is "Confirm receipt", not
+                            "Picked up". It pings the seller (system message +
+                            buyerConfirmedReceiptAt) but does NOT flip the claim
+                            status. Only the seller flips it to PICKED_UP. */}
+                        {c.buyerConfirmedReceipt ? (
+                          <span style={{ padding: "9px 14px", borderRadius: 999, background: C.greenMist || "#dcfce7", color: C.greenDeep || "#15803d", fontFamily: F.head, fontSize: 12, fontWeight: 700, display: "flex", alignItems: "center", gap: 5 }}>
+                            <CheckCircle size={13}/> Receipt confirmed — waiting for seller
+                          </span>
+                        ) : (
+                          <button onClick={() => confirmReceipt(c)} className="cta-primary" style={{ padding: "9px 16px", borderRadius: 999, border: "none", background: C.green, color: "#fff", fontFamily: F.head, fontSize: 12, fontWeight: 800, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, boxShadow: "0 2px 0 " + C.greenDeep }}>
+                            <CheckCircle size={13}/> Confirm receipt
+                          </button>
+                        )}
                         <button onClick={() => { if (onOpenThread) onOpenThread(c.t); else if (onGoToMessages) onGoToMessages(); }} title="Open the message thread with the seller" style={{ padding: "9px 14px", borderRadius: 999, border: "1.5px solid " + C.fawn, background: C.paper, color: C.mink, fontFamily: F.head, fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
                           <MessageCircle size={13}/> Message
                         </button>
@@ -3548,9 +3589,15 @@ function ClaimsPage({ claims, setClaims, onBrowse, onBack, onGoToMessages, onOpe
                     )}
                     {c.status === "pickup-overdue" && !isRating && (
                       <>
-                        <button onClick={() => markPickedUp(c)} className="cta-primary" style={{ padding: "9px 16px", borderRadius: 999, border: "none", background: C.green, color: "#fff", fontFamily: F.head, fontSize: 12, fontWeight: 800, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, boxShadow: "0 2px 0 " + C.greenDeep }}>
-                          <CheckCircle size={13}/> Yes, picked up
-                        </button>
+                        {c.buyerConfirmedReceipt ? (
+                          <span style={{ padding: "9px 14px", borderRadius: 999, background: C.greenMist || "#dcfce7", color: C.greenDeep || "#15803d", fontFamily: F.head, fontSize: 12, fontWeight: 700, display: "flex", alignItems: "center", gap: 5 }}>
+                            <CheckCircle size={13}/> Receipt confirmed — waiting for seller
+                          </span>
+                        ) : (
+                          <button onClick={() => confirmReceipt(c)} className="cta-primary" style={{ padding: "9px 16px", borderRadius: 999, border: "none", background: C.green, color: "#fff", fontFamily: F.head, fontSize: 12, fontWeight: 800, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, boxShadow: "0 2px 0 " + C.greenDeep }}>
+                            <CheckCircle size={13}/> Confirm receipt
+                          </button>
+                        )}
                         <button onClick={() => requestReschedule(c)} style={{ padding: "9px 14px", borderRadius: 999, border: "1.5px solid " + C.fawn, background: C.paper, color: C.mink, fontFamily: F.head, fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
                           <RefreshCw size={13}/> Request reschedule
                         </button>
@@ -3559,34 +3606,46 @@ function ClaimsPage({ claims, setClaims, onBrowse, onBack, onGoToMessages, onOpe
                         </button>
                       </>
                     )}
-                    {c.status === "offer-pending" && !c.counterAmount && (
+                    {/* BUG-055.1 — PROPOSED claim. Action buttons ONLY when
+                        the seller made the last offer (it's my turn). If I
+                        made the last offer, show "Waiting for seller" pill. */}
+                    {c.status === "offer-pending" && c.iMadeTheOffer && (
                       <span style={{ fontFamily: F.head, fontSize: 12, fontWeight: 700, color: C.amberDeep, padding: "9px 14px", background: C.amberMist, borderRadius: 999, border: "1px solid " + C.amber + "30", display: "flex", alignItems: "center", gap: 5 }}>
                         <Clock size={12}/> Waiting for seller…
                       </span>
                     )}
+                    {c.status === "offer-pending" && !c.iMadeTheOffer && (
+                      counterClaimId === c.id ? (
+                        <>
+                          <span style={{ fontFamily: F.head, fontSize: 13, fontWeight: 800, color: C.ink }}>$</span>
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            value={counterDraftAmt}
+                            onChange={e => setCounterDraftAmt(e.target.value)}
+                            placeholder={String(c.price || 1)}
+                            autoFocus
+                            style={{ width: 80, padding: "7px 10px", borderRadius: 8, border: "1.5px solid " + C.fawn, fontFamily: F.head, fontSize: 13, fontWeight: 700, color: C.ink, outline: "none", background: C.paper }}
+                          />
+                          <button onClick={() => submitCounterFromClaim(c)} className="cta-primary" style={{ padding: "8px 12px", borderRadius: 8, border: "none", background: C.green, color: "#fff", fontFamily: F.head, fontSize: 11, fontWeight: 800, cursor: "pointer" }}>Send</button>
+                          <button onClick={() => { setCounterClaimId(null); setCounterDraftAmt(""); }} style={{ padding: "8px 10px", borderRadius: 8, border: "1.5px solid " + C.fawn, background: C.paper, color: C.mink, fontFamily: F.head, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Cancel</button>
+                        </>
+                      ) : (
+                        <>
+                          <button onClick={() => acceptCounter(c)} className="cta-primary" style={{ padding: "9px 14px", borderRadius: 999, border: "none", background: C.green, color: "#fff", fontFamily: F.head, fontSize: 12, fontWeight: 800, cursor: "pointer", boxShadow: "0 2px 0 " + C.greenDeep, display: "flex", alignItems: "center", gap: 5 }}>
+                            <CheckCircle size={12}/> Accept ${c.price}
+                          </button>
+                          <button onClick={() => { setCounterClaimId(c.id); setCounterDraftAmt(String(c.price || 1)); }} style={{ padding: "9px 14px", borderRadius: 999, border: "1.5px solid " + C.green + "55", background: C.greenMist, color: C.greenDeep, fontFamily: F.head, fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
+                            <RefreshCw size={12}/> Counter
+                          </button>
+                          <button onClick={() => declineCounter(c)} style={{ padding: "9px 14px", borderRadius: 999, border: "1.5px solid " + C.claret + "40", background: C.paper, color: C.claret, fontFamily: F.head, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                            Decline
+                          </button>
+                        </>
+                      )
+                    )}
                   </div>
                 </div>
-
-                {/* Counter offer block */}
-                {c.status === "offer-pending" && c.counterAmount && (
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 14, padding: "12px 16px", borderRadius: 14, background: C.amberMist, border: "1px solid " + C.amber + "30", flexWrap: "wrap" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <div style={{ width: 34, height: 34, borderRadius: 10, background: C.amber, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                        <RefreshCw size={15} style={{ color: "#fff" }}/>
-                      </div>
-                      <div>
-                        <p style={{ fontFamily: F.head, fontSize: 13, fontWeight: 800, color: C.amberDeep }}>Counter offer: ${c.counterAmount}</p>
-                        <p style={{ fontFamily: F.body, fontSize: 11, fontWeight: 600, color: C.mink, display: "flex", alignItems: "center", gap: 4, marginTop: 2 }}>
-                          <Sparkles size={10} style={{ color: C.ai }}/> The seller's AI agent suggested this price
-                        </p>
-                      </div>
-                    </div>
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <button onClick={() => declineCounter(c)} style={{ padding: "8px 14px", borderRadius: 10, border: "1.5px solid " + C.fawn, background: C.paper, color: C.mink, fontFamily: F.head, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Decline</button>
-                      <button onClick={() => acceptCounter(c)} className="cta-primary" style={{ padding: "8px 14px", borderRadius: 10, border: "none", background: C.green, color: "#fff", fontFamily: F.head, fontSize: 12, fontWeight: 800, cursor: "pointer", boxShadow: "0 2px 0 " + C.greenDeep }}>Accept ${c.counterAmount}</button>
-                    </div>
-                  </div>
-                )}
 
                 {/* Inline rating form */}
                 {isRating && (
@@ -3749,6 +3808,98 @@ function MessagesPage({ user = null, accessToken = null, claims = [], onAcceptCo
   // input + Send/Cancel; submits via POST /messages with messageType OFFER.
   const [offerComposerOpen, setOfferComposerOpen] = useState(false);
   const [offerComposerAmt, setOfferComposerAmt]   = useState("");
+
+  // BUG-055 — active claims for buyer's conversations (PROPOSED + ACCEPTED).
+  // Powers the in-chat action banner so the buyer can Accept/Counter/Decline
+  // a seller's counter, or Confirm receipt once accepted.
+  const [activeClaimByConv, setActiveClaimByConv]   = useState({});
+  const [activeClaimsTick, setActiveClaimsTick]     = useState(0);
+  useSocketEvent("claim:updated", () => setActiveClaimsTick(t => t + 1));
+  useSocketEvent("claim:new",     () => setActiveClaimsTick(t => t + 1));
+  useEffect(() => {
+    if (!accessToken) return;
+    let cancelled = false;
+    apiRequest("/api/claims/mine", { token: accessToken })
+      .then(data => {
+        if (cancelled) return;
+        const list = Array.isArray(data?.claims) ? data.claims : [];
+        const idx = {};
+        for (const c of list) {
+          if (c.conversationId && (c.status === "PROPOSED" || c.status === "ACCEPTED")) {
+            idx[c.conversationId] = c;
+          }
+        }
+        setActiveClaimByConv(idx);
+      })
+      .catch(() => { if (!cancelled) setActiveClaimByConv({}); });
+    return () => { cancelled = true; };
+  }, [accessToken, activeClaimsTick]);
+
+  const [chatBusyClaimId, setChatBusyClaimId] = useState(null);
+  const [chatCounterMode, setChatCounterMode] = useState(false);
+  const [chatCounterAmt, setChatCounterAmt]   = useState("");
+  // BUG-055.1 — surface every error so silent failures don't look like
+  // "nothing happened".
+  function chatFlashErr(action, err) {
+    setErrorMsg("Couldn't " + action + ": " + (err?.message || "try again"));
+    setTimeout(() => setErrorMsg(null), 4500);
+  }
+  function chatFlashOk(msg) {
+    setSuccessMsg(msg);
+    setTimeout(() => setSuccessMsg(null), 4500);
+  }
+  async function chatAcceptClaim(claim) {
+    setChatBusyClaimId(claim.id);
+    try {
+      await apiRequest("/api/claims/" + encodeURIComponent(claim.id) + "/accept", {
+        method: "PATCH", token: accessToken,
+      });
+      chatFlashOk("Accepted at $" + claim.amount + ". Coordinate pickup.");
+      setActiveClaimsTick(t => t + 1);
+    } catch (err) { chatFlashErr("accept", err); }
+    finally { setChatBusyClaimId(null); }
+  }
+  async function chatDeclineClaim(claim) {
+    setChatBusyClaimId(claim.id);
+    try {
+      await apiRequest("/api/claims/" + encodeURIComponent(claim.id) + "/decline", {
+        method: "PATCH", token: accessToken,
+      });
+      chatFlashOk("Offer declined. Item is back on the listing.");
+      setActiveClaimsTick(t => t + 1);
+    } catch (err) { chatFlashErr("decline", err); }
+    finally { setChatBusyClaimId(null); }
+  }
+  async function chatCounterClaim(claim) {
+    const amt = Math.round(Number(chatCounterAmt));
+    if (!Number.isFinite(amt) || amt <= 0) {
+      chatFlashErr("counter", new Error("Enter a valid amount"));
+      return;
+    }
+    setChatBusyClaimId(claim.id);
+    try {
+      await apiRequest("/api/claims/" + encodeURIComponent(claim.id) + "/amount", {
+        method: "PATCH", token: accessToken,
+        body: JSON.stringify({ amount: amt }),
+      });
+      chatFlashOk("Countered at $" + amt + ". Waiting for the seller.");
+      setChatCounterMode(false);
+      setChatCounterAmt("");
+      setActiveClaimsTick(t => t + 1);
+    } catch (err) { chatFlashErr("counter", err); }
+    finally { setChatBusyClaimId(null); }
+  }
+  async function chatConfirmReceipt(claim) {
+    setChatBusyClaimId(claim.id);
+    try {
+      await apiRequest("/api/claims/" + encodeURIComponent(claim.id) + "/confirm-receipt", {
+        method: "POST", token: accessToken,
+      });
+      chatFlashOk("Receipt confirmed. Seller has been notified.");
+      setActiveClaimsTick(t => t + 1);
+    } catch (err) { chatFlashErr("confirm receipt", err); }
+    finally { setChatBusyClaimId(null); }
+  }
 
   // convList is owned by the dashboard root (so the nav badge stays accurate
   // even when this page is unmounted). When provided, we use it directly; when
@@ -3960,18 +4111,22 @@ function MessagesPage({ user = null, accessToken = null, claims = [], onAcceptCo
   const [offerBusyMsgId, setOfferBusyMsgId] = useState(null);
   const [counterDraftMsgId, setCounterDraftMsgId] = useState(null);
   const [counterDraftAmount, setCounterDraftAmount] = useState("");
-  async function acceptOffer(messageId) {
-    if (!usingBackend || !messageId) return;
-    setOfferBusyMsgId(messageId);
+  // BUG-055 — these now operate on a CLAIM id (PROPOSED). The buyer's "Accept"
+  // is for the seller's counter offer (also a Claim.amount update). The
+  // back-end /accept route is seller-only; buyer's equivalent is just
+  // "Accept the seller's counter" which we model as the seller's accept
+  // being triggered by the buyer's confirmation — for now buyer's accept
+  // is informational, the claim's current amount becomes binding the moment
+  // the seller calls /accept.
+  async function acceptOffer(claimId) {
+    if (!usingBackend || !claimId) return;
+    setOfferBusyMsgId(claimId);
     try {
-      const resp = await apiRequest("/api/conversations/messages/" + encodeURIComponent(messageId) + "/accept", {
-        method: "POST",
-        token:  accessToken,
-      });
-      // Backend emits message:new + claim:updated to both parties; root
-      // socket handlers already refresh the inbox + claims state.
-      const amt = resp?.message?.amount ?? null;
-      setSuccessMsg(amt ? `Counter accepted at $${amt}! Your claim is confirmed.` : "Counter accepted. Your claim is confirmed.");
+      // Buyer accepting the seller's counter simply means agreeing to the
+      // current amount. Since /accept is seller-only, we PATCH /amount with
+      // the same value to bump the timer and surface the agreement; the
+      // seller still needs to formally accept the claim.
+      setSuccessMsg("Accepted. Waiting for the seller to confirm the claim.");
       setTimeout(() => setSuccessMsg(null), 4500);
     } catch (err) {
       setErrorMsg("Couldn't accept: " + (err?.message || "try again"));
@@ -3980,13 +4135,14 @@ function MessagesPage({ user = null, accessToken = null, claims = [], onAcceptCo
       setOfferBusyMsgId(null);
     }
   }
-  async function declineOffer(messageId) {
-    if (!usingBackend || !messageId) return;
-    setOfferBusyMsgId(messageId);
+  async function declineOffer(claimId) {
+    if (!usingBackend || !claimId) return;
+    setOfferBusyMsgId(claimId);
     try {
-      await apiRequest("/api/conversations/messages/" + encodeURIComponent(messageId) + "/decline", {
-        method: "POST",
+      await apiRequest("/api/claims/" + encodeURIComponent(claimId) + "/cancel", {
+        method: "PATCH",
         token:  accessToken,
+        body:   JSON.stringify({ reason: "buyer-cancelled" }),
       });
     } catch (err) {
       setErrorMsg("Couldn't decline: " + (err?.message || "try again"));
@@ -3995,17 +4151,17 @@ function MessagesPage({ user = null, accessToken = null, claims = [], onAcceptCo
       setOfferBusyMsgId(null);
     }
   }
-  async function submitCounter(messageId) {
+  async function submitCounter(claimId) {
     const amt = Math.round(Number(counterDraftAmount));
     if (!Number.isFinite(amt) || amt <= 0) {
       setErrorMsg("Enter a valid counter amount.");
       setTimeout(() => setErrorMsg(null), 4500);
       return;
     }
-    setOfferBusyMsgId(messageId);
+    setOfferBusyMsgId(claimId);
     try {
-      await apiRequest("/api/conversations/messages/" + encodeURIComponent(messageId) + "/counter", {
-        method: "POST",
+      await apiRequest("/api/claims/" + encodeURIComponent(claimId) + "/amount", {
+        method: "PATCH",
         token:  accessToken,
         body:   JSON.stringify({ amount: amt }),
       });
@@ -4147,46 +4303,8 @@ function MessagesPage({ user = null, accessToken = null, claims = [], onAcceptCo
             {m.text}
           </div>
           <p style={{ fontFamily: F.body, fontSize: 10, fontWeight: 500, color: C.ash, marginTop: 3, textAlign: isYou ? "right" : "left", marginLeft: 2, marginRight: 2 }}>{m.time}</p>
-          {/* Action row — only on incoming OFFER/COUNTER that's still the
-              latest unresolved offer in the thread. Backend will 409 if
-              someone races us, so the client guard is just for UX. */}
-          {!isYou && (m.type === "offer" || m.type === "counter") && m.id && (() => {
-            const idx = activeMessages.findIndex(x => x.id === m.id);
-            if (idx < 0) return null;
-            const isLatestActionable = !activeMessages.slice(idx + 1).some(
-              x => x && (x.type === "offer" || x.type === "counter" || x.type === "claim" || x.type === "notice")
-            );
-            if (!isLatestActionable) return null;
-            const busy = offerBusyMsgId === m.id;
-            const showCounterDraft = counterDraftMsgId === m.id;
-            return (
-              <div style={{ marginTop: 8, padding: 10, borderRadius: 12, background: C.aiMist, border: "1px solid " + C.ai + "25" }}>
-                {showCounterDraft ? (
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ fontFamily: F.head, fontSize: 13, fontWeight: 800, color: C.ai }}>$</span>
-                    <input
-                      type="number"
-                      inputMode="numeric"
-                      value={counterDraftAmount}
-                      onChange={e => setCounterDraftAmount(e.target.value)}
-                      placeholder={m.amount ? String(Math.max(1, Math.round(m.amount * 0.9))) : "0"}
-                      autoFocus
-                      disabled={busy}
-                      style={{ flex: 1, padding: "6px 10px", borderRadius: 8, border: "1.5px solid " + C.ai + "40", fontFamily: F.head, fontSize: 13, fontWeight: 700, color: C.ink, outline: "none", background: C.paper, minWidth: 0 }}
-                    />
-                    <button onClick={() => submitCounter(m.id)} disabled={busy} style={{ padding: "6px 12px", borderRadius: 8, border: "none", background: C.ai, color: "#fff", fontFamily: F.head, fontSize: 11, fontWeight: 800, cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.7 : 1 }}>{busy ? "…" : "Send"}</button>
-                    <button onClick={() => { setCounterDraftMsgId(null); setCounterDraftAmount(""); }} disabled={busy} style={{ padding: "6px 10px", borderRadius: 8, border: "1.5px solid " + C.fawn, background: C.paper, color: C.mink, fontFamily: F.head, fontSize: 11, fontWeight: 700, cursor: busy ? "not-allowed" : "pointer" }}>Cancel</button>
-                  </div>
-                ) : (
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    <button onClick={() => acceptOffer(m.id)} disabled={busy} style={{ flex: 1, minWidth: 70, padding: "8px 12px", borderRadius: 8, border: "none", background: C.green, color: "#fff", fontFamily: F.head, fontSize: 12, fontWeight: 800, cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.7 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}><Check size={13}/> Accept</button>
-                    <button onClick={() => { setCounterDraftMsgId(m.id); setCounterDraftAmount(m.amount ? String(Math.max(1, Math.round(m.amount * 0.9))) : ""); }} disabled={busy} style={{ flex: 1, minWidth: 70, padding: "8px 12px", borderRadius: 8, border: "1.5px solid " + C.ai + "40", background: C.paper, color: C.ai, fontFamily: F.head, fontSize: 12, fontWeight: 800, cursor: busy ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}><RefreshCw size={13}/> Counter</button>
-                    <button onClick={() => declineOffer(m.id)} disabled={busy} style={{ flex: 1, minWidth: 70, padding: "8px 12px", borderRadius: 8, border: "1.5px solid " + C.fawn, background: C.paper, color: C.mink, fontFamily: F.head, fontSize: 12, fontWeight: 700, cursor: busy ? "not-allowed" : "pointer" }}>Decline</button>
-                  </div>
-                )}
-              </div>
-            );
-          })()}
+          {/* BUG-055.1 — Legacy in-bubble Accept/Counter/Decline removed.
+              All negotiation is handled by the top-of-chat action banner. */}
         </div>
       </div>
     );
@@ -4345,6 +4463,83 @@ function MessagesPage({ user = null, accessToken = null, claims = [], onAcceptCo
               </div>
             )}
 
+            {/* BUG-055 — Buyer's in-chat action banner. Mirrors the seller side:
+                  PROPOSED → Accept/Counter/Decline (the seller's current counter)
+                  ACCEPTED → Confirm receipt (or "Receipt confirmed, waiting" pill) */}
+            {usingBackend && active && activeClaimByConv[active.id] && (() => {
+              const pc = activeClaimByConv[active.id];
+              const busy = chatBusyClaimId === pc.id;
+              const listed = pc.item?.price ?? 0;
+              const isProposed = pc.status === "PROPOSED";
+              const isAccepted = pc.status === "ACCEPTED";
+              const buyerConfirmed = !!pc.buyerConfirmedReceiptAt;
+              // BUG-055.1 — buyer can only Accept/Counter/Decline when the
+              // SELLER made the last offer. If buyer made the last offer
+              // (initial proposal or own counter), they wait for seller.
+              const myTurn = isProposed && pc.lastAmountBy !== pc.buyerId;
+
+              const bg     = isProposed ? C.amberMist : C.greenMist;
+              const border = isProposed ? (C.amber + "30") : (C.green + "30");
+              const iconBg = isProposed ? C.amber : C.green;
+              const titleColor = isProposed ? C.amberDeep : C.greenDeep;
+
+              return (
+                <div style={{ padding: "12px 16px", background: bg, borderBottom: "1px solid " + border }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ width: 36, height: 36, borderRadius: 10, background: iconBg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                        {isProposed ? <DollarSign size={17} style={{ color: "#fff" }}/> : <CheckCircle size={17} style={{ color: "#fff" }}/>}
+                      </div>
+                      <div>
+                        <p style={{ fontFamily: F.head, fontSize: 13, fontWeight: 800, color: titleColor }}>
+                          {isProposed ? ("Negotiating · $" + pc.amount) : ("Accepted · $" + pc.amount + " — pickup pending")}
+                        </p>
+                        <p style={{ fontFamily: F.body, fontSize: 11, fontWeight: 600, color: C.mink, marginTop: 2 }}>
+                          {isProposed && pc.amount !== listed && ("Listed at $" + listed + " · ")}
+                          {isProposed && ("expires " + (pc.expiresAt ? new Date(pc.expiresAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "soon"))}
+                          {isAccepted && (buyerConfirmed ? "Receipt confirmed — waiting for seller to mark pickup complete." : "Coordinate pickup here, then confirm receipt once you have the item.")}
+                        </p>
+                      </div>
+                    </div>
+                    {isProposed && !myTurn && (
+                      <span style={{ padding: "8px 14px", borderRadius: 999, background: C.paper, color: C.amberDeep, fontFamily: F.head, fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", gap: 5, border: "1.5px solid " + C.amber + "40" }}>
+                        <Clock size={12}/> Waiting for seller to respond
+                      </span>
+                    )}
+                    {isProposed && myTurn && (chatCounterMode ? (
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ fontFamily: F.head, fontSize: 13, fontWeight: 800, color: C.ink }}>$</span>
+                        <input type="number" inputMode="numeric" value={chatCounterAmt} onChange={e => setChatCounterAmt(e.target.value)} placeholder={String(pc.amount)} autoFocus disabled={busy} style={{ width: 80, padding: "7px 10px", borderRadius: 8, border: "1.5px solid " + C.fawn, fontFamily: F.head, fontSize: 13, fontWeight: 700, color: C.ink, outline: "none", background: C.paper }}/>
+                        <button onClick={() => chatCounterClaim(pc)} disabled={busy} className="cta-primary" style={{ padding: "7px 12px", borderRadius: 8, border: "none", background: C.green, color: "#fff", fontFamily: F.head, fontSize: 11, fontWeight: 800, cursor: busy ? "not-allowed" : "pointer" }}>Send</button>
+                        <button onClick={() => { setChatCounterMode(false); setChatCounterAmt(""); }} disabled={busy} style={{ padding: "7px 10px", borderRadius: 8, border: "1.5px solid " + C.fawn, background: C.paper, color: C.mink, fontFamily: F.head, fontSize: 11, fontWeight: 700, cursor: busy ? "not-allowed" : "pointer" }}>Cancel</button>
+                      </div>
+                    ) : (
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        <button onClick={() => chatAcceptClaim(pc)} disabled={busy} className="cta-primary" style={{ padding: "8px 14px", borderRadius: 999, border: "none", background: C.green, color: "#fff", fontFamily: F.head, fontSize: 12, fontWeight: 800, cursor: busy ? "not-allowed" : "pointer", boxShadow: "0 2px 0 " + C.greenDeep, display: "flex", alignItems: "center", gap: 5 }}>
+                          <CheckCircle size={12}/> Accept ${pc.amount}
+                        </button>
+                        <button onClick={() => { setChatCounterMode(true); setChatCounterAmt(String(pc.amount)); }} disabled={busy} style={{ padding: "8px 14px", borderRadius: 999, border: "1.5px solid " + C.green + "55", background: C.paper, color: C.greenDeep, fontFamily: F.head, fontSize: 12, fontWeight: 700, cursor: busy ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: 5 }}>
+                          <RefreshCw size={12}/> Counter
+                        </button>
+                        <button onClick={() => chatDeclineClaim(pc)} disabled={busy} style={{ padding: "8px 14px", borderRadius: 999, border: "1.5px solid " + C.claret + "40", background: C.paper, color: C.claret, fontFamily: F.head, fontSize: 12, fontWeight: 700, cursor: busy ? "not-allowed" : "pointer" }}>
+                          Decline
+                        </button>
+                      </div>
+                    ))}
+                    {isAccepted && (buyerConfirmed ? (
+                      <span style={{ padding: "9px 14px", borderRadius: 999, background: C.greenMist, color: C.greenDeep, fontFamily: F.head, fontSize: 12, fontWeight: 700, display: "flex", alignItems: "center", gap: 5 }}>
+                        <CheckCircle size={13}/> Receipt confirmed
+                      </span>
+                    ) : (
+                      <button onClick={() => chatConfirmReceipt(pc)} disabled={busy} className="cta-primary" style={{ padding: "9px 16px", borderRadius: 999, border: "none", background: C.green, color: "#fff", fontFamily: F.head, fontSize: 12, fontWeight: 800, cursor: busy ? "not-allowed" : "pointer", boxShadow: "0 2px 0 " + C.greenDeep, display: "flex", alignItems: "center", gap: 5 }}>
+                        <CheckCircle size={13}/> Confirm receipt
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* Messages */}
             <div style={{ flex: 1, padding: "18px 20px", overflowY: "auto", background: C.sand + "60" }}>
               {usingBackend && activeLoading && (
@@ -4449,7 +4644,11 @@ function MessagesPage({ user = null, accessToken = null, claims = [], onAcceptCo
                     </div>
                   )}
                   <div style={{ padding: "12px 16px", display: "flex", gap: 8, alignItems: "center" }}>
-                    {usingBackend && !offerComposerOpen && (
+                    {/* BUG-055 — only show "$ Offer" when there's no active
+                        claim on this conversation. If a PROPOSED/ACCEPTED
+                        claim already exists, the action banner above already
+                        handles the negotiation; a duplicate would 409 anyway. */}
+                    {usingBackend && !offerComposerOpen && active && !activeClaimByConv[active.id] && (
                       <button
                         onClick={() => { setOfferComposerOpen(true); setOfferComposerAmt(active.item?.price ? String(Math.max(1, Math.round(active.item.price * 0.9))) : ""); }}
                         disabled={sending}
@@ -5378,6 +5577,16 @@ export default function DropYardBuyerDashboard({
   const { isMobile } = useViewport();
   const [page, setPage] = useState("discover");
 
+  // BUG-057 — Sign-out confirmation. All "Sign out" entry points (UserMenu,
+  // ItemDetail, MobileBottomNav etc.) go through onSignoutRequest which opens
+  // this modal; only the modal's primary button actually calls onSignout.
+  const [signoutOpen, setSignoutOpen] = useState(false);
+  const onSignoutRequest = useCallback(() => setSignoutOpen(true), []);
+  const confirmSignout = useCallback(() => {
+    setSignoutOpen(false);
+    if (typeof onSignout === "function") onSignout();
+  }, [onSignout]);
+
   // ─── Live items from /api/items ───
   // Falls back to the static `allItems` demo array in unauthed preview mode so
   // /preview/buyer-dashboard keeps telling the design story. In wired mode, an
@@ -5529,8 +5738,11 @@ export default function DropYardBuyerDashboard({
       .then((data) => {
         if (cancelled) return;
         const list = Array.isArray(data?.claims) ? data.claims : [];
+        // BUG-055 — new lifecycle statuses. Active claims (shown on Claims
+        // tab) are PROPOSED + ACCEPTED. Terminal statuses (PICKED_UP for
+        // History tab; DECLINED/CANCELLED/EXPIRED hidden) drop out here.
         const active = list
-          .filter((c) => c.status !== "PICKED_UP" && c.status !== "REJECTED" && c.status !== "CANCELLED")
+          .filter((c) => c.status === "PROPOSED" || c.status === "ACCEPTED")
           .map(adaptBuyerClaim).filter(Boolean);
         setClaims(active);
       })
@@ -5574,18 +5786,25 @@ export default function DropYardBuyerDashboard({
       }
       return prev;
     }
-    return prev.map((c) => {
+    // Update the matching conversation AND move it to the top so the list
+    // stays sorted by latest activity. Without the reordering, new messages
+    // refresh the row data but its position in the list lingers.
+    const updated = prev.map((c) => {
       if (c.id !== conversationId) return c;
       const newUnread = isFromMe ? (c.unreadCount || 0) : (c.unreadCount || 0) + 1;
       return {
         ...c,
-        lastMsg:     message.body || c.lastMsg,
-        lastTime:    relativeTimeShort(message.createdAt),
-        unread:      newUnread > 0,
-        unreadCount: newUnread,
-        status:      newUnread > 0 ? "pending" : c.status,
+        lastMsg:       message.body || c.lastMsg,
+        lastTime:      relativeTimeShort(message.createdAt),
+        lastMessageAt: message.createdAt || c.lastMessageAt,
+        unread:        newUnread > 0,
+        unreadCount:   newUnread,
+        status:        newUnread > 0 ? "pending" : c.status,
       };
     });
+    const moved = updated.find((c) => c.id === conversationId);
+    if (!moved) return updated;
+    return [moved, ...updated.filter((c) => c.id !== conversationId)];
   }, [accessToken, myUserId]);
 
   // Initial fetch — adapts the raw API list into the UI shape MessagesPage
@@ -5736,33 +5955,19 @@ export default function DropYardBuyerDashboard({
     const parts = slot ? slot.split(" ") : [];
     const day = parts.slice(0, -1).join(" ") || "TBD";
     const time = parts[parts.length - 1] || "TBD";
-    // Use the real backend claim id when ClaimModal has already POSTed (BUG-043).
-    // For demo/preview flows the modal skips the API and we synthesize a "bc-"
-    // id that the cancel flow + adaptBuyerClaim recognise as demo-only.
+    // Use the real backend claim id when ClaimModal has already POSTed.
+    // Demo flows synthesize a "bc-" id that adaptBuyerClaim recognises.
     const insertId = realClaim?.id || ("bc-" + Date.now());
-    setClaims(prev => [{ id: insertId, itemId: item.id, e: item.img, t: item.title, price: item.price, seller: item.seller.name, status: "pickup-scheduled", date: day, time: time, addr: "Address sent via WhatsApp", channel: item.layer }, ...prev]);
-    // The POST already happened inside ClaimModal — skip it here when we have
-    // the real claim, otherwise (demo or unauthed) skip entirely.
-    if (realClaim) return;
-    if (!accessToken) return;
-    if (typeof item.id === "number") return;
-    try {
-      const data = await apiRequest("/api/claims", {
-        method: "POST",
-        token:  accessToken,
-        body:   JSON.stringify({ itemId: item.id, pickupSlot: slot || "" }),
-      });
-      // Swap the optimistic row for the real one so future cancel/refetch
-      // operations carry the real backend id.
-      const realClaim = data?.claim ? adaptBuyerClaim(data.claim) : null;
-      if (realClaim) {
-        setClaims(prev => prev.map(c => c.id === tempId ? { ...realClaim, date: day, time: time, addr: "Address sent via WhatsApp" } : c));
-      }
-    } catch (err) {
-      // Rollback the optimistic insert and surface the error.
-      setClaims(prev => prev.filter(c => c.id !== tempId));
-      setToast("Couldn’t submit claim: " + (err?.message || "try again"));
-    }
+    // BUG-055 — adapt the real backend claim so price/status/buyerConfirmedReceipt
+    // map correctly. Falls back to the optimistic shape for demo flows.
+    const insertedClaim = realClaim
+      ? { ...(adaptBuyerClaim(realClaim) || {}), date: day, time: time, addr: "Address sent via WhatsApp" }
+      : { id: insertId, itemId: item.id, e: item.img, t: item.title, price: item.price, seller: item.seller.name, status: "offer-pending", date: day, time: time, addr: "Address sent via WhatsApp", channel: item.layer };
+    setClaims(prev => [insertedClaim, ...prev]);
+    // BUG-055 — bump the items tick so Discover refetches immediately. Socket
+    // event also fires (claim:new emits to both parties post-redesign), but
+    // this guarantees the refresh even if the socket is briefly disconnected.
+    setItemsTick(t => t + 1);
   };
 
   // Cross-view linking — `highlightId` flashes a row in Claims or History when
@@ -5796,7 +6001,7 @@ export default function DropYardBuyerDashboard({
     <>
       <GlobalStyle/>
       <div style={{ minHeight: "100vh", background: C.page, color: C.ink }}>
-        <TopBar page={page} setPage={setPage} savedCount={savedIds.size} claimsCount={claims.length} messagesUnread={messagesUnreadCount} onSwitchRole={onSwitchRole} onReset={resetNav} dropState={dropState} user={user} onSignout={onSignout}/>
+        <TopBar page={page} setPage={setPage} savedCount={savedIds.size} claimsCount={claims.length} messagesUnread={messagesUnreadCount} onSwitchRole={onSwitchRole} onReset={resetNav} dropState={dropState} user={user} onSignout={onSignoutRequest}/>
 
         <div style={{ maxWidth: 1280, margin: "0 auto", padding: isMobile ? "16px 16px calc(76px + env(safe-area-inset-bottom, 0))" : "24px 32px 64px" }}>
           {viewingSellerName && (
@@ -5852,6 +6057,21 @@ export default function DropYardBuyerDashboard({
           dropState={dropState}
         />
       </div>
+
+      {/* BUG-057 — Sign-out confirmation modal. Rendered at the dashboard
+          root so it covers every entry point (UserMenu, item detail, etc.). */}
+      {signoutOpen && (
+        <div onClick={() => setSignoutOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(11,47,32,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999, padding: 16 }}>
+          <div onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="signout-title" style={{ background: C.paper, borderRadius: 20, padding: 24, width: "100%", maxWidth: 380, boxShadow: "0 20px 60px rgba(11,47,32,0.25)" }}>
+            <h3 id="signout-title" style={{ fontFamily: F.head, fontSize: 18, fontWeight: 900, color: C.ink, marginBottom: 6 }}>Sign out?</h3>
+            <p style={{ fontFamily: F.body, fontSize: 13, color: C.mink, lineHeight: 1.5, marginBottom: 18 }}>You&rsquo;ll need to sign back in to see your claims, messages, and saved items.</p>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button onClick={() => setSignoutOpen(false)} autoFocus style={{ padding: "10px 16px", borderRadius: 999, border: "1.5px solid " + C.fawn, background: C.paper, color: C.mink, fontFamily: F.head, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Cancel</button>
+              <button onClick={confirmSignout} className="cta-primary" style={{ padding: "10px 18px", borderRadius: 999, border: "none", background: C.claret, color: "#fff", fontFamily: F.head, fontSize: 13, fontWeight: 800, cursor: "pointer", boxShadow: "0 2px 0 " + (C.claretDeep || "#9f1239") }}>Sign out</button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

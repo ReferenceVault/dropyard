@@ -86,7 +86,18 @@ function AuthedBuyerContent() {
     if (modeInitForUserIdRef.current !== user.id) {
       modeInitForUserIdRef.current = user.id;
       const isOnlySeller = user.role === "SELLER";
-      setMode(isOnlySeller ? "seller" : "buyer");
+      // Prefer the user's last chosen mode (persisted by setMode) over the
+      // role-default. SELLER-only users still force "seller" — they have no
+      // buyer dashboard. BOTH-role users get whichever they left in.
+      const saved = typeof window !== "undefined" ? window.localStorage.getItem("dropyard:mode") : null;
+      const preferred = (saved === "buyer" || saved === "seller") ? saved : null;
+      if (isOnlySeller) {
+        setMode("seller");
+      } else if (preferred) {
+        setMode(preferred);
+      } else {
+        setMode("buyer");
+      }
       if (user.role === "BOTH") setDropType("moving");
     }
     setSellerOnboardingComplete(user.sellerOnboardingDone);
