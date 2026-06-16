@@ -192,3 +192,9 @@ body {
     padding: 16px 16px calc(76px + env(safe-area-inset-bottom, 0));
   }
 }
+
+/* BUG-064 — pulse animation for SocketHealthDot during reconnect. */
+@keyframes dropyard-pulse {
+  0%, 100% { opacity: 1;    transform: scale(1); }
+  50%      { opacity: 0.35; transform: scale(0.75); }
+}

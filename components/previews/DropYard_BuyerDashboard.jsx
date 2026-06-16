@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { apiRequest } from "@/lib/api";
 import { useSocketEvent } from "@/context/SocketContext";
+import { SocketHealthDot } from "@/components/SocketHealthDot";
 import { useAuth } from "@/context/AuthContext";
 import {
   DROP_OPEN_DAY, DROP_OPEN_HOUR, DROP_CLOSE_DAY, DROP_CLOSE_HOUR,
@@ -677,6 +678,10 @@ function TopBar({ page, setPage, savedCount, claimsCount, messagesUnread = 0, on
         )}
 
         <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 6 : 12 }}>
+          {/* BUG-064 — socket health pulse. Visible at a glance so we can spot
+              real-time outages without DevTools. Green=connected, amber=
+              reconnecting, gray=disconnected. */}
+          <SocketHealthDot />
           {/* Switch-to-Seller pill. On mobile, render an icon-only compact variant
              so it still fits at 360px alongside logo + avatar. Desktop keeps the
              full label. */}
