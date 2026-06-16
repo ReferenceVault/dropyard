@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { apiRequest, uploadItemPhoto } from "@/lib/api";
 import { useSocketEvent } from "@/context/SocketContext";
+import { SocketHealthDot } from "@/components/SocketHealthDot";
 import { useAuth } from "@/context/AuthContext";
 import { useDropCycle } from "@/context/DropCycleContext";
 import {
@@ -1141,6 +1142,8 @@ function TopNav({ user, onSignout, onOpenSettings, activeView, onToggleSidebar, 
             }}>{messagesUnread > 99 ? "99+" : messagesUnread}</span>
           ) : null}
         </button>
+        {/* BUG-064 — socket health pulse for at-a-glance real-time status. */}
+        <SocketHealthDot />
         <SellerUserMenu user={user} onSignout={onSignout} onOpenSettings={onOpenSettings}/>
       </div>
     </header>
@@ -3273,7 +3276,6 @@ function ManualItemForm({ onDone, onBack, onGoToItems, onEnhanceAI, aiSettings =
   // photos: array of { id, key, preview, uploading? } - key is the S3 key from /api/uploads/s3,
   // preview is the publicUrl for inline display, uploading is true while the request is in-flight.
   const [photos, setPhotos] = useState([]);
-  const [hasVideo, setHasVideo] = useState(false);
   const [saved, setSaved] = useState(null);
   const [publishWhen, setPublishWhen] = useState("drop"); // "drop" (queue for next Drop) | "shelf" (list now)
   const [paymentMethod, setPaymentMethod] = useState(aiSettings.paymentMethod || "either");
@@ -3582,36 +3584,26 @@ function ManualItemForm({ onDone, onBack, onGoToItems, onEnhanceAI, aiSettings =
             <p style={{ fontSize: 10, color: C.ash, marginTop: 8, fontFamily: F.body }}>The Cover photo is the first one buyers see. Use the arrows to reorder, or the star to promote. Up to {MAX_PHOTOS} photos.</p>
           </div>
 
-          {/* Video upload */}
-          <div style={{ padding: 16, borderRadius: 16, border: "1px solid " + C.fawn, background: C.paper }}>
-            <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#334155", marginBottom: 10, fontFamily: F.body }}>Short Video (optional)</label>
-            {!hasVideo ? (
-              <div onClick={() => setHasVideo(true)}
-                style={{ height: 80, borderRadius: 12, border: "2px dashed #d1d5db", display: "flex", alignItems: "center", justifyContent: "center", gap: 10, cursor: "pointer", background: C.sand }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = C.oPrimary; e.currentTarget.style.backgroundColor = C.oLightBg; }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = "#d1d5db"; e.currentTarget.style.backgroundColor = "#fafafa"; }}>
-                <div style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: C.oLightBg, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <Upload size={16} style={{ color: C.oPrimary }} />
-                </div>
-                <div>
-                  <p style={{ fontSize: 12, fontWeight: 700, color: C.ink, fontFamily: F.body }}>Add a short video</p>
-                  <p style={{ fontSize: 10, color: C.ash, fontFamily: F.body }}>MP4, MOV up to 30 seconds</p>
-                </div>
+          {/* Video upload — Coming soon. Photos are enough for the first
+              wave; video adds storage + transcoding cost we're not paying
+              for yet. The slot stays visible (with a "Coming soon" pill)
+              so sellers know it's planned. To re-enable, restore the
+              previous interactive block from git history at this path
+              and remove this disabled card. */}
+          <div style={{ padding: 16, borderRadius: 16, border: "1px solid " + C.fawn, background: C.paper, opacity: 0.75 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+              <label style={{ fontSize: 13, fontWeight: 600, color: "#334155", fontFamily: F.body }}>Short Video</label>
+              <span style={{ fontSize: 9, fontWeight: 800, padding: "3px 9px", borderRadius: 999, background: C.amberMist, color: C.amberDeep, fontFamily: F.head, letterSpacing: "0.06em", textTransform: "uppercase" }}>Coming soon</span>
+            </div>
+            <div style={{ height: 80, borderRadius: 12, border: "2px dashed " + C.fawn, display: "flex", alignItems: "center", justifyContent: "center", gap: 10, background: C.sand, cursor: "not-allowed" }}>
+              <div style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: C.fawn, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Upload size={16} style={{ color: C.ash }} />
               </div>
-            ) : (
-              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: 12, borderRadius: 12, backgroundColor: C.oLightBg, border: "1px solid " + C.oSoft }}>
-                <div style={{ width: 48, height: 48, borderRadius: 10, backgroundColor: C.oPrimary + "20", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <span style={{ fontSize: 20 }}>{"\u{1F3AC}"}</span>
-                </div>
-                <div style={{ flex: 1 }}>
-                  <p style={{ fontSize: 12, fontWeight: 700, color: C.ink, fontFamily: F.body }}>item_video.mp4</p>
-                  <p style={{ fontSize: 10, color: C.ash, fontFamily: F.body }}>12 seconds - 4.2 MB</p>
-                </div>
-                <button onClick={() => setHasVideo(false)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}>
-                  <X size={14} style={{ color: C.ash }} />
-                </button>
+              <div>
+                <p style={{ fontSize: 12, fontWeight: 700, color: C.mink, fontFamily: F.body }}>Video uploads aren&rsquo;t live yet</p>
+                <p style={{ fontSize: 10, color: C.ash, fontFamily: F.body }}>Photos are enough for now — we&rsquo;ll add MP4/MOV support soon.</p>
               </div>
-            )}
+            </div>
           </div>
         </div>
 
@@ -7268,8 +7260,12 @@ function SellerHistoryView({ embedded = false, accessToken = null }) {
    ============================================================ */
 function ItemDetailView({ item, onBack, onEdit, accessToken: _accessToken }) {
   const { isMobile } = useViewport();
-  // Always-show the header & back nav even when item is missing so the
-  // user doesn't get stranded.
+  // BUG-062 — all hooks MUST be called before any early return. Previously
+  // `useState(0)` lived after the `if (!item)` guard, so the hook count
+  // changed depending on whether `item` was truthy → "React has detected a
+  // change in the order of Hooks called" runtime error + state corruption.
+  const [active, setActive] = useState(0);
+
   if (!item) {
     return (
       <div className="fade-in" style={{ maxWidth: 1160, margin: "0 auto", padding: "14px 0" }}>
@@ -7283,7 +7279,6 @@ function ItemDetailView({ item, onBack, onEdit, accessToken: _accessToken }) {
 
   const photos = Array.isArray(item.photos) ? item.photos.filter(Boolean) : [];
   const hasPhotos = photos.length > 0;
-  const [active, setActive] = useState(0);
   const hero = hasPhotos ? photos[Math.min(active, photos.length - 1)] : null;
 
   // Lifecycle pill — mirrors MyItemsView's logic

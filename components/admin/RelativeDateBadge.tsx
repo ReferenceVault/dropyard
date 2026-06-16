@@ -1,5 +1,31 @@
-import React from "react";
+"use client";
+
+// BUG-062 — marked "use client" so the component never SSRs. Calls to
+// Date.now() in render bodies on the server would compute a different
+// value than on the client, causing hydration warnings. Belt-and-suspenders
+// since both consumers (admin inbox + admin users page) already mark
+// themselves "use client".
+
+import React, { useEffect, useState } from "react";
 import { Calendar } from "lucide-react";
+
+interface ToneStyles {
+  label: string;
+  tone:  "emerald" | "amber" | "slate";
+}
+
+// Pure helper — given a "now" timestamp and a target date, produce label + tone.
+// Pulled out of render so the render body itself is pure (no Date.now()).
+function deriveBadge(now: number, d: Date): ToneStyles {
+  const diffDays = Math.floor((now - d.getTime()) / 86400000);
+  if (diffDays === 0) return { label: "Today",     tone: "emerald" };
+  if (diffDays === 1) return { label: "Yesterday", tone: "emerald" };
+  if (diffDays <= 7)  return { label: `${diffDays} days ago`, tone: "amber" };
+  return {
+    label: d.toLocaleDateString("en-CA", { month: "short", day: "numeric", year: "numeric" }),
+    tone:  "slate",
+  };
+}
 
 /**
  * Renders a human-friendly relative date badge with a small tone hint:
@@ -8,6 +34,13 @@ import { Calendar } from "lucide-react";
  * - older — neutral slate (absolute date)
  */
 export function RelativeDateBadge({ date, prefix }: { date?: string | Date | null; prefix?: React.ReactNode }) {
+  // Track "now" in state, seeded after mount. Until then, fall back to the
+  // raw target date — older entries render correctly on first paint; only
+  // "Today/Yesterday" cases wait one tick to refine. This avoids any
+  // Date.now() call during render → no hydration drift, no purity warning.
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => { setNow(Date.now()); }, []);
+
   if (!date) {
     return (
       <span className="inline-flex items-center gap-1 text-[12px] text-slate-400">
@@ -21,24 +54,11 @@ export function RelativeDateBadge({ date, prefix }: { date?: string | Date | nul
     return <span className="inline-flex items-center gap-1 text-[12px] text-slate-400">{prefix}—</span>;
   }
 
-  const diffDays = Math.floor((Date.now() - d.getTime()) / 86400000);
-
-  let label: string;
-  let tone: "emerald" | "amber" | "slate";
-
-  if (diffDays === 0) {
-    label = "Today";
-    tone = "emerald";
-  } else if (diffDays === 1) {
-    label = "Yesterday";
-    tone = "emerald";
-  } else if (diffDays <= 7) {
-    label = `${diffDays} days ago`;
-    tone = "amber";
-  } else {
-    label = d.toLocaleDateString("en-CA", { month: "short", day: "numeric", year: "numeric" });
-    tone = "slate";
-  }
+  // During SSR / before mount: render absolute date (no relative math).
+  // After mount: render the relative label.
+  const { label, tone } = now === null
+    ? { label: d.toLocaleDateString("en-CA", { month: "short", day: "numeric", year: "numeric" }), tone: "slate" as const }
+    : deriveBadge(now, d);
 
   const styles =
     tone === "emerald"
@@ -58,12 +78,13 @@ export function RelativeDateBadge({ date, prefix }: { date?: string | Date | nul
   );
 }
 
-/** Inline relative time (e.g. "3 hours ago", "2 days ago"). Plain text, no chrome. */
-export function relativeTime(date?: string | Date | null): string {
+/** Inline relative time (e.g. "3 hours ago", "2 days ago"). Plain text, no chrome.
+ *  Pure helper — pass a "now" timestamp so the caller controls reactivity. */
+export function relativeTime(date?: string | Date | null, now: number = Date.now()): string {
   if (!date) return "—";
   const d = typeof date === "string" ? new Date(date) : date;
   if (Number.isNaN(d.getTime())) return "—";
-  const seconds = Math.max(1, Math.floor((Date.now() - d.getTime()) / 1000));
+  const seconds = Math.max(1, Math.floor((now - d.getTime()) / 1000));
   if (seconds < 60) return "just now";
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes} min ago`;

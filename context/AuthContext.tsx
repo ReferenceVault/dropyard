@@ -72,6 +72,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   });
 
   // On mount — restore session from localStorage (apiRequest auto-refreshes if expired)
+  // BUG-063 — every per-user localStorage key the app writes. When the
+  // session ends (signout, suspend, /me failure, refresh failure), ALL of
+  // these get wiped so the next user on the same device doesn't inherit
+  // the previous user's "Seller Mode" label, saved email, or stale tokens.
+  // Keep this list updated as new per-user keys are added.
+  function clearUserStorage() {
+    if (typeof window === 'undefined') return;
+    localStorage.removeItem(ACCESS_TOKEN_KEY);
+    localStorage.removeItem(REFRESH_TOKEN_KEY);
+    localStorage.removeItem('dropyard:mode');     // role pref (buyer|seller)
+    localStorage.removeItem('dropyard_email');    // marketing waitlist memory
+  }
+
   useEffect(() => {
     const token = localStorage.getItem(ACCESS_TOKEN_KEY);
     if (!token) {
@@ -84,8 +97,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // (caught below). But also defensive-check here in case /me returns
         // a status field on a still-200 path (e.g. caching layer in front).
         if (user.status === 'SUSPENDED' || user.status === 'BANNED') {
-          localStorage.removeItem(ACCESS_TOKEN_KEY);
-          localStorage.removeItem(REFRESH_TOKEN_KEY);
+          clearUserStorage();
           setState({ user: null, accessToken: null, loading: false });
           if (typeof window !== 'undefined') {
             window.location.href = '/join';
@@ -97,8 +109,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setState({ user, accessToken: freshToken, loading: false });
       })
       .catch(() => {
-        localStorage.removeItem(ACCESS_TOKEN_KEY);
-        localStorage.removeItem(REFRESH_TOKEN_KEY);
+        clearUserStorage();
         setState({ user: null, accessToken: null, loading: false });
       });
   }, []);
@@ -159,8 +170,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (token) {
       apiRequest('/api/auth/signout', { method: 'POST', token }).catch(() => {});
     }
-    localStorage.removeItem(ACCESS_TOKEN_KEY);
-    localStorage.removeItem(REFRESH_TOKEN_KEY);
+    // BUG-063 — wipe every per-user key so the next user (or the same user
+    // re-signing in) doesn't inherit stale "Seller Mode" / saved email /
+    // tokens. Centralized in clearUserStorage().
+    clearUserStorage();
     setState({ user: null, accessToken: null, loading: false });
     // Send admins back to the admin login, everyone else to /join.
     const target = typeof window !== 'undefined' && window.location.pathname.startsWith('/admin')
@@ -170,8 +183,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const clearAuth = useCallback(() => {
-    localStorage.removeItem(ACCESS_TOKEN_KEY);
-    localStorage.removeItem(REFRESH_TOKEN_KEY);
+    clearUserStorage();
     setState({ user: null, accessToken: null, loading: false });
   }, []);
 
