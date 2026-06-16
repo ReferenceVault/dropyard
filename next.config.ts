@@ -46,7 +46,7 @@ function buildCsp(directives: Record<string, string[] | true>): string {
 // the strict policy for production and only relax dev.
 const SCRIPT_SRC: string[] = IS_DEV
   ? ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://accounts.google.com", "https://apis.google.com"]
-  : ["'self'", "https://accounts.google.com", "https://apis.google.com"];
+  : ["'self'","'unsafe-inline'", "https://accounts.google.com", "https://apis.google.com"];
 
 const cspDirectives: Record<string, string[] | true> = {
   "default-src":     ["'self'"],
