@@ -27,7 +27,7 @@ function useDropOpenCountdownString() {
   return now ? formatCompactCountdown(nextDropMoment(now), now) : "";
 }
 import {
-  Search, Heart, Clock, MapPin, Package, ChevronRight, ChevronDown, ChevronUp, SlidersHorizontal,
+  Search, Heart, Clock, MapPin, Package, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, SlidersHorizontal,
   Check, X, User, ShoppingBag, MessageSquare, Sparkles, Truck, Calendar,
   Star, Shield, Send, ArrowRight, ArrowLeft, Home, Tag, Bell, MessageCircle,
   CalendarDays, Compass, Archive, RefreshCw, Eye, Info, TrendingDown,
@@ -243,7 +243,12 @@ function adaptBuyerItem(api) {
     seller:        api.seller?.name || "Neighbour",
     sellerId:      api.seller?.id || null,
     sellerHood:    api.seller?.neighborhood || null,
-    dist:          "—",
+    // BUG-070 — distance label from the backend (server computes server-side
+    // for signed-in viewers). Falls back to the seller's neighborhood or
+    // "Nearby" when the viewer is anonymous or hasn't entered their postal
+    // code yet.
+    dist:          api.distanceLabel || api.seller?.neighborhood || "Nearby",
+    distBucket:    api.distanceBucket || null,
     saves:         api._count?.watchlist ?? 0,
     img:           photos[0] || CATEGORY_EMOJI[api.category] || "📦",
     photos,
@@ -686,7 +691,7 @@ function TopBar({ page, setPage, savedCount, claimsCount, messagesUnread = 0, on
              so it still fits at 360px alongside logo + avatar. Desktop keeps the
              full label. */}
           <SwitchToSellerButton onClick={() => onSwitchRole && onSwitchRole()} compact={isMobile}/>
-          <UserMenu user={user} onSignout={onSignout} onOpenSettings={() => setPage("settings")}/>
+          <UserMenu user={user} onSignout={onSignout} onOpenSettings={() => { onReset && onReset(); setPage("settings"); }}/>
         </div>
       </div>
     </header>
@@ -1353,7 +1358,13 @@ function FilterRail({ filter, setFilter, search, setSearch, cat, setCat, sort, s
           <p style={segValue(sort !== "newest")}>{sortShort}</p>
         </button>
 
-        {/* Green/Amber circle search button — state-aware */}
+        {/* Green/Amber circle search button — state-aware.
+            BUG-065 — segments use zIndex 1 (and 2 when active) for the
+            hover/active background fill. The circle button had no zIndex
+            (defaults to auto = 0), so hovering the Sort segment painted
+            its hover background ON TOP of the circle, making it look like
+            it disappeared. zIndex: 3 puts the circle reliably above any
+            segment state. */}
         <button
           onClick={() => setActiveSegment(null)}
           style={{
@@ -1361,6 +1372,7 @@ function FilterRail({ filter, setFilter, search, setSearch, cat, setCat, sort, s
             right: 8,
             top: "50%",
             transform: "translateY(-50%)",
+            zIndex: 3,
             height: 48,
             padding: activeSegment ? "0 22px 0 16px" : "0 16px",
             borderRadius: 999,
@@ -2851,6 +2863,44 @@ function ItemDetail({ item, onBack, onClaimComplete, onGoToClaims, onGoToSeller,
   const saved = savedIds && savedIds.has(item.id);
   const toggleSave = () => onToggleSave && onToggleSave(item.id);
 
+  // BUG-066 — multi-photo gallery. Backend stores `photos: string[]` but the
+  // detail view was only rendering `item.img` (= photos[0]). Now we track an
+  // active index and let buyers swap the hero via the thumbnail strip. Falls
+  // back gracefully when there's only one (or zero) photo: no strip rendered,
+  // hero behaves exactly as before.
+  const galleryPhotos = Array.isArray(item.photos) ? item.photos.filter(Boolean) : [];
+  const hasMultiplePhotos = galleryPhotos.length > 1;
+  const [activePhotoIdx, setActivePhotoIdx] = useState(0);
+  // Clamp the index if the photo set shrinks (e.g. socket refresh removes one)
+  const safeIdx = Math.min(activePhotoIdx, Math.max(0, galleryPhotos.length - 1));
+  const heroSrc = galleryPhotos[safeIdx] || item.img;
+
+  // BUG-068 — prev/next arrow handlers + keyboard support. Wraps around so
+  // pressing right on the last photo loops back to the first, mirroring how
+  // most carousel components behave. Keyboard arrows only fire when the
+  // claim modal isn't open so they don't fight modal focus.
+  const goPrev = useCallback(() => {
+    if (galleryPhotos.length <= 1) return;
+    setActivePhotoIdx((idx) => (idx - 1 + galleryPhotos.length) % galleryPhotos.length);
+  }, [galleryPhotos.length]);
+  const goNext = useCallback(() => {
+    if (galleryPhotos.length <= 1) return;
+    setActivePhotoIdx((idx) => (idx + 1) % galleryPhotos.length);
+  }, [galleryPhotos.length]);
+  useEffect(() => {
+    if (!hasMultiplePhotos) return;
+    const onKey = (e) => {
+      // Don't hijack typing in inputs / when a modal is open.
+      if (showClaim || showAsk) return;
+      const tag = (e.target && e.target.tagName) || "";
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      if (e.key === "ArrowLeft")  { e.preventDefault(); goPrev(); }
+      if (e.key === "ArrowRight") { e.preventDefault(); goNext(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [hasMultiplePhotos, goPrev, goNext, showClaim, showAsk]);
+
   const seller = item.seller;
   const isShelf = item.layer === "shelf";
   const accent = C.green;
@@ -2872,9 +2922,83 @@ function ItemDetail({ item, onBack, onClaimComplete, onGoToClaims, onGoToSeller,
 
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 400px", gap: isMobile ? 20 : 40, alignItems: "start" }}>
         <div>
-          {/* Image area with badge overlays */}
-          <div style={{ position: "relative", aspectRatio: "4/3", borderRadius: isMobile ? 18 : 24, background: "linear-gradient(135deg, " + accentBg + ", " + C.sand + ")", display: "flex", alignItems: "center", justifyContent: "center", border: "1.5px solid " + C.fawn, marginBottom: isMobile ? 16 : 24, overflow: "hidden" }}>
-            <ItemImage src={item.img} emojiSize={160}/>
+          {/* Image area with badge overlays.
+              BUG-066 — heroSrc swaps with the active thumbnail. Photo
+              count pill in the bottom-right tells the buyer there's more
+              to see when sources > 1. */}
+          <div style={{ position: "relative", aspectRatio: "4/3", borderRadius: isMobile ? 18 : 24, background: "linear-gradient(135deg, " + accentBg + ", " + C.sand + ")", display: "flex", alignItems: "center", justifyContent: "center", border: "1.5px solid " + C.fawn, marginBottom: isMobile ? 12 : 16, overflow: "hidden" }}>
+            <ItemImage src={heroSrc} emojiSize={160}/>
+            {/* BUG-068 — prev/next arrow buttons on the hero. Always visible
+                when there are 2+ photos so buyers can flip without scrolling
+                down to thumbnails. Arrow keys on keyboard also work (see
+                effect above). */}
+            {hasMultiplePhotos && (
+              <>
+                <button
+                  type="button"
+                  onClick={goPrev}
+                  aria-label="Previous photo"
+                  style={{
+                    position:     "absolute",
+                    left:         12,
+                    top:          "50%",
+                    transform:    "translateY(-50%)",
+                    width:        isMobile ? 38 : 44,
+                    height:       isMobile ? 38 : 44,
+                    borderRadius: "50%",
+                    border:       "1px solid " + C.fawn,
+                    background:   "rgba(255,255,255,0.92)",
+                    backdropFilter: "blur(6px)",
+                    cursor:       "pointer",
+                    display:      "flex",
+                    alignItems:   "center",
+                    justifyContent: "center",
+                    color:        C.ink,
+                    boxShadow:    "0 2px 8px rgba(31,29,25,0.12)",
+                    transition:   "background 150ms, transform 150ms",
+                    zIndex:       2,
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = "#fff"; e.currentTarget.style.transform = "translateY(-50%) scale(1.05)"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.92)"; e.currentTarget.style.transform = "translateY(-50%) scale(1)"; }}
+                >
+                  <ChevronLeft size={isMobile ? 18 : 22} strokeWidth={2.4}/>
+                </button>
+                <button
+                  type="button"
+                  onClick={goNext}
+                  aria-label="Next photo"
+                  style={{
+                    position:     "absolute",
+                    right:        12,
+                    top:          "50%",
+                    transform:    "translateY(-50%)",
+                    width:        isMobile ? 38 : 44,
+                    height:       isMobile ? 38 : 44,
+                    borderRadius: "50%",
+                    border:       "1px solid " + C.fawn,
+                    background:   "rgba(255,255,255,0.92)",
+                    backdropFilter: "blur(6px)",
+                    cursor:       "pointer",
+                    display:      "flex",
+                    alignItems:   "center",
+                    justifyContent: "center",
+                    color:        C.ink,
+                    boxShadow:    "0 2px 8px rgba(31,29,25,0.12)",
+                    transition:   "background 150ms, transform 150ms",
+                    zIndex:       2,
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = "#fff"; e.currentTarget.style.transform = "translateY(-50%) scale(1.05)"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.92)"; e.currentTarget.style.transform = "translateY(-50%) scale(1)"; }}
+                >
+                  <ChevronRight size={isMobile ? 18 : 22} strokeWidth={2.4}/>
+                </button>
+              </>
+            )}
+            {hasMultiplePhotos && (
+              <span style={{ position: "absolute", bottom: 14, right: 14, display: "flex", alignItems: "center", gap: 5, padding: "5px 11px", borderRadius: 999, background: "rgba(31,29,25,0.75)", backdropFilter: "blur(6px)", color: "#fff", fontFamily: F.head, fontSize: 11, fontWeight: 700, letterSpacing: "0.02em" }}>
+                {safeIdx + 1} / {galleryPhotos.length}
+              </span>
+            )}
             {/* Top-left: stacked badges */}
             <div style={{ position: "absolute", top: 18, left: 18, display: "flex", flexDirection: "column", gap: 8 }}>
               {item.layer === "drop" && (
@@ -2902,6 +3026,58 @@ function ItemDetail({ item, onBack, onClaimComplete, onGoToClaims, onGoToSeller,
               </div>
             )}
           </div>
+
+          {/* BUG-066 — thumbnail strip. Shown only when there are 2+ photos.
+              Click a thumbnail to swap the hero. Active thumb gets the brand
+              accent ring; others a subtle hover lift. Horizontal scrolls on
+              mobile for 4+ photos. */}
+          {hasMultiplePhotos && (
+            <div
+              style={{
+                display:        "flex",
+                gap:            isMobile ? 8 : 10,
+                marginBottom:   isMobile ? 16 : 24,
+                overflowX:      "auto",
+                paddingBottom:  6, // space for scrollbar on overflow
+                scrollbarWidth: "thin",
+              }}
+              className="preview-scroll"
+              aria-label="Item photos"
+            >
+              {galleryPhotos.map((src, i) => {
+                const isActive = i === safeIdx;
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => setActivePhotoIdx(i)}
+                    aria-label={`Show photo ${i + 1} of ${galleryPhotos.length}`}
+                    aria-pressed={isActive}
+                    style={{
+                      flex:         "0 0 auto",
+                      width:        isMobile ? 64 : 78,
+                      height:       isMobile ? 64 : 78,
+                      borderRadius: 12,
+                      border:       isActive ? `2.5px solid ${accent}` : `1.5px solid ${C.fawn}`,
+                      boxShadow:    isActive ? `0 4px 12px ${accent}33` : "none",
+                      padding:      0,
+                      background:   C.paper,
+                      overflow:     "hidden",
+                      cursor:       "pointer",
+                      transition:   "border-color 150ms, box-shadow 150ms, transform 150ms",
+                      transform:    isActive ? "scale(1.02)" : "scale(1)",
+                    }}
+                  >
+                    <ItemImage
+                      src={src}
+                      emojiSize={28}
+                      imgStyle={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                    />
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           {/* 4-column details grid */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 24 }}>
@@ -3161,6 +3337,12 @@ function ItemDetail({ item, onBack, onClaimComplete, onGoToClaims, onGoToSeller,
    REGULAR SELLER PROFILE (non-Dedicated)
    ============================================================ */
 function RegularSellerProfile({ sellerName, onBack, onSelect, onClaimNow, savedIds, onToggleSave, itemsSource = null, state = "between" }) {
+  // BUG-069 — RegularSellerProfile uses `__isMobile` inline (line further
+  // down) but the destructure was missing here, causing a ReferenceError
+  // the moment a buyer tapped "View profile" on any seller. Sister
+  // components in this file follow the same alias pattern (line 3437,
+  // 4872, 5553). Added it here to match.
+  const { isMobile: __isMobile } = useViewport();
   const source = Array.isArray(itemsSource) ? itemsSource : allItems;
   const items = source.filter(i => i.seller === sellerName);
   // Real seller stats live on the backend but we don't have a user-summary
