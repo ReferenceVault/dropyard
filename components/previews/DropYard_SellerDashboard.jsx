@@ -7716,7 +7716,14 @@ function EditItemView({ onBack, editingItem, aiSettings = {}, accessToken = null
 
     setSubmitting(true);
     try {
-      await apiRequest("/api/items/" + encodeURIComponent(editingItem.id), {
+      // BUG-067 — capture the backend's PATCH response so we get the
+      // SERVER-RESOLVED photo URLs. Previously we were writing photoKeys
+      // (a mix of full URLs for existing photos + bare S3 keys for newly
+      // uploaded ones) back into local state, which made newly-uploaded
+      // photos render as broken (browser treated "items/abc/new.jpg" as a
+      // relative URL). The PATCH response runs withResolvedPhotos on the
+      // backend, returning every photo as a full URL — use those.
+      const resp = await apiRequest("/api/items/" + encodeURIComponent(editingItem.id), {
         method: "PATCH",
         token: accessToken,
         body: JSON.stringify({
@@ -7731,6 +7738,7 @@ function EditItemView({ onBack, editingItem, aiSettings = {}, accessToken = null
           ...bundlePayload,
         }),
       });
+      const serverPhotos = Array.isArray(resp?.item?.photos) ? resp.item.photos : null;
       if (typeof onItemsChange === "function") {
         onItemsChange((prev) => prev.map((p) => p.id === editingItem.id
           ? { ...p,
@@ -7739,7 +7747,9 @@ function EditItemView({ onBack, editingItem, aiSettings = {}, accessToken = null
               category:      CATEGORY_TO_ENUM[cat] || p.category,
               condition:     CONDITION_TO_ENUM[cond] || p.condition,
               price:         numericPrice,
-              photos:        photoKeys.length > 0 ? photoKeys : p.photos,
+              // Prefer the server-resolved URLs over our raw key list. Fall
+              // back to the raw list only if the response shape ever changes.
+              photos:        serverPhotos || (photoKeys.length > 0 ? photoKeys : p.photos),
               paymentMethod: PAYMENT_TO_ENUM[paymentMethod] || p.paymentMethod,
               isBundle:       bundlePayload.isBundle,
               bundleCount:    bundlePayload.bundleCount,

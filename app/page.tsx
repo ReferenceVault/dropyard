@@ -1225,6 +1225,12 @@ export function Footer({
             <a href="/contact" className="inline-block cursor-pointer text-slate-400 underline-offset-4 decoration-2 decoration-emerald-400 transition-all duration-300 ease-out hover:text-white hover:underline">Contact</a>
           </div>
         </div>
+
+        {/* BUG-070 — Required CC BY 4.0 attribution for the Geonames postal
+            code dataset used to compute neighbor distance. */}
+        <p className="text-slate-500 text-[11px] text-center mt-4">
+          Postal code data: <a href="https://www.geonames.org/" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-300">Geonames</a>, licensed under <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-300">CC BY 4.0</a>.
+        </p>
       </div>
     </footer>
   );
