@@ -102,7 +102,7 @@
 |---|---|---|---|---|
 | F1 | Security audit | Extends [[security-checklist]] — re-verify all 20 items + new code added since 2026-05-28 | Not Started | 0 |
 | F2 | Accessibility audit | axe-core scan on every Wave A-E page + keyboard-only nav + screen-reader smoke (NVDA or VoiceOver) on 3 critical flows | Not Started | 0 |
-| F3 | Performance audit | Lighthouse on top 5 pages (target LCP < 2.5s, CLS < 0.1, bundle < 250KB initial), Prisma slow-query scan | Not Started | 0 |
+| F3 | Performance audit | Lighthouse on top 5 pages (target LCP < 2.5s, CLS < 0.1, bundle < 250KB initial), Prisma slow-query scan | Static audit done — 12 findings (4 P1, 7 P2, 1 P3) in BUG-077. Real-world Lighthouse + Slow-3G pass deferred until A-D fixed. | 12 |
 | F4 | Mobile responsive sweep | 360 / 768 / 1280 px on every Wave A-E page; portrait + landscape | Not Started | 0 |
 | F5 | Cross-browser | Chrome / Safari / Firefox on top 10 pages; iOS Safari on critical flows | Not Started | 0 |
 | F6 | Code-quality sweep | Remove dead code, duplicate components (e.g. 3 buyer dashboards per [[dropyard-project-state]]), unused exports/imports, `console.log`, `// TODO` | Not Started | 0 |

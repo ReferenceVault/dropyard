@@ -274,10 +274,25 @@ export default function DynamicDropCard() {
           </motion.div>
         </AnimatePresence>
 
+        {/* BUG-071 — these used to be href="#" and did nothing on click.
+            Now:
+              isLive → "/buyer" (the /buyer route gates anon visitors to /join,
+                       so this works for both signed-in and signed-out users)
+              isLive false → smooth-scroll to the Early Access waitlist
+                       (#early-access anchor on this same page) */}
         <motion.a
           whileHover={{ y: -1 }}
           whileTap={{ scale: 0.99 }}
-          href="#"
+          href={isLive ? "/buyer" : "#early-access"}
+          onClick={(e) => {
+            if (isLive) return; // Let the browser navigate to /buyer
+            // Same-page anchor — smooth scroll instead of the jarring jump
+            // browsers do by default.
+            e.preventDefault();
+            const target = typeof document !== "undefined" ? document.getElementById("early-access") : null;
+            if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+            else if (typeof window !== "undefined") window.location.hash = "early-access";
+          }}
           className={`mt-1 flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold text-white shadow-sm transition ${isLive ? "bg-emerald-700 hover:bg-emerald-800" : "bg-slate-900 hover:bg-slate-800"}`}
         >
           {isLive ? <><Zap className="h-4 w-4" />Enter the Live Drop</> : <><Bell className="h-4 w-4" />Get Notified</>}

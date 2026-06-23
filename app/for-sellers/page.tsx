@@ -25,7 +25,10 @@ const C = {
 
 export default function ForSellersPage() {
   const router = useRouter();
-  const goJoin = () => router.push("/join?mode=signup");
+  // BUG-074 — generic CTA defaults to signin so returning users land on
+  // the right form. /join's prominent Sign-In/Sign-Up toggle handles new
+  // visitors in one click.
+  const goJoin = () => router.push("/join?mode=signin");
 
   // AI Seller waitlist (inline form replacing the old "Notify Me When Available" button).
   const [aiEmail, setAiEmail] = useState("");

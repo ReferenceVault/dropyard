@@ -75,7 +75,13 @@ const pad = (n: number) => String(n).padStart(2, "0");
 
 export default function ForBuyersPage() {
   const router = useRouter();
-  const go = () => router.push("/join?mode=signup");
+  // BUG-074 — generic auth CTAs default to /join?mode=signin so returning
+  // users land on the right form. /join surfaces a prominent Sign-In /
+  // Sign-Up toggle so new visitors switch in one click.
+  const go = () => router.push("/join?mode=signin");
+  // BUG-073 — "Browse the Shelf" buttons route to /buyer (gates anon
+  // visitors to /join, lets signed-in users straight to Discover).
+  const goShelf = () => router.push("/buyer");
 
   // Real phase-aware countdown. During LIVE phase, counts down to drop close
   // (Sunday 8 PM) and labels itself "Drop ends in". Any other phase counts
@@ -352,7 +358,7 @@ export default function ForBuyersPage() {
               <h2 style={{ fontSize: 27, fontWeight: 600, color: C.gDark, marginTop: 4, letterSpacing: "-0.025em" }}>On the Shelf Right Now</h2>
               <p style={{ fontSize: 13, color: "#999", marginTop: 4 }}>Available right now — no waiting for Saturday.</p>
             </div>
-            <button onClick={go} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 13, fontWeight: 700, color: C.oPrimary, background: "none", border: "none", cursor: "pointer" }}>Browse the Shelf <ChevronRight size={14} /></button>
+            <button onClick={goShelf} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 13, fontWeight: 700, color: C.oPrimary, background: "none", border: "none", cursor: "pointer" }}>Browse the Shelf <ChevronRight size={14} /></button>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 14 }}>
             {shelfItems.map((item) => (
@@ -412,7 +418,7 @@ export default function ForBuyersPage() {
             <button onClick={go} style={{ display: "flex", alignItems: "center", gap: 8, padding: "14px 28px", borderRadius: 14, border: "none", cursor: "pointer", fontSize: 15, fontWeight: 700, backgroundColor: C.oPrimary, color: "#fff", boxShadow: "0 8px 28px rgba(245,158,11,0.35)" }}>
               Join This Week&apos;s Drop <ChevronRight size={18} />
             </button>
-            <button onClick={go} style={{ display: "flex", alignItems: "center", gap: 8, padding: "14px 28px", borderRadius: 14, border: "1px solid rgba(255,255,255,0.2)", cursor: "pointer", fontSize: 15, fontWeight: 700, backgroundColor: "rgba(255,255,255,0.06)", color: "#fff" }}>
+            <button onClick={goShelf} style={{ display: "flex", alignItems: "center", gap: 8, padding: "14px 28px", borderRadius: 14, border: "1px solid rgba(255,255,255,0.2)", cursor: "pointer", fontSize: 15, fontWeight: 700, backgroundColor: "rgba(255,255,255,0.06)", color: "#fff" }}>
               <Package size={16} /> Browse the Shelf
             </button>
           </div>
