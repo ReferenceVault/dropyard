@@ -1,9 +1,10 @@
 ﻿"use client";
 
-import React, { useEffect, useState, useRef } from "react";
+import React, { Suspense, useEffect, useState, useRef } from "react";
 import DynamicDropCard from "@/components/previews/DynamicDropCard";
 import { submitSubmission, isValidEmail } from "@/lib/submissions";
 import { apiRequest } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
 import DifferentMarketplaceSection from "@/components/DifferentMarketplaceSection";
 import EarlyAccessSection from "@/components/EarlyAccessSection";
 import SellingWaysSection from "@/components/SellingWaysSection";
@@ -110,9 +111,29 @@ const detectZone = (pc: string) => {
 // ============================================================================
 // MAIN APP
 // ============================================================================
+// BUG-075 — Next.js 16 requires useSearchParams() to be wrapped in a
+// <Suspense> boundary, otherwise the dev console logs:
+//   "useSearchParams() should be wrapped in a suspense boundary..."
+// and at build time `next build` bails with the same error. We split the
+// component: the outer default export only renders Suspense; the inner
+// DropYardWebsiteInner is what reads searchParams.
 export default function DropYardWebsite() {
+  return (
+    <Suspense fallback={<div className="min-h-full bg-white" />}>
+      <DropYardWebsiteInner />
+    </Suspense>
+  );
+}
+
+function DropYardWebsiteInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  // BUG-076 — homepage Featured strip now wires the heart to the real
+  // /api/watchlist endpoint. We need to know if the visitor is signed in so
+  // ItemCard can either save (POST) or bounce to /join?mode=signin.
+  const { user } = useAuth();
+  const isAuthed = Boolean(user);
+  const goSignin = () => router.push("/join?mode=signin");
 
   useEffect(() => {
     const p = searchParams?.get("page");
@@ -121,15 +142,28 @@ export default function DropYardWebsite() {
     else if (p === "buyers") router.replace("/for-buyers");
   }, [searchParams, router]);
 
-  const goBuyerAuth = (mode: "signup" | "login" = "signup") => {
+  // BUG-074 — generic auth CTAs default to "login" mode now. The /join
+  // page surfaces a Sign-In / Sign-Up toggle prominently so new visitors
+  // can switch to signup in one click — but for the majority of clicks
+  // (returning users or testers) landing on signin avoids the extra step.
+  // Only buttons whose text explicitly says "Sign up" pass "signup".
+  const goBuyerAuth = (mode: "signup" | "login" = "login") => {
     router.push(`/join?mode=${mode === "login" ? "signin" : "signup"}`);
   };
-  const goSellerAuth = () => router.push("/join?mode=signup");
-  const goMovingAuth = () => router.push("/join?mode=signup");
+  const goSellerAuth = (mode: "signup" | "login" = "login") => {
+    router.push(`/join?mode=${mode === "login" ? "signin" : "signup"}`);
+  };
+  const goMovingAuth = (mode: "signup" | "login" = "login") => {
+    router.push(`/join?mode=${mode === "login" ? "signin" : "signup"}`);
+  };
+  // BUG-074 — browse-intent CTAs route to /buyer (which gates anon visitors
+  // to /join automatically), separate from generic auth CTAs that go straight
+  // to the sign-in form.
+  const goBrowse = () => router.push("/buyer");
 
   return (
     <div className="min-h-full font-sans bg-white">
-      <HomePage goBuyerAuth={goBuyerAuth} goSellerAuth={goSellerAuth} goMovingAuth={goMovingAuth} />
+      <HomePage goBuyerAuth={goBuyerAuth} goSellerAuth={goSellerAuth} goMovingAuth={goMovingAuth} goBrowse={goBrowse} isAuthed={isAuthed} goSignin={goSignin} />
     </div>
   );
 }
@@ -184,9 +218,53 @@ const FEATURED_ITEMS = [
 // ============================================================================
 // ITEM CARD
 // ============================================================================
-function ItemCard({ item }: { item: typeof FEATURED_ITEMS[0] }) {
+// BUG-076 — Heart was pure local state; clicking it did nothing useful and
+// the displayed saves count was a hardcoded fake. Now: anon visitors get
+// bounced to /join?mode=signin; authed visitors fire the real
+// POST/DELETE /api/watchlist/:id flow with optimistic UI. The save count
+// updates live so the visitor sees their action reflected.
+function ItemCard({
+  item,
+  isAuthed,
+  goSignin,
+}: {
+  item: typeof FEATURED_ITEMS[0];
+  isAuthed: boolean;
+  goSignin: () => void;
+}) {
   const [saved, setSaved] = useState(false);
+  const [saves, setSaves] = useState<number>(item.saves);
+  const [pending, setPending] = useState(false);
   const discount = Math.round((1 - item.price / item.originalPrice) * 100);
+
+  // Real items from /api/items have CUID string ids. The placeholder
+  // fallback in the adapter (idx+1) yields a number, which means the row
+  // never came from the API and we can't safely call /api/watchlist on it.
+  const realItemId = typeof item.id === "string" ? item.id : null;
+
+  const handleHeart = async () => {
+    if (pending) return;
+    if (!isAuthed) { goSignin(); return; }
+    if (!realItemId) return; // can't watchlist a synthetic placeholder
+
+    // Optimistic flip — revert if the call fails.
+    const next = !saved;
+    setSaved(next);
+    setSaves((s) => Math.max(0, s + (next ? 1 : -1)));
+    setPending(true);
+    try {
+      await apiRequest(`/api/watchlist/${encodeURIComponent(realItemId)}`, {
+        method: next ? "POST" : "DELETE",
+      });
+    } catch {
+      // Revert on failure — no toast spam on a marketing page.
+      setSaved(!next);
+      setSaves((s) => Math.max(0, s + (next ? -1 : 1)));
+    } finally {
+      setPending(false);
+    }
+  };
+
   return (
     <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden hover:shadow-lg hover:border-emerald-200 transition-all duration-300 group">
       <div className="relative bg-gradient-to-br from-gray-50 to-gray-100 h-44 flex items-center justify-center overflow-hidden">
@@ -202,9 +280,11 @@ function ItemCard({ item }: { item: typeof FEATURED_ITEMS[0] }) {
         )}
         <div className="absolute top-3 left-3 bg-amber-500 text-white text-[11px] font-bold px-2 py-1 rounded-full">-{discount}%</div>
         <button
-          onClick={() => setSaved(!saved)}
+          onClick={handleHeart}
+          disabled={pending}
           aria-label={saved ? "Unsave item" : "Save item"}
-          className={`absolute top-3 right-3 w-10 h-10 sm:w-8 sm:h-8 rounded-full flex items-center justify-center ${saved ? "bg-rose-500 text-white" : "bg-white/90 text-gray-400 hover:text-rose-500"}`}
+          aria-pressed={saved}
+          className={`absolute top-3 right-3 w-10 h-10 sm:w-8 sm:h-8 rounded-full flex items-center justify-center transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${saved ? "bg-rose-500 text-white" : "bg-white/90 text-gray-400 hover:text-rose-500"}`}
         >
           <Heart size={16} fill={saved ? "currentColor" : "none"} />
         </button>
@@ -226,7 +306,7 @@ function ItemCard({ item }: { item: typeof FEATURED_ITEMS[0] }) {
             <span className="text-[17px] font-bold text-emerald-600">${item.price}</span>
             <span className="text-[13px] text-gray-400 line-through ml-2">${item.originalPrice}</span>
           </div>
-          <div className="flex items-center gap-1 text-[11px] text-gray-400"><Heart size={12} />{item.saves}</div>
+          <div className="flex items-center gap-1 text-[11px] text-gray-400"><Heart size={12} />{saves}</div>
         </div>
       </div>
     </div>
@@ -540,6 +620,10 @@ function NeighbourhoodWaitlistSection() {
 function HowItWorksSection() {
   const [visible, setVisible] = useState(false);
   const sectionRef = useRef<HTMLElement>(null);
+  // BUG-073 — the "Browse the Shelf" button at the bottom of this section
+  // had no onClick handler. Now routes to /buyer (which gates anon visitors
+  // to /join automatically — works for both signed-in and signed-out users).
+  const router = useRouter();
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -660,7 +744,9 @@ function HowItWorksSection() {
               Items are always available on the Shelf — browse and claim anytime between Drops.
             </p>
             <button
-              className="flex items-center gap-1.5 py-2 px-4 rounded-lg text-white text-[11px] font-bold flex-shrink-0 transition-transform hover:scale-105"
+              type="button"
+              onClick={() => router.push("/buyer")}
+              className="flex items-center gap-1.5 py-2 px-4 rounded-lg text-white text-[11px] font-bold flex-shrink-0 transition-transform hover:scale-105 cursor-pointer"
               style={{ backgroundColor: "#F08A00" }}
             >
               Browse the Shelf
@@ -711,7 +797,14 @@ function HeroChevronDownIcon({ className = "h-4 w-4" }) {
   );
 }
 
-function HeroSection({ goBuyerAuth }: { goBuyerAuth: (mode?: "signup" | "login") => void }) {
+function HeroSection({ goBuyerAuth, goSellerAuth }: { goBuyerAuth: (mode?: "signup" | "login") => void; goSellerAuth: (mode?: "signup" | "login") => void }) {
+  // BUG-074 — "Browse the Barrhaven Drop" used to force a signup wall via
+  // goBuyerAuth("signup") — misleading: button text promised browsing,
+  // destination demanded an account. Now routes to /buyer (which gates
+  // anon visitors to /join automatically and lets signed-in users land
+  // straight on Discover).
+  const router = useRouter();
+  const goBrowse = () => router.push("/buyer");
   return (
     <section className="relative min-h-[65vh] flex items-center overflow-hidden">
       {/* Background */}
@@ -747,13 +840,13 @@ function HeroSection({ goBuyerAuth }: { goBuyerAuth: (mode?: "signup" | "login")
 
             <div className="mt-6 flex flex-wrap gap-3">
               <button
-                onClick={() => goBuyerAuth("signup")}
+                onClick={goBrowse}
                 className="inline-flex items-center gap-2 rounded-full bg-emerald-700 px-5 py-3 text-[13px] font-bold text-white shadow-lg hover:bg-emerald-800 transition-all hover:-translate-y-0.5 sm:px-6 sm:text-[15px]"
               >
                 Browse the Barrhaven Drop <ArrowRight size={16} />
               </button>
               <button
-                onClick={() => goBuyerAuth("signup")}
+                onClick={() => goSellerAuth()}
                 className="inline-flex items-center gap-2 rounded-full bg-amber-500 px-5 py-3 text-[13px] font-bold text-white shadow-lg hover:bg-amber-600 transition-all hover:-translate-y-0.5 sm:px-6 sm:text-[15px]"
               >
                 Sell with DropYard <ArrowRight size={16} />
@@ -786,10 +879,16 @@ function HomePage({
   goBuyerAuth,
   goSellerAuth,
   goMovingAuth,
+  goBrowse,
+  isAuthed,
+  goSignin,
 }: {
   goBuyerAuth: (mode?: "signup" | "login") => void;
   goSellerAuth: (mode?: "signup" | "login") => void;
   goMovingAuth: (mode?: "signup" | "login") => void;
+  goBrowse: () => void;
+  isAuthed: boolean;
+  goSignin: () => void;
 }) {
   // Live "Featured This Week" — fetches the 4 most recent items from the
   // public /api/items endpoint. Initial state is an empty array (NOT the
@@ -885,7 +984,7 @@ function HomePage({
   return (
     <div>
       {/* HERO */}
-      <HeroSection goBuyerAuth={goBuyerAuth} />
+      <HeroSection goBuyerAuth={goBuyerAuth} goSellerAuth={goSellerAuth} />
 
       {/* Trust Bar */}
       <div className="bg-emerald-800 text-white py-4">
@@ -918,18 +1017,18 @@ function HomePage({
               <p className="text-gray-600 mt-1">Hand-picked deals from your neighbors</p>
             </div>
             <button
-              onClick={() => goBuyerAuth("signup")}
+              onClick={goBrowse}
               className="hidden md:flex items-center gap-2 text-emerald-600 font-medium hover:text-emerald-700"
             >
               View All <ChevronRight size={18} />
             </button>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-            {featuredItems.map((item) => <ItemCard key={item.id} item={item} />)}
+            {featuredItems.map((item) => <ItemCard key={item.id} item={item} isAuthed={isAuthed} goSignin={goSignin} />)}
           </div>
           <div className="text-center mt-10">
             <button
-              onClick={() => goBuyerAuth("signup")}
+              onClick={goBrowse}
               className="bg-emerald-600 text-white px-8 py-3 rounded-full font-semibold hover:bg-emerald-700 inline-flex items-center gap-2"
             >
               Browse All Items <ArrowRight size={18} />
@@ -1107,7 +1206,7 @@ function HomePage({
 
           <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
             <button
-              onClick={() => goBuyerAuth("signup")}
+              onClick={() => goBuyerAuth()}
               className="group inline-flex items-center gap-3 rounded-full bg-white px-8 py-3 text-[13px] font-bold text-[#0f5c3b] shadow-[0_10px_25px_rgba(0,0,0,0.25)] transition duration-300 hover:-translate-y-1"
             >
               <ShoppingBag className="h-5 w-5" />
@@ -1116,7 +1215,7 @@ function HomePage({
             </button>
 
             <button
-              onClick={() => goSellerAuth("signup")}
+              onClick={() => goSellerAuth()}
               className="group inline-flex items-center gap-3 rounded-full bg-[#ff9412] px-8 py-3 text-[13px] font-bold text-white shadow-[0_10px_25px_rgba(255,148,18,0.35)] transition duration-300 hover:-translate-y-1 hover:bg-[#e8830f]"
             >
               <Package className="h-5 w-5" />
@@ -1193,8 +1292,8 @@ export function Footer({
           <div>
             <h4 className="font-bold mb-4 text-amber-400 text-[13px] uppercase tracking-wider">For Sellers</h4>
             <div className="flex flex-col gap-3">
-              <button onClick={() => goSellerAuth("signup")} className="inline-block w-fit cursor-pointer text-left text-[13px] font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-amber-300 hover:font-bold">Weekly Drop</button>
-              <button onClick={() => goSellerAuth("signup")} className="inline-block w-fit cursor-pointer text-left text-[13px] font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-amber-300 hover:font-bold">The Shelf</button>
+              <button onClick={() => goSellerAuth()} className="inline-block w-fit cursor-pointer text-left text-[13px] font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-amber-300 hover:font-bold">Weekly Drop</button>
+              <button onClick={() => goSellerAuth()} className="inline-block w-fit cursor-pointer text-left text-[13px] font-medium text-slate-300 transition-all duration-200 hover:translate-x-2 hover:text-amber-300 hover:font-bold">The Shelf</button>
             </div>
           </div>
           <div>

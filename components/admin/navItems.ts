@@ -8,6 +8,7 @@ import {
   Calendar,
   BarChart3,
   Inbox,
+  Mail,
   type LucideIcon,
 } from "lucide-react";
 
@@ -44,6 +45,7 @@ export const ADMIN_NAV: AdminNavSection[] = [
     label: "Operations",
     items: [
       { id: "moving-sales", label: "Moving Sales", href: "/admin/moving-sales", icon: Truck },
+      { id: "email-blasts", label: "Email Blasts", href: "/admin/email-blasts", icon: Mail },
       { id: "drops",        label: "Drops",        href: "/admin/drops",        icon: Calendar,  badge: "Soon", disabled: true },
       { id: "reports",      label: "Reports",      href: "/admin/reports",      icon: BarChart3, badge: "Soon", disabled: true },
     ],

@@ -14,12 +14,19 @@ export function GlobalFooter() {
     else router.push("/");
   };
 
-  const goBuyerAuth = (mode?: "signup" | "login") => {
+  // BUG-074 — generic CTAs default to signin. Explicit "Sign up" buttons
+  // still pass "signup" to override. Matches the homepage helpers in
+  // app/page.tsx; keep these two in sync.
+  const goBuyerAuth = (mode: "signup" | "login" = "login") => {
     router.push(`/join?mode=${mode === "login" ? "signin" : "signup"}`);
   };
 
-  const goSellerAuth = () => router.push("/join?mode=signup");
-  const goMovingAuth = () => router.push("/join?mode=signup");
+  const goSellerAuth = (mode: "signup" | "login" = "login") => {
+    router.push(`/join?mode=${mode === "login" ? "signin" : "signup"}`);
+  };
+  const goMovingAuth = (mode: "signup" | "login" = "login") => {
+    router.push(`/join?mode=${mode === "login" ? "signin" : "signup"}`);
+  };
 
   return (
     <Footer

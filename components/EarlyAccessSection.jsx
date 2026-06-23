@@ -1,10 +1,14 @@
 "use client";
 
-// Faithful copy of /preview/feedback/early-access-banner.jsx — do not modify
-// in isolation. If the preview changes, mirror the change here.
+// BUG-071 — Early-access email capture.
+// Posts to the new dedicated /api/email-subscriptions endpoint which
+// silently re-subscribes / dedups. Counter is real (from /count) and
+// only shown once the audience crosses 100, per spec.
 
 import React, { useState, useEffect } from "react";
-import { submitSubmission, isValidEmail } from "@/lib/submissions";
+import { isValidEmail } from "@/lib/submissions";
+
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
 function MailIcon({ className = "" }) {
   return (
@@ -20,37 +24,52 @@ export default function EarlyAccessSection() {
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [count, setCount] = useState(1482);
+  // Real subscriber count from backend. `showProof` is false until the
+  // count crosses the threshold (100). Until then we hide the counter line
+  // entirely and replace it with a privacy-first trust line.
+  const [count, setCount] = useState(0);
+  const [showProof, setShowProof] = useState(false);
 
-  // Persist email across visits
+  // Persist email across visits — only as a convenience for the field's
+  // initial value. AuthContext clears this on signout (BUG-063).
   useEffect(() => {
     const saved = typeof window !== "undefined" ? localStorage.getItem("dropyard_email") : null;
     if (saved) setEmail(saved);
   }, []);
 
-  // Subtle live counter (growth signal)
+  // Real count from the backend. Re-fetched after every successful
+  // submission so the number ticks up naturally.
   useEffect(() => {
-    const interval = setInterval(() => {
-      setCount((prev) => prev + Math.floor(Math.random() * 2));
-    }, 4000);
-    return () => clearInterval(interval);
-  }, []);
+    let cancelled = false;
+    fetch(`${BASE_URL}/api/email-subscriptions/count`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (cancelled || !j) return;
+        if (typeof j.total === "number")    setCount(j.total);
+        if (typeof j.showProof === "boolean") setShowProof(j.showProof);
+      })
+      .catch(() => { /* silent — homepage shouldn't error */ });
+    return () => { cancelled = true; };
+  }, [submitted]);
 
   const handleSubmit = async () => {
     if (!isValidEmail(email)) {
       setError("Enter a valid email address");
       return;
     }
-
     setError("");
     setLoading(true);
 
     try {
-      await submitSubmission({
-        type: "EARLY_ACCESS_SIGNUP",
-        source: "homepage-early-access",
-        payload: { email: email.trim() },
+      const res = await fetch(`${BASE_URL}/api/email-subscriptions`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ email: email.trim(), source: "homepage-early-access" }),
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data && data.error) || "Could not save your spot. Try again.");
+      }
       localStorage.setItem("dropyard_email", email);
       setSubmitted(true);
     } catch (err) {
@@ -61,7 +80,10 @@ export default function EarlyAccessSection() {
   };
 
   return (
-    <section className="relative bg-[#f9fbf9] py-12 px-4 sm:px-6 lg:px-8 overflow-hidden">
+    // BUG-071 — id="early-access" anchor target for the hero card's
+    // "Get Notified" button. scroll-mt-20 leaves room for the sticky
+    // header so the headline isn't clipped after the smooth scroll.
+    <section id="early-access" className="relative bg-[#f9fbf9] py-12 px-4 sm:px-6 lg:px-8 overflow-hidden scroll-mt-20">
 
       {/* BACKGROUND GLOW */}
       <div className="absolute inset-0">
@@ -76,15 +98,16 @@ export default function EarlyAccessSection() {
           Early Access
         </p>
 
-        {/* HEADLINE */}
+        {/* HEADLINE — BUG-071 soft / honest copy. Old copy promised a
+            weekly newsletter we don't yet send (CASL risk). */}
         <h2 className="mt-2 text-[28px] sm:text-[34px] lg:text-[46px] font-semibold tracking-tighter text-[#0b2f20] leading-[1.05]">
-          Get the Friday email for{" "}
-          <span className="text-[#ff9412]">Barrhaven.</span>
+          Be first in line for{" "}
+          <span className="text-[#ff9412]">Barrhaven drops.</span>
         </h2>
 
         {/* SUBTEXT */}
         <p className="mt-3 text-[15px] text-slate-600 leading-relaxed max-w-2xl mx-auto">
-          One email every Friday with the weekend&rsquo;s best items, plus what&rsquo;s new on The Shelf. No spam. Unsubscribe anytime.
+          We&rsquo;ll email you when the next weekend Drop goes live &mdash; and occasionally with featured items. No spam. Unsubscribe anytime.
         </p>
 
         {/* INPUT + CTA */}
@@ -129,9 +152,16 @@ export default function EarlyAccessSection() {
           </div>
         )}
 
-        {/* SOCIAL PROOF (LIVE) */}
+        {/* SOCIAL PROOF — BUG-071 honest behavior.
+            Until we have ≥ 100 active subscribers, show a trust line in
+            place of a count (the old code faked a 1,482 counter that
+            ticked up by random — that's gone). */}
         <div className="mt-5 text-[12px] tracking-wide text-slate-500">
-          <span className="font-semibold text-[#0b2f20]">{count.toLocaleString()} neighbours</span> already joined &middot; One email/week &middot; No spam
+          {showProof ? (
+            <><span className="font-semibold text-[#0b2f20]">{count.toLocaleString()} neighbours</span> already joined &middot; No spam &middot; Unsubscribe anytime</>
+          ) : (
+            <>Your email is only used for drop alerts &middot; Unsubscribe anytime</>
+          )}
         </div>
 
         {/* TRUST BADGES */}

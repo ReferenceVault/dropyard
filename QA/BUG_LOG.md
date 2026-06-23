@@ -27,6 +27,121 @@ _None._
 
 ## P2 — Fixed this session
 
+### BUG-078  ·  P1  ·  Email blast send rotates tokens with no transaction → orphan sends + dead old-blast unsubscribe links  ·  Status: Open
+**Title:** Pre-push review of BUG-071 surfaced two related issues in `POST /api/admin/email-blasts/send` ([routes/admin.ts](dropyard_backend/src/routes/admin.ts) around line 825).
+**Found by:** F3 pre-push review · **Found date:** 2026-06-23
+**Issues:**
+  1. The send loop calls `rotateSubscriberToken` (DB write) for each subscriber BEFORE sending, then writes the `EmailBlast` history row AFTER the loop completes. If the HTTP request times out, errors, or the admin double-clicks, recipients whose tokens were rotated but didn't get the email are stranded — their previous email's unsubscribe link is now dead, and no history row was written.
+  2. By design (current implementation), every blast rotates every subscriber's token. That means **only the most recent email's unsubscribe link works** — older archived emails 404 silently. CASL expects unsubscribe to keep working ≥60 days from receipt.
+**Mitigations for v1 (immediate):**
+  - Don't blast >100 subscribers at once; the serial loop becomes unsafe under HTTP timeouts as the list grows.
+  - Send during low-load windows; if the request errors mid-loop, expect to manually reconcile.
+  - Current subscriber count is ~0, so the "old links die" issue is theoretical until the list grows.
+**Proper fix (follow-up):** Either (a) email the raw token at subscribe time, store the hash, never rotate — losing the "fresh link per blast" property but gaining stability; or (b) store raw tokens encrypted, skip rotation. Also: wrap the send loop in a transactional outer step that creates the `EmailBlast` row FIRST and appends `EmailBlastRecipient` rows incrementally, so a partial failure is recoverable. Also: add an idempotency key on the send endpoint so admin double-click is a no-op.
+
+### BUG-077  ·  P1/P2  ·  F3 Performance Audit findings (12 verified)  ·  Status: Open
+**Title:** Cross-cutting performance audit (Wave-F item F3) covering frontend (Lighthouse-adjacent static checks), backend (Prisma indexes + N+1) and real-world (Slow 3G + repeat-visit caching) concerns. All findings below were verified against the actual codebase — not agent speculation. Listed in fix-priority order.
+**Found by:** F3 audit pass · **Found date:** 2026-06-23
+**Findings:**
+
+  **A — Backend P1: missing indexes on hot columns** ([prisma/schema.prisma](dropyard_backend/prisma/schema.prisma))
+  The `items` and `claims` tables have ZERO indexes today. Every buyer feed fetch, seller "my items" fetch, and claims lookup is a full table scan. Adding the indexes below is one migration and a measurable win immediately.
+  Add to `model Item`:
+  - `@@index([sellerId])`              — `routes/items.ts:237` "my items"
+  - `@@index([status, dropId])`        — `routes/items.ts:432` buyer feed where-clause
+  - `@@index([placement, status])`     — shelf items query
+  Add to `model Claim`:
+  - `@@index([buyerId, status])`       — `routes/claims.ts` buyer's claims
+  - `@@index([sellerId, status])`      — `routes/claims.ts` seller's claims
+  - `@@index([status, expiresAt])`     — claim expiry sweep (BUG-055 lifecycle)
+  Note: `watchlist.userId` is already covered by the composite `@@unique([userId, itemId])` — Postgres uses the leftmost prefix, so a userId-only query hits the unique index. No new index needed there. `users.email` is `@unique` — fine for exact match. Admin-search uses `contains` which can't use a B-tree anyway; would need pg_trgm extension.
+
+  **B — Backend P1: no gzip compression** ([src/app.ts](dropyard_backend/src/app.ts))
+  Express has cookie-parser, morgan, helmet, CSRF wired in — but no `compression()` middleware. `/api/items` with 20 rows + photo arrays ships ~150KB uncompressed; gzipped that's ~30KB. 5× bandwidth waste on every list fetch.
+  Fix: `npm i compression @types/compression` → `app.use(compression())` right after `express.json()` at line 118.
+
+  **C — Frontend P1: Both 1.4 MB dashboards static-imported on `/buyer`** ([app/buyer/page.tsx:5-6](dropyard_frontend/app/buyer/page.tsx#L5))
+  `app/buyer/page.tsx` does a top-level `import DropYardSellerDashboard ...` AND `import DropYardBuyerDashboard ...`. The seller dashboard is 682KB and the buyer dashboard is 749KB raw JSX — both ship in the initial JS bundle on every `/buyer` visit, but only ONE renders (the other branch is dead until the user role-switches).
+  Fix: convert both to `next/dynamic({ ssr: false })` so the inactive role is only fetched if/when the user actually switches.
+  ```tsx
+  const DropYardBuyerDashboard  = dynamic(() => import("@/components/previews/DropYard_BuyerDashboard"),  { ssr: false });
+  const DropYardSellerDashboard = dynamic(() => import("@/components/previews/DropYard_SellerDashboard"), { ssr: false });
+  ```
+
+  **D — Frontend P1: no `optimizePackageImports` in next.config** ([next.config.ts](dropyard_frontend/next.config.ts))
+  Homepage imports 16 named icons from `lucide-react` and `{ motion }` from `framer-motion`. Without Next's `optimizePackageImports`, both pull more than the names imply (especially framer-motion variants). Add:
+  ```ts
+  const nextConfig: NextConfig = {
+    poweredByHeader: false,
+    experimental: { optimizePackageImports: ["lucide-react", "framer-motion"] },
+    async headers() { ... },
+  };
+  ```
+  Free win — single config line.
+
+  **E — Backend P2: N+1 in conversations inbox** ([routes/conversations.ts:160](dropyard_backend/src/routes/conversations.ts#L160))
+  `GET /api/conversations` lists threads then does `await Promise.all(convs.map(c => unreadCountFor(c) + previousPurchasesBetween(c)))` — that's 2N extra round-trips. Code comment says "N+1 here is fine for v1". Acceptable today; flag for fix when a power user has 20+ active threads. Replace with `prisma.message.groupBy({ by: ['conversationId'], _count })` + `prisma.claim.groupBy(...)` in 2 queries.
+
+  **F — Backend P2: watchlist endpoint unpaginated** ([routes/watchlist.ts:10](dropyard_backend/src/routes/watchlist.ts#L10))
+  `GET /api/watchlist` has no `take`/`skip`. A user with 500 saved items ships a 500-item payload every buyer dashboard mount. Add `?limit` (clamp 50) + `?page` and a `total` field, same pattern as `/api/items`.
+
+  **G — Backend P2: no Cache-Control on public read endpoints**
+  - [routes/items.ts:458](dropyard_backend/src/routes/items.ts#L458) `GET /api/items`
+  - [routes/items.ts:356](dropyard_backend/src/routes/items.ts#L356) `GET /api/items/sneak-peek`
+  - [routes/emailSubscriptions.ts](dropyard_backend/src/routes/emailSubscriptions.ts) `GET /api/email-subscriptions/count` (homepage every load)
+  Send `Cache-Control: public, max-age=30, stale-while-revalidate=120` on these. Repeat homepage/feed visits on Slow 3G skip the round-trip entirely.
+
+  **H — Frontend P2: raw `<img>` everywhere, no `next/image`**
+  Greppable across `app/page.tsx`, `for-buyers/page.tsx`, `for-sellers/page.tsx`. No automatic WebP/AVIF, no responsive srcset, no built-in lazy. Hero image especially is the LCP candidate and is unoptimized.
+  Fix: at minimum, convert the homepage hero, the Featured strip images, and testimonial avatars to `<Image>` with explicit width/height. Add `images.remotePatterns` for `i.pravatar.cc` and the S3 photo host in `next.config.ts`.
+
+  **I — Frontend P2: CLS from unsized images**
+  Testimonial avatars (`app/page.tsx` ~line 1140) and hero image have no `width`/`height` attributes — image load reflows the layout, hurting CLS. Add explicit dimensions or `aspect-ratio` containers.
+
+  **J — Frontend P2: three clock intervals on the buyer dashboard** ([components/previews/DropYard_BuyerDashboard.jsx](dropyard_frontend/components/previews/DropYard_BuyerDashboard.jsx) lines 24, 762, 918)
+  Three separate `setInterval` loops update `now` (one 60s, two 1s) on the same page, each triggering re-renders of deep subtrees. On a mid-tier phone this is wasted CPU since countdown text only changes at minute boundaries.
+  Fix: consolidate to ONE module-level clock provider that emits at 1Hz only when something visible needs sub-minute precision.
+
+  **K — Frontend P3: socket.io polling fallback** ([context/SocketContext.tsx:63](dropyard_frontend/context/SocketContext.tsx#L63))
+  `transports: ["websocket", "polling"]`. On flaky networks the polling fallback hammers the server with short-interval HTTP. Switch to `transports: ["websocket"]` and lean on socket.io's reconnect logic. Only revert if behind a corporate proxy that blocks WS.
+
+  **L — Frontend P3: dead preview dashboards in repo** ([components/previews/](dropyard_frontend/components/previews/))
+  `DropYard_BuyerDashboard_final.jsx` (660KB), `DropYard_BuyerDashboard_v2.jsx` (658KB), `DropYard_SellerDashboard_final.jsx` (415KB) are referenced ONLY by `/app/preview/*` routes (developer-only). They don't bloat `/buyer`, but a `/preview/...` URL shipped to prod would be ~1MB of dev-only code. Either delete them or gate the `/preview/*` routes behind `process.env.NODE_ENV !== "production"`.
+
+**Real-world test (Slow 3G + 4× CPU): NOT YET RUN**
+Static audit only — Lighthouse and DevTools throttling pass deferred until A-D are fixed, since metrics after A+B+C+D will be materially different.
+
+**Recommended order of fixes (impact ÷ effort):**
+1. **A + B** (schema migration + one Express middleware) — single PR, immediate prod win across every API call
+2. **C + D** (two-line code change + one config line) — homepage + /buyer JS payload drops materially
+3. **G** (cache headers on 3 endpoints) — repeat-visit win
+4. **H + I** (image work) — biggest visual perf + LCP gain, but most code churn
+5. **E, F, J, K, L** — polish
+
+### BUG-076  ·  P2  ·  Homepage Featured "like" heart was non-functional / misleading  ·  Status: Fixed (verify)
+**Title:** The heart/save button on the homepage Featured strip ([app/page.tsx](dropyard_frontend/app/page.tsx) `ItemCard`) toggled only local `useState` and the displayed save count (`item.saves`) was hardcoded. No `/api/watchlist` call, no auth gate, no persistence — heart turned red on click and silently reset on refresh.
+**Found by:** Real user (Narveer QA pass) · **Found date:** 2026-06-23
+**Repro steps (before fix):**
+  1. Visit `/` signed out.
+  2. Click the heart on any Featured item.
+  3. Heart turns red. Refresh the page.
+  4. Heart is back to outline; nothing was ever saved.
+  5. Repeat signed-in — same behavior; `/api/watchlist/:id` is never called.
+**Expected:** Anon visitors get bounced to `/join?mode=signin` (consistent with all other public CTAs per recent feedback). Authed visitors fire the real `POST /api/watchlist/:id` (or `DELETE` on un-save). Save count updates immediately so the user sees their action.
+**Fix:**
+  1. Imported `useAuth` in [app/page.tsx](dropyard_frontend/app/page.tsx); read `user` in `DropYardWebsiteInner`, derived `isAuthed` and a `goSignin` helper that pushes to `/join?mode=signin`.
+  2. Threaded `isAuthed` + `goSignin` through `HomePage` props to each `<ItemCard>`.
+  3. Rewrote `ItemCard` heart handler:
+     - If `!isAuthed` → call `goSignin()` and return (no API call).
+     - If authed → optimistic flip of `saved` + `saves` count, then `apiRequest('/api/watchlist/:id', { method: saved ? 'POST' : 'DELETE' })`; revert on failure.
+     - Added `pending` guard so rapid clicks don't double-fire.
+     - Added `disabled` + `aria-pressed` + `cursor-not-allowed` for accessibility.
+  4. The Featured strip's adapter (line ~849) already converts API responses with real CUID `id` strings. Synthetic placeholders (`idx+1` integer fallback) are detected via `typeof item.id === "string"` and skipped to avoid hitting the watchlist API with garbage ids.
+**Notes:**
+  1. Did NOT pre-fetch the user's existing saves to seed `saved=true`. Trade-off: the homepage shows all hearts as outline on load even if the visitor already saved an item on `/buyer`. Reasoning: marketing surface, very low chance the same 4 items overlap with their prior saves, and the alternative requires fetching `/api/watchlist` per page load. The watchlist endpoints are idempotent server-side (POST is upsert, DELETE is `deleteMany`), so re-saving an already-saved item is a no-op rather than an error.
+  2. No backend changes — `/api/watchlist/:id` (POST/DELETE) already existed and is auth-required (BUG-032 added FK pre-check returning 404 cleanly).
+  3. Anon-click bounce uses `/join?mode=signin` (not `?mode=signup`) per the recent "all public CTAs default to signin" feedback.
+
 ### BUG-051  ·  P3  ·  No per-item "Share" feature on item cards (buyer + seller) or the LiveHero  ·  Status: Fixed (verify)
 **Title:** User asked to add a Share affordance on (1) each buyer-side item card in Discover/Saved/Sneak Peek, (2) the seller's inventory row actions, and (3) the LiveHero hero on the seller Overview. The seller dashboard already had a multi-item `ShareSheet` opened from `BetweenHero` for between-drop sharing, but nothing for per-item or LiveHero share.
 **Found by:** Real user (Narveer screenshot) · **Found date:** 2026-06-09
