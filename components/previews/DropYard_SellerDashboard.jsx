@@ -166,6 +166,22 @@ const ENUM_TO_CONDITION_LABEL = {
   GOOD:      "Used - Good",
   FAIR:      "Used - Fair",
 };
+// BUG-095 — pickup availability must not accept dates in the past. Built from
+// LOCAL calendar parts, not toISOString(), which converts to UTC first and
+// therefore reports "tomorrow" for anyone east of UTC late in the day (and
+// "yesterday" for the Americas in the early hours) — Ottawa is UTC-4/-5, so
+// toISOString() would have let sellers pick yesterday for part of every day.
+function todayLocalISO() {
+  const d = new Date();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+/** True when a YYYY-MM-DD string is strictly before today (local time). */
+function isPastISODate(value) {
+  return typeof value === "string" && value.length === 10 && value < todayLocalISO();
+}
+
 const ENUM_TO_PLACEMENT_LABEL = {
   DROP:  "drop",
   SHELF: "shelf",
@@ -1093,7 +1109,7 @@ function TopNav({ user, onSignout, onOpenSettings, activeView, onToggleSidebar, 
             placeholder="Search items, orders, claims…"
             style={{
               width: "100%",
-              padding: "11px 56px 11px 40px",
+              padding: "11px 16px 11px 40px",
               borderRadius: 999,
               border: "1px solid " + C.fawn,
               background: C.sand,
@@ -1104,14 +1120,6 @@ function TopNav({ user, onSignout, onOpenSettings, activeView, onToggleSidebar, 
             onFocus={e => { e.currentTarget.style.background = C.paper; e.currentTarget.style.borderColor = C.greenMist; e.currentTarget.style.boxShadow = "0 0 0 3px " + C.greenMist; }}
             onBlur={e => { e.currentTarget.style.background = C.sand; e.currentTarget.style.borderColor = C.fawn; e.currentTarget.style.boxShadow = "none"; }}
           />
-          <span style={{
-            position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)",
-            display: "inline-flex", alignItems: "center", justifyContent: "center",
-            padding: "3px 7px", borderRadius: 6,
-            background: C.paper, border: "1px solid " + C.fawn,
-            fontFamily: F.head, fontSize: 10, fontWeight: 800, color: C.ash,
-            letterSpacing: "0.05em", pointerEvents: "none",
-          }}>⌘K</span>
         </div>
       </div>
 
@@ -1959,7 +1967,9 @@ async function shareSellerListing(item) {
   const base = (typeof window !== "undefined" && window.location && window.location.origin)
     ? window.location.origin
     : "https://dropyard.app";
-  const url = base + "/?ref=share&item=" + encodeURIComponent(item?.id || "");
+  // BUG-085 — public item page, was the marketing homepage. See the buyer
+  // dashboard's shareUrlFor() for the full rationale.
+  const url = base + "/item/" + encodeURIComponent(item?.id || "") + "?ref=share";
   if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
     try { await navigator.share({ title, text, url }); return; }
     catch (err) { if (err && err.name === "AbortError") return; }
@@ -2196,14 +2206,21 @@ function Overview({ onNav, user, sellerItems = null, accessToken = null }) {
   // already has them or picked up).
   const usingBackend = Array.isArray(sellerItems);
   const isActiveItem = (i) => i && i.status === "LIVE";
+  // BUG-096 — an item queued for the next Drop is stored as DRAFT with
+  // `queuedAt` set (see BUG-093); it only flips to LIVE when the Drop opens.
+  // These two counts both got that wrong: `queuedCount` required LIVE, so it
+  // never saw a queued item at all, and `draftsCount` counted every DRAFT, so
+  // the same item was reported on Overview as "1 draft unfinished". `queuedAt`
+  // is what separates a real unfinished draft from a committed listing.
+  const isQueuedForDrop = (i) => i && i.status === "DRAFT" && !!i.queuedAt;
   const queuedCount = usingBackend
-    ? sellerItems.filter(i => isActiveItem(i) && i.placement === "DROP").length
+    ? sellerItems.filter(i => (isActiveItem(i) || isQueuedForDrop(i)) && i.placement === "DROP").length
     : 1;
   const shelfCount = usingBackend
     ? sellerItems.filter(i => isActiveItem(i) && i.placement === "SHELF").length
     : 2;
   const draftsCount = usingBackend
-    ? sellerItems.filter(i => i && i.status === "DRAFT").length
+    ? sellerItems.filter(i => i && i.status === "DRAFT" && !i.queuedAt).length
     : 1;
 
   // Bump to force every data-loading useEffect below to re-run. Used by the
@@ -2925,6 +2942,7 @@ function AISetup({ onComplete, onBack, settings, onSave }) {
   const [pickupDays, setPickupDays] = useState(settings.pickupDays || ["Sat", "Sun"]);
   const [pickupCustom, setPickupCustom] = useState(settings.pickupCustom || []);
   const [pickupNewDate, setPickupNewDate] = useState("");
+  const [pickupDateError, setPickupDateError] = useState("");
   const [pickupWindows, setPickupWindows] = useState(settings.pickupWindows || ["morning", "afternoon"]);
   const [waNotif, setWaNotif] = useState(settings.waNotif !== false);
   const [waPhone, setWaPhone] = useState(settings.waPhone || "");
@@ -2932,7 +2950,20 @@ function AISetup({ onComplete, onBack, settings, onSave }) {
 
   function togDay(d) { setPickupDays(p => p.includes(d) ? p.filter(x => x !== d) : [...p, d]); }
   function togWin(w) { setPickupWindows(p => p.includes(w) ? p.filter(x => x !== w) : [...p, w]); }
-  function addPickupDate() { if (pickupNewDate && !pickupCustom.includes(pickupNewDate)) { setPickupCustom(p => [...p, pickupNewDate]); setPickupNewDate(""); } }
+  // BUG-095 — reject past dates. The input's min attribute blocks the picker, but
+  // a typed/pasted value still reaches here, so this is the real client guard.
+  function addPickupDate() {
+    if (!pickupNewDate) return;
+    if (isPastISODate(pickupNewDate)) {
+      setPickupDateError("Pick-up dates can't be in the past.");
+      return;
+    }
+    setPickupDateError("");
+    if (!pickupCustom.includes(pickupNewDate)) {
+      setPickupCustom(p => [...p, pickupNewDate]);
+    }
+    setPickupNewDate("");
+  }
 
   function handleSave() {
     onSave({ priceFloor, autoAccept, style, pickupMode, pickupDays, pickupCustom, pickupWindows, waNotif, waPhone, paymentMethod });
@@ -3043,7 +3074,7 @@ function AISetup({ onComplete, onBack, settings, onSave }) {
             {pickupMode === "custom" && (
               <div style={{ marginBottom: 14 }}>
                 <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-                  <input type="date" value={pickupNewDate} onChange={e => setPickupNewDate(e.target.value)}
+                  <input type="date" min={todayLocalISO()} value={pickupNewDate} onChange={e => { setPickupNewDate(e.target.value); if (pickupDateError) setPickupDateError(""); }}
                     style={{ flex: 1, padding: "9px 12px", borderRadius: 10, border: "1.5px solid " + C.fawn, fontSize: 12, fontFamily: F.body, outline: "none", color: C.ink, background: C.paper }}/>
                   <button onClick={addPickupDate}
                     style={{ padding: "9px 16px", borderRadius: 10, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 800, background: C.green, color: "#fff", fontFamily: F.head, display: "flex", alignItems: "center", gap: 4, boxShadow: "0 2px 0 " + C.greenDeep }}>
@@ -3062,8 +3093,11 @@ function AISetup({ onComplete, onBack, settings, onSave }) {
                     ))}
                   </div>
                 )}
-                {pickupCustom.length === 0 && (
-                  <p style={{ fontFamily: F.body, fontSize: 11, fontWeight: 500, color: C.ash, fontStyle: "italic" }}>Add one or more specific dates when you'll be available.</p>
+                {pickupDateError && (
+                  <p style={{ fontFamily: F.body, fontSize: 11, fontWeight: 700, color: C.claret }}>{pickupDateError}</p>
+                )}
+                {pickupCustom.length === 0 && !pickupDateError && (
+                  <p style={{ fontFamily: F.body, fontSize: 11, fontWeight: 500, color: C.ash, fontStyle: "italic" }}>Add one or more specific dates when you&apos;ll be available.</p>
                 )}
               </div>
             )}
@@ -3253,9 +3287,43 @@ function useDropOpenCountdownString() {
   return now ? formatCompactCountdown(nextDropMoment(now), now) : "";
 }
 
-function ManualItemForm({ onDone, onBack, onGoToItems, onEnhanceAI, aiSettings = {}, accessToken = null, onItemCreated = null }) {
+function ManualItemForm({ onDone, onBack, onGoToItems, onGoToSettings = null, onEnhanceAI, aiSettings = {}, accessToken = null, onItemCreated = null }) {
   const dropOpenCountdown = useDropOpenCountdownString();
   const { isMobile } = useViewport();
+  // Drop-cycle awareness for the "When should this go live?" block. During a
+  // LIVE Drop the two publish paths change meaning: "queue for next" becomes
+  // "list into the Drop that's running right now", and the Shelf path is closed
+  // (an item listed to the Shelf mid-Drop would sit outside the event traffic).
+  // Same phase source the Overview + MyItems use — see MyItemsView line ~4120.
+  const dropCycle = useDropCycle();
+  const dropNow = dropCycle.effectiveNow || new Date();
+  const dropIsLive = toSellerOverviewPhase(dropCycle, dropNow) !== "between";
+
+  // BUG-084 — real count of OTHER sellers in this Drop, replacing a hardcoded
+  // "90+". `otherSellerCount` already excludes the caller (the backend derives
+  // it from the authed viewer), so a seller who already has items queued isn't
+  // counted among their own "other sellers".
+  // null = not loaded / request failed → the copy simply omits the clause
+  // rather than flashing a placeholder number.
+  const [otherSellers, setOtherSellers] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    apiRequest("/api/drop/current", accessToken ? { token: accessToken } : {})
+      .then((r) => {
+        if (cancelled) return;
+        const n = typeof r?.otherSellerCount === "number" ? r.otherSellerCount : null;
+        setOtherSellers(n);
+      })
+      .catch(() => { if (!cancelled) setOtherSellers(null); });
+    return () => { cancelled = true; };
+  }, [accessToken]);
+
+  // Omitted entirely at 0 or while unknown — "alongside 0 other sellers" reads
+  // worse than not mentioning it, and an unloaded count must never be guessed.
+  const sellerPhrase =
+    otherSellers == null || otherSellers === 0 ? ""
+    : otherSellers === 1                       ? " alongside 1 other seller"
+    :                                            ` alongside ${otherSellers} other sellers`;
   const cats = ["Furniture", "Electronics", "Appliances & Kitchen", "Clothing & Accessories", "Kids & Baby", "Sports & Outdoor", "Tools & Garden", "Home Décor", "Books, Games & Hobbies", "Collectibles & Antiques", "Other"];
   const conds = ["New", "Used - Like New", "Used - Good", "Used - Fair"];
   const [title, setTitle] = useState("");
@@ -3268,16 +3336,36 @@ function ManualItemForm({ onDone, onBack, onGoToItems, onEnhanceAI, aiSettings =
   const [pickupDays, setPickupDays] = useState([]);
   const [pickupCustom, setPickupCustom] = useState([]);
   const [pickupNewDate, setPickupNewDate] = useState("");
+  const [pickupDateError, setPickupDateError] = useState("");
   const [pickupWindows, setPickupWindows] = useState(["morning", "afternoon"]);
 
   function togDay(d) { setPickupDays(p => p.includes(d) ? p.filter(x => x !== d) : [...p, d]); }
   function togWin(w) { setPickupWindows(p => p.includes(w) ? p.filter(x => x !== w) : [...p, w]); }
-  function addPickupDate() { if (pickupNewDate && !pickupCustom.includes(pickupNewDate)) { setPickupCustom(p => [...p, pickupNewDate]); setPickupNewDate(""); } }
+  // BUG-095 — reject past dates. The input's min attribute blocks the picker, but
+  // a typed/pasted value still reaches here, so this is the real client guard.
+  function addPickupDate() {
+    if (!pickupNewDate) return;
+    if (isPastISODate(pickupNewDate)) {
+      setPickupDateError("Pick-up dates can't be in the past.");
+      return;
+    }
+    setPickupDateError("");
+    if (!pickupCustom.includes(pickupNewDate)) {
+      setPickupCustom(p => [...p, pickupNewDate]);
+    }
+    setPickupNewDate("");
+  }
   // photos: array of { id, key, preview, uploading? } - key is the S3 key from /api/uploads/s3,
   // preview is the publicUrl for inline display, uploading is true while the request is in-flight.
   const [photos, setPhotos] = useState([]);
   const [saved, setSaved] = useState(null);
   const [publishWhen, setPublishWhen] = useState("drop"); // "drop" (queue for next Drop) | "shelf" (list now)
+  // If the Drop goes LIVE while the form is open with Shelf selected, snap the
+  // selection back to the Drop path so the seller can't submit a now-invalid
+  // placement. Guards the case where the phase flips mid-composition.
+  useEffect(() => {
+    if (dropIsLive && publishWhen === "shelf") setPublishWhen("drop");
+  }, [dropIsLive, publishWhen]);
   const [paymentMethod, setPaymentMethod] = useState(aiSettings.paymentMethod || "either");
   const [showPayment, setShowPayment] = useState(false);
 
@@ -3367,10 +3455,16 @@ function ManualItemForm({ onDone, onBack, onGoToItems, onEnhanceAI, aiSettings =
 
   /**
    * Submit the listing.
-   * `action` is one of "draft" | "drop" | "shelf". Backend currently treats all
-   * the same (status: DRAFT, attached to current Drop). The action only affects
-   * the success-screen copy and is preserved here so we can wire schema-level
-   * differences in Phase 2.
+   * `action` is one of "draft" | "drop" | "shelf".
+   *
+   * BUG-093 — this used to be cosmetic: all three sent identical payloads and
+   * the backend defaulted everything to DRAFT, so "Queue for Saturday's Drop"
+   * produced an item labelled "Draft" that the seller had to publish a SECOND
+   * time. `publish` now carries the intent:
+   *   draft → publish:false  → private draft, not auto-promoted on Saturday
+   *   drop  → publish:true   → DRAFT + queuedAt, shows as "Queued", auto-goes
+   *                            live when the Drop opens
+   *   shelf → publish:true   → LIVE immediately
    */
   async function handleSubmit(action) {
     if (submitting) return;
@@ -3426,6 +3520,8 @@ function ManualItemForm({ onDone, onBack, onGoToItems, onEnhanceAI, aiSettings =
           isMovingSale:  false,
           paymentMethod: PAYMENT_TO_ENUM[paymentMethod] || "EITHER",
           placement:     PLACEMENT_TO_ENUM[publishWhen] || "DROP",
+          // "Save as draft" keeps it private; the two publish buttons commit it.
+          publish:       action !== "draft",
           ...pickupPayload,
           ...bundlePayload,
         }),
@@ -3479,27 +3575,12 @@ function ManualItemForm({ onDone, onBack, onGoToItems, onEnhanceAI, aiSettings =
       </button>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
         <h2 style={{ fontSize: 20, fontWeight: 800, color: C.ink, fontFamily: F.head }}>List New Item</h2>
-        {/* Wired in audit pass — `onEnhanceAI` prop (passed by the seller
-            dashboard root) navigates to either the AIPhotoFlow view (if AI
-            settings are configured) or AISetup (if not). Previously this
-            button was permanently disabled. */}
-        <button
-          onClick={() => onEnhanceAI && onEnhanceAI()}
-          disabled={!onEnhanceAI}
-          style={{
-            display: "flex", alignItems: "center", gap: 6,
-            padding: "9px 16px", borderRadius: 50,
-            border: "1px solid " + (onEnhanceAI ? C.ai + "40" : C.fawn),
-            cursor: onEnhanceAI ? "pointer" : "not-allowed",
-            background: onEnhanceAI ? C.aiMist : C.sand,
-            color: onEnhanceAI ? C.ai : C.ash,
-            fontSize: 12, fontWeight: 700, fontFamily: F.body,
-            opacity: onEnhanceAI ? 1 : 0.7,
-          }}
-        >
-          <Sparkles size={14}/> Enhance with AI
-          <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 10, backgroundColor: onEnhanceAI ? C.ai : C.smoke, color: "#fff", fontFamily: F.body }}>5 free/mo</span>
-        </button>
+        {/* BUG-097 — "Enhance with AI" removed until the AI feature ships. It
+            navigated to the AIPhotoFlow / AISetup wizard, which advertises a
+            "5 free/mo" allowance and generates listings that nothing backs.
+            Same reasoning as the de-activated Sell-with-AI CTA on the buyer
+            side. The `onEnhanceAI` prop is still passed by the dashboard root,
+            so restoring this is re-adding the button — nothing else to rewire. */}
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1.4fr", gap: isMobile ? 16 : 20 }}>
@@ -3690,7 +3771,7 @@ function ManualItemForm({ onDone, onBack, onGoToItems, onEnhanceAI, aiSettings =
                 {pickupMode === "custom" && (
                   <div style={{ marginBottom: 14 }}>
                     <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-                      <input type="date" value={pickupNewDate} onChange={e => setPickupNewDate(e.target.value)}
+                      <input type="date" min={todayLocalISO()} value={pickupNewDate} onChange={e => { setPickupNewDate(e.target.value); if (pickupDateError) setPickupDateError(""); }}
                         style={{ flex: 1, padding: "9px 12px", borderRadius: 10, border: "1.5px solid " + C.fawn, fontSize: 12, fontFamily: F.body, outline: "none", color: C.ink, background: C.paper, boxSizing: "border-box" }}/>
                       <button onClick={addPickupDate}
                         style={{ padding: "9px 16px", borderRadius: 10, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 800, background: C.green, color: "#fff", fontFamily: F.head, display: "flex", alignItems: "center", gap: 4, boxShadow: "0 2px 0 " + C.greenDeep }}>
@@ -3709,8 +3790,11 @@ function ManualItemForm({ onDone, onBack, onGoToItems, onEnhanceAI, aiSettings =
                         ))}
                       </div>
                     )}
-                    {pickupCustom.length === 0 && (
-                      <p style={{ fontFamily: F.body, fontSize: 11, fontWeight: 500, color: C.ash, fontStyle: "italic" }}>Add one or more specific dates when you'll be available.</p>
+                    {pickupDateError && (
+                      <p style={{ fontFamily: F.body, fontSize: 11, fontWeight: 700, color: C.claret }}>{pickupDateError}</p>
+                    )}
+                    {pickupCustom.length === 0 && !pickupDateError && (
+                      <p style={{ fontFamily: F.body, fontSize: 11, fontWeight: 500, color: C.ash, fontStyle: "italic" }}>Add one or more specific dates when you&apos;ll be available.</p>
                     )}
                   </div>
                 )}
@@ -3838,12 +3922,22 @@ function ManualItemForm({ onDone, onBack, onGoToItems, onEnhanceAI, aiSettings =
                     );
                   })}
                 </div>
-                {!aiSettings.paymentMethod && (
-                  <div style={{ marginTop: 10, padding: "8px 12px", borderRadius: 10, background: C.amberMist, border: "1px solid " + C.amber + "25", display: "flex", alignItems: "flex-start", gap: 7 }}>
-                    <Info size={12} style={{ color: C.amberDeep, flexShrink: 0, marginTop: 1 }}/>
-                    <p style={{ fontFamily: F.body, fontSize: 11, fontWeight: 500, color: C.mink, lineHeight: 1.45 }}>You haven't set a default payment method. <button type="button" onClick={() => onGoToItems && onGoToItems("ai-setup")} style={{ border: "none", background: "none", padding: 0, cursor: "pointer", fontFamily: F.head, fontSize: 11, fontWeight: 700, color: C.amberDeep, textDecoration: "underline" }}>Set your default</button> so it applies to every listing.</p>
-                  </div>
-                )}
+                {/* BUG-094 — this used to be gated on `!aiSettings.paymentMethod`
+                    and asserted "You haven't set a default payment method."
+                    Both were wrong: `aiSettings` is root-level useState({}) that
+                    only the AI Setup wizard ever writes, never hydrated from the
+                    profile, so the banner fired for everyone who hadn't run that
+                    wizard — including sellers who HAD set a default in
+                    Settings → Payments (stored on user.acceptedPaymentMethods).
+                    There's also no dependable "has set one" signal to gate on:
+                    acceptedPaymentMethods carries a schema default of
+                    ["CASH","ETRANSFER"], so "never touched it" is
+                    indistinguishable from "deliberately picked both".
+                    So: always shown, phrased conditionally, true either way. */}
+                <div style={{ marginTop: 10, padding: "8px 12px", borderRadius: 10, background: C.amberMist, border: "1px solid " + C.amber + "25", display: "flex", alignItems: "flex-start", gap: 7 }}>
+                  <Info size={12} style={{ color: C.amberDeep, flexShrink: 0, marginTop: 1 }}/>
+                  <p style={{ fontFamily: F.body, fontSize: 11, fontWeight: 500, color: C.mink, lineHeight: 1.45 }}>If you haven&apos;t set a default payment method, <button type="button" onClick={() => onGoToSettings && onGoToSettings("payments")} style={{ border: "none", background: "none", padding: 0, cursor: "pointer", fontFamily: F.head, fontSize: 11, fontWeight: 700, color: C.amberDeep, textDecoration: "underline" }}>set your default</button> so it applies to every listing.</p>
+                </div>
               </div>
             )}
           </div>
@@ -3852,9 +3946,20 @@ function ManualItemForm({ onDone, onBack, onGoToItems, onEnhanceAI, aiSettings =
           <div style={{ padding: "18px 20px", borderRadius: 18, background: C.sand, border: "1.5px solid " + C.fawn, marginBottom: 16 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
               <p style={{ fontFamily: F.head, fontSize: 13, fontWeight: 800, color: C.ink }}>When should this go live?</p>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, fontFamily: F.body, fontSize: 11, fontWeight: 600, color: C.mink }}>
-                <Calendar size={11}/> Next Drop: {dropOpenDay()} {dropOpenHour()}{dropOpenCountdown ? ` (${dropOpenCountdown} away)` : ""}
-              </div>
+              {/* During a LIVE Drop the "next Drop ... away" countdown is wrong —
+                  the Drop the seller would land in is the one already running. */}
+              {dropIsLive ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 6, fontFamily: F.body, fontSize: 11, fontWeight: 700, color: C.green }}>
+                  <span style={{ position: "relative", display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: C.green, flexShrink: 0 }}>
+                    <span style={{ position: "absolute", inset: 0, borderRadius: "50%", background: C.green, opacity: 0.4, animation: "pulseLive 1.8s ease-in-out infinite" }}/>
+                  </span>
+                  Drop is live and underway
+                </div>
+              ) : (
+                <div style={{ display: "flex", alignItems: "center", gap: 6, fontFamily: F.body, fontSize: 11, fontWeight: 600, color: C.mink }}>
+                  <Calendar size={11}/> Next Drop: {dropOpenDay()} {dropOpenHour()}{dropOpenCountdown ? ` (${dropOpenCountdown} away)` : ""}
+                </div>
+              )}
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -3870,26 +3975,50 @@ function ManualItemForm({ onDone, onBack, onGoToItems, onEnhanceAI, aiSettings =
                 </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
-                    <p style={{ fontFamily: F.head, fontSize: 14, fontWeight: 800, color: C.ink }}>Queue for the next Drop</p>
+                    <p style={{ fontFamily: F.head, fontSize: 14, fontWeight: 800, color: C.ink }}>
+                      {dropIsLive ? "List now in the live drop" : "Queue for the next Drop"}
+                    </p>
                     <span style={{ fontFamily: F.head, fontSize: 9, fontWeight: 900, padding: "2px 7px", borderRadius: 999, background: C.green, color: "#fff", letterSpacing: "0.06em" }}>RECOMMENDED</span>
                   </div>
-                  <p style={{ fontFamily: F.body, fontSize: 12, fontWeight: 500, color: C.mink, lineHeight: 1.5 }}>Goes live {dropOpenDay()} at {dropOpenHour()} alongside 90+ other sellers — higher visibility, event-driven traffic.</p>
+                  <p style={{ fontFamily: F.body, fontSize: 12, fontWeight: 500, color: C.mink, lineHeight: 1.5 }}>
+                    {dropIsLive
+                      ? `Goes live immediately${sellerPhrase} — the Drop is running now, so buyers see it straight away.`
+                      : `Goes live ${dropOpenDay()} at ${dropOpenHour()}${sellerPhrase} — higher visibility, event-driven traffic.`}
+                  </p>
                 </div>
               </button>
 
-              {/* Option B: List now on the Shelf */}
-              <button onClick={() => setPublishWhen("shelf")} style={{
-                textAlign: "left", padding: 14, borderRadius: 14,
-                border: "2px solid " + (publishWhen === "shelf" ? C.amber : C.fawn),
-                background: publishWhen === "shelf" ? C.amberMist : C.paper,
-                cursor: "pointer", display: "flex", alignItems: "flex-start", gap: 12,
-              }}>
-                <div style={{ width: 20, height: 20, borderRadius: "50%", border: "2px solid " + (publishWhen === "shelf" ? C.amber : C.smoke), display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>
-                  {publishWhen === "shelf" && <div style={{ width: 10, height: 10, borderRadius: "50%", background: C.amber }}/>}
+              {/* Option B: List now on the Shelf — closed while a Drop is LIVE.
+                  Everything goes into the running Drop instead, so this path is
+                  greyed out and non-interactive until the Drop closes. */}
+              <button
+                onClick={() => { if (!dropIsLive) setPublishWhen("shelf"); }}
+                disabled={dropIsLive}
+                aria-disabled={dropIsLive}
+                title={dropIsLive ? "The Shelf is closed while a Drop is live" : undefined}
+                style={{
+                  textAlign: "left", padding: 14, borderRadius: 14,
+                  border: "2px solid " + (dropIsLive ? C.fawn : (publishWhen === "shelf" ? C.amber : C.fawn)),
+                  background: dropIsLive ? C.smoke + "40" : (publishWhen === "shelf" ? C.amberMist : C.paper),
+                  cursor: dropIsLive ? "not-allowed" : "pointer",
+                  opacity: dropIsLive ? 0.55 : 1,
+                  display: "flex", alignItems: "flex-start", gap: 12,
+                }}>
+                <div style={{ width: 20, height: 20, borderRadius: "50%", border: "2px solid " + (!dropIsLive && publishWhen === "shelf" ? C.amber : C.smoke), display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>
+                  {!dropIsLive && publishWhen === "shelf" && <div style={{ width: 10, height: 10, borderRadius: "50%", background: C.amber }}/>}
                 </div>
                 <div style={{ flex: 1 }}>
-                  <p style={{ fontFamily: F.head, fontSize: 14, fontWeight: 800, color: C.ink, marginBottom: 3 }}>List now on the Shelf</p>
-                  <p style={{ fontFamily: F.body, fontSize: 12, fontWeight: 500, color: C.mink, lineHeight: 1.5 }}>Available to buyers today — automatically rolls into the next Drop if unsold.</p>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3, flexWrap: "wrap" }}>
+                    <p style={{ fontFamily: F.head, fontSize: 14, fontWeight: 800, color: C.ink }}>List now on the Shelf</p>
+                    {dropIsLive && (
+                      <span style={{ fontFamily: F.head, fontSize: 9, fontWeight: 800, padding: "2px 7px", borderRadius: 999, background: C.smoke, color: C.mink, letterSpacing: "0.06em", textTransform: "uppercase" }}>Unavailable during a Drop</span>
+                    )}
+                  </div>
+                  <p style={{ fontFamily: F.body, fontSize: 12, fontWeight: 500, color: C.mink, lineHeight: 1.5 }}>
+                    {dropIsLive
+                      ? "The Shelf reopens once this Drop closes — list into the live Drop instead."
+                      : "Available to buyers today — automatically rolls into the next Drop if unsold."}
+                  </p>
                 </div>
               </button>
             </div>
@@ -3919,9 +4048,7 @@ function ManualItemForm({ onDone, onBack, onGoToItems, onEnhanceAI, aiSettings =
               opacity: submitting ? 0.6 : 1,
             }}>
               <Check size={15} strokeWidth={2.5}/>
-              {submitting
-                ? "Saving…"
-                : (publishWhen === "drop" ? "Queue for Saturday's Drop" : "Publish to Shelf now")}
+              {submitting ? "Saving…" : "Publish"}
             </button>
           </div>
         </div>
@@ -3932,11 +4059,29 @@ function ManualItemForm({ onDone, onBack, onGoToItems, onEnhanceAI, aiSettings =
 
 /* ============================== MY ITEMS ============================== */
 /* ========= INVENTORY SUB-TABS (shared header for Items/Claims/Pickups) ========= */
-function InventoryTabs({ activeView, onNav, ordersCount = 0, ordersUrgent = 0 }) {
+function InventoryTabs({ activeView, onNav, ordersCount = 0, ordersUrgent = 0, accessToken = null }) {
   const { isMobile } = useViewport();
+
+  // Unanswered-question badge. Fetched here rather than threaded from each
+  // parent view so the count is identical on every inventory tab. Gated on
+  // accessToken: /questions/pending is authed, and an unauthed 401 would send
+  // the standalone preview to /join.
+  const [openQuestions, setOpenQuestions] = useState(0);
+  useEffect(() => {
+    if (!accessToken) { setOpenQuestions(0); return; }
+    let cancelled = false;
+    apiRequest("/api/questions/pending", { token: accessToken })
+      .then((r) => { if (!cancelled) setOpenQuestions(Array.isArray(r?.questions) ? r.questions.length : 0); })
+      .catch(() => { if (!cancelled) setOpenQuestions(0); });
+    return () => { cancelled = true; };
+  }, [accessToken, activeView]);
+
   const tabs = [
     { id: "items",  label: "My items",  view: "items" },
     { id: "orders", label: "Orders",    view: "orders", count: ordersCount, urgent: ordersUrgent },
+    // Buyers' public questions are visible on the listing whether or not the
+    // seller replies, so an unanswered one is urgent by default.
+    { id: "questions", label: "Questions", view: "questions", count: openQuestions, urgent: openQuestions },
   ];
   return (
     <div className="fade-in" style={{ maxWidth: isMobile ? "100%" : 1160, margin: isMobile ? "0 auto 12px" : "0 auto 14px" }}>
@@ -3951,14 +4096,18 @@ function InventoryTabs({ activeView, onNav, ordersCount = 0, ordersUrgent = 0 })
         )}
         <div style={{ display: "flex", alignItems: "flex-start", gap: isMobile ? 12 : 16 }}>
           <div style={{ width: isMobile ? 42 : 48, height: isMobile ? 42 : 48, borderRadius: isMobile ? 12 : 14, background: C.greenMist, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 2, boxShadow: "0 2px 0 " + C.fawn }}>
-            <Box size={isMobile ? 18 : 20} style={{ color: C.greenDeep }} strokeWidth={2.2}/>
+            {activeView === "questions"
+              ? <MessageCircle size={isMobile ? 18 : 20} style={{ color: C.greenDeep }} strokeWidth={2.2}/>
+              : <Box size={isMobile ? 18 : 20} style={{ color: C.greenDeep }} strokeWidth={2.2}/>}
           </div>
           <div style={{ minWidth: 0 }}>
-            <h1 style={{ fontFamily: F.head, fontSize: isMobile ? 24 : 30, fontWeight: 900, color: C.ink, letterSpacing: "-0.03em", lineHeight: 1.05, marginBottom: 4 }}>{activeView === "orders" ? "Orders" : "My items"}</h1>
+            <h1 style={{ fontFamily: F.head, fontSize: isMobile ? 24 : 30, fontWeight: 900, color: C.ink, letterSpacing: "-0.03em", lineHeight: 1.05, marginBottom: 4 }}>{activeView === "orders" ? "Orders" : activeView === "questions" ? "Questions" : "My items"}</h1>
             <p style={{ fontFamily: F.body, fontSize: isMobile ? 12.5 : 14, fontWeight: 500, color: C.mink, lineHeight: 1.45, maxWidth: 560 }}>
               {activeView === "orders"
                 ? "Upcoming pickups you need to handle."
-                : "Everything you have listed, in draft, or pending review."}
+                : activeView === "questions"
+                  ? "Buyers asking about your listings. Answers are public on the item."
+                  : "Everything you have listed, in draft, or pending review."}
             </p>
           </div>
         </div>
@@ -3993,6 +4142,159 @@ function InventoryTabs({ activeView, onNav, ordersCount = 0, ordersUrgent = 0 })
   );
 }
 
+/* ============================== QUESTIONS ==============================
+   Seller-side queue for the buyer-facing public Q&A on item detail. Answers
+   post straight onto the listing, so this is a publishing surface, not a
+   private inbox — the copy says so in a few places to keep that obvious.
+   ====================================================================== */
+function QuestionsView({ onNav, accessToken = null }) {
+  const { isMobile } = useViewport();
+  const [questions, setQuestions] = useState([]);
+  const [loading, setLoading]     = useState(!!accessToken);
+  const [drafts, setDrafts]       = useState({});   // questionId -> answer text
+  const [busyId, setBusyId]       = useState(null);
+  const [errorMsg, setErrorMsg]   = useState(null);
+  const [successMsg, setSuccessMsg] = useState(null);
+
+  const reload = useCallback(() => {
+    if (!accessToken) { setQuestions([]); setLoading(false); return; }
+    setLoading(true);
+    apiRequest("/api/questions/pending", { token: accessToken })
+      .then((r) => setQuestions(Array.isArray(r?.questions) ? r.questions : []))
+      .catch(() => setQuestions([]))
+      .finally(() => setLoading(false));
+  }, [accessToken]);
+
+  useEffect(() => { reload(); }, [reload]);
+
+  async function submitAnswer(q) {
+    const text = (drafts[q.id] || "").trim();
+    if (!text || busyId) return;
+    setBusyId(q.id);
+    setErrorMsg(null);
+    try {
+      await apiRequest(`/api/questions/${q.id}/answer`, {
+        method: "PATCH",
+        token:  accessToken,
+        body:   JSON.stringify({ answer: text }),
+      });
+      // Answered questions drop out of /pending, so remove locally rather than
+      // refetching the whole list on every reply.
+      setQuestions((prev) => prev.filter((x) => x.id !== q.id));
+      setDrafts((d) => { const next = { ...d }; delete next[q.id]; return next; });
+      setSuccessMsg("Answer posted to " + (q.item?.title || "the listing") + ".");
+      setTimeout(() => setSuccessMsg(null), 4000);
+    } catch (err) {
+      setErrorMsg(err?.message || "Couldn't post that answer. Please try again.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <div>
+      <InventoryTabs activeView="questions" onNav={onNav} accessToken={accessToken}/>
+
+      <div style={{ maxWidth: isMobile ? "100%" : 1160, margin: "0 auto" }}>
+        {successMsg && (
+          <div style={{ padding: "11px 15px", borderRadius: 12, background: C.greenMist, border: "1px solid " + C.green + "40", marginBottom: 14, display: "flex", alignItems: "center", gap: 9 }}>
+            <Check size={15} style={{ color: C.greenDeep, flexShrink: 0 }} strokeWidth={2.6}/>
+            <p style={{ fontFamily: F.body, fontSize: 13, fontWeight: 700, color: C.greenDeep }}>{successMsg}</p>
+          </div>
+        )}
+        {errorMsg && (
+          <div style={{ padding: "11px 15px", borderRadius: 12, background: C.claretMist, border: "1px solid " + C.claret + "40", marginBottom: 14, display: "flex", alignItems: "flex-start", gap: 9 }}>
+            <AlertCircle size={15} style={{ color: C.claret, flexShrink: 0, marginTop: 1 }}/>
+            <p style={{ fontFamily: F.body, fontSize: 13, fontWeight: 600, color: C.claret, lineHeight: 1.5 }}>{errorMsg}</p>
+          </div>
+        )}
+
+        {loading ? (
+          <p style={{ fontFamily: F.body, fontSize: 13, fontWeight: 600, color: C.ash, padding: "28px 4px" }}>Loading questions…</p>
+        ) : questions.length === 0 ? (
+          <div style={{ padding: "40px 24px", borderRadius: 20, background: C.paper, border: "1.5px solid " + C.fawn, textAlign: "center" }}>
+            <div style={{ width: 52, height: 52, borderRadius: "50%", background: C.sand, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px" }}>
+              <MessageCircle size={22} style={{ color: C.ash }}/>
+            </div>
+            <p style={{ fontFamily: F.head, fontSize: 15, fontWeight: 800, color: C.ink, marginBottom: 5 }}>No questions waiting</p>
+            <p style={{ fontFamily: F.body, fontSize: 13, fontWeight: 500, color: C.mink, lineHeight: 1.5, maxWidth: 420, margin: "0 auto" }}>
+              When a buyer asks something on one of your listings, it lands here. Your answer shows publicly on the item.
+            </p>
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            {questions.map((q) => {
+              const draft = drafts[q.id] || "";
+              const busy  = busyId === q.id;
+              const photo = Array.isArray(q.item?.photos) ? q.item.photos[0] : null;
+              return (
+                <article key={q.id} style={{ padding: isMobile ? 16 : 20, borderRadius: 18, background: C.paper, border: "1.5px solid " + C.fawn }}>
+                  {/* Which listing this is about */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 11, paddingBottom: 13, marginBottom: 13, borderBottom: "1px solid " + C.fawn }}>
+                    <div style={{ width: 40, height: 40, borderRadius: 10, background: C.sand, border: "1px solid " + C.fawn, overflow: "hidden", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      {photo
+                        ? <img src={photo} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }}/>
+                        : <Package size={16} style={{ color: C.ash }}/>}
+                    </div>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <p style={{ fontFamily: F.head, fontSize: 13, fontWeight: 800, color: C.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{q.item?.title || "Item"}</p>
+                      <p style={{ fontFamily: F.body, fontSize: 11, fontWeight: 600, color: C.mink }}>
+                        ${typeof q.item?.price === "number" ? q.item.price : "—"}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* The question */}
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 13 }}>
+                    <div style={{ width: 28, height: 28, borderRadius: "50%", background: C.greenMist, color: C.greenDeep, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: F.head, fontSize: 11, fontWeight: 800, flexShrink: 0 }}>
+                      {(q.askerName || "B").charAt(0)}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3, flexWrap: "wrap" }}>
+                        <span style={{ fontFamily: F.head, fontSize: 12, fontWeight: 800, color: C.ink }}>{q.askerName || "Buyer"}</span>
+                        <span style={{ fontFamily: F.body, fontSize: 10, fontWeight: 600, color: C.ash }}>· {relativeTimeShort(q.createdAt)}</span>
+                      </div>
+                      <p style={{ fontFamily: F.body, fontSize: 13.5, fontWeight: 600, color: C.ink, lineHeight: 1.55 }}>{q.body}</p>
+                    </div>
+                  </div>
+
+                  {/* Answer composer */}
+                  <textarea
+                    value={draft}
+                    onChange={(e) => setDrafts((d) => ({ ...d, [q.id]: e.target.value }))}
+                    placeholder="Write a public answer…"
+                    rows={3}
+                    disabled={busy}
+                    style={{ width: "100%", padding: 12, borderRadius: 12, border: "1.5px solid " + C.fawn, fontFamily: F.body, fontSize: 13, fontWeight: 500, color: C.ink, outline: "none", resize: "vertical", background: busy ? C.sand : C.paper, boxSizing: "border-box" }}
+                  />
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 10, flexWrap: "wrap" }}>
+                    <p style={{ fontFamily: F.body, fontSize: 11, fontWeight: 600, color: C.ash }}>Visible to everyone viewing this item.</p>
+                    <button
+                      onClick={() => submitAnswer(q)}
+                      disabled={!draft.trim() || busy}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 6,
+                        padding: "10px 20px", borderRadius: 999, border: "none",
+                        background: (draft.trim() && !busy) ? C.green : C.fawn,
+                        color: (draft.trim() && !busy) ? "#fff" : C.ash,
+                        fontFamily: F.head, fontSize: 13, fontWeight: 800,
+                        cursor: (draft.trim() && !busy) ? "pointer" : "not-allowed",
+                        boxShadow: (draft.trim() && !busy) ? "0 2px 0 " + C.greenDeep : "none",
+                      }}
+                    >
+                      {busy ? "Posting…" : (<><Send size={13}/> Post answer</>)}
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function OrdersView({ onNav, accessToken = null, onClaimsChanged = null }) {
   // Counts in the InventoryTabs header are placeholders for the pickups side
   // (still demo data in Phase B). Pending claims are shown in their own
@@ -4002,7 +4304,7 @@ function OrdersView({ onNav, accessToken = null, onClaimsChanged = null }) {
 
   return (
     <div>
-      <InventoryTabs activeView="orders" onNav={onNav} ordersCount={scheduledCount} ordersUrgent={todayCount}/>
+      <InventoryTabs activeView="orders" onNav={onNav} ordersCount={scheduledCount} ordersUrgent={todayCount} accessToken={accessToken}/>
 
       {/* Pending claims — wired to GET /api/claims/incoming */}
       <div style={{ marginBottom: 28 }}>
@@ -4213,6 +4515,9 @@ function MyItemsView({ onNav, onEdit, onView, sellerItems, onItemsChange, seller
       // Surface the buyer's "Confirm receipt" flag so the inventory/pickups
       // view can show a high-priority badge on this item.
       buyerConfirmedReceipt: !!(api.activeClaim && api.activeClaim.buyerConfirmedReceiptAt),
+      // BUG-093 — set when the seller committed the item to a Drop. Distinguishes
+      // "queued for Saturday" from a private draft; both are backend DRAFT.
+      isQueued:    !!api.queuedAt,
       isFree:      api.price === 0 && !isDraft,
       photos:      Array.isArray(api.photos) ? api.photos.filter(Boolean) : [],
       description: api.description || "",
@@ -4280,6 +4585,14 @@ function MyItemsView({ onNav, onEdit, onView, sellerItems, onItemsChange, seller
 
   // Compute the lifecycle for each item
   function lifecycleOf(item) {
+    // BUG-093 — a backend DRAFT is either a private draft OR an item queued
+    // for the next Drop; `isQueued` (queuedAt) is what separates them. This
+    // check has to come BEFORE the plain draft check, which used to swallow
+    // queued items and label them "Draft" — sending the seller back through
+    // the Publish chooser for something they'd already committed.
+    if (item.status === "draft" && item.isQueued) {
+      return dropIsLive ? "live" : "queued";
+    }
     if (item.status === "draft") return "draft";
     // BUG-053 — CLAIMED items are no longer claimable by other buyers but
     // still in the seller's hands until pickup. Show them with a distinct
@@ -4453,7 +4766,7 @@ function MyItemsView({ onNav, onEdit, onView, sellerItems, onItemsChange, seller
 
   return (
     <div className="fade-in" style={{ maxWidth: isMobile ? "100%" : 1160, margin: "0 auto" }}>
-      <InventoryTabs activeView="items" onNav={onNav} ordersCount={pickupsCount} ordersUrgent={pickupsTodayCount}/>
+      <InventoryTabs activeView="items" onNav={onNav} ordersCount={pickupsCount} ordersUrgent={pickupsTodayCount} accessToken={accessToken}/>
 
       {/* Phase-aware Drop strip — closing window swaps to the bulk-discount banner. */}
       {isClosing ? (
@@ -4793,9 +5106,13 @@ function MyItemsView({ onNav, onEdit, onView, sellerItems, onItemsChange, seller
 
               {/* Col 6 — Row actions, lifecycle-aware */}
               <div style={{ display: "flex", gap: 6, alignItems: "center", justifyContent: "flex-end" }}>
-                {/* Share icon — visible for every published lifecycle (queued / live / shelf).
-                    Hidden on drafts since they're not publicly viewable. — BUG-051. */}
-                {lc !== "draft" && (
+                {/* Share icon — only for lifecycles a new buyer could still act on.
+                    Hidden on drafts (not publicly viewable — BUG-051) and on
+                    claimed items (BUG-089): the sale is already in flight, so
+                    sharing sends people to a listing nobody else can claim.
+                    Written as an allow-list so a future lifecycle has to opt in
+                    rather than silently inheriting a Share button. */}
+                {["queued", "live", "shelf"].includes(lc) && (
                   <button
                     onClick={async (e) => { e.stopPropagation(); await shareSellerListing(item); }}
                     aria-label="Share this listing"
@@ -5246,8 +5563,15 @@ function ClaimsView({ onNav, embedded = false, accessToken = null, onClaimsChang
   }
 
   // Adapter: backend claim -> UI claim shape used by the existing render code.
-  // Backend GET /api/claims/incoming returns only PROPOSED claims with
-  //   { id, status, requestedAt, item:{id,title,price,photos}, buyer:{id,name,email} }
+  // BUG-090 — this comment used to claim "GET /api/claims/incoming returns only
+  // PROPOSED claims". It does not: with no `status` query param the backend
+  // returns EVERY claim for the seller in every terminal state (CANCELLED,
+  // DECLINED, EXPIRED, PICKED_UP, CONFIRMED). Both fetches below now pass
+  // ?status=PROPOSED explicitly. PROPOSED is exactly "live negotiation" —
+  // countering via PATCH /:id/amount keeps the status and only flips
+  // `lastAmountBy`, so it covers both "your turn" and "waiting for buyer".
+  //   shape: { id, status, amount, lastAmountBy, proposedAt,
+  //            item:{id,title,price,photos}, buyer:{id,name,email} }
   // The UI didn't have an "offer below ask" concept on the backend, so we
   // present every pending claim as a full-price claim (offered === listed).
   function adaptClaim(api) {
@@ -5276,7 +5600,7 @@ function ClaimsView({ onNav, embedded = false, accessToken = null, onClaimsChang
   // socket listener below can re-run it without duplicating the body.
   const reloadClaims = () => {
     if (!accessToken) return;
-    apiRequest("/api/claims/incoming", { token: accessToken })
+    apiRequest("/api/claims/incoming?status=PROPOSED", { token: accessToken })
       .then(data => {
         const list = Array.isArray(data?.claims) ? data.claims.map(adaptClaim).filter(Boolean) : [];
         setClaims(list);
@@ -5287,7 +5611,7 @@ function ClaimsView({ onNav, embedded = false, accessToken = null, onClaimsChang
     if (!accessToken) { setClaims(DEMO_CLAIMS); setLoading(false); return; }
     let cancelled = false;
     setLoading(true);
-    apiRequest("/api/claims/incoming", { token: accessToken })
+    apiRequest("/api/claims/incoming?status=PROPOSED", { token: accessToken })
       .then(data => {
         if (cancelled) return;
         const list = Array.isArray(data?.claims) ? data.claims.map(adaptClaim).filter(Boolean) : [];
@@ -5393,7 +5717,7 @@ function ClaimsView({ onNav, embedded = false, accessToken = null, onClaimsChang
 
   return (
     <div>
-      {!embedded && <InventoryTabs activeView="orders" onNav={onNav} ordersCount={offers} ordersUrgent={0}/>}
+      {!embedded && <InventoryTabs activeView="orders" onNav={onNav} ordersCount={offers} ordersUrgent={0} accessToken={accessToken}/>}
 
       {/* Success toast */}
       {successMsg && (
@@ -5605,7 +5929,6 @@ function SellerMessagesView({ user = null, accessToken = null, convList: convLis
   const [activeId, setActiveId]         = useState(usingBackend ? null : "s1");
   // Mobile drill-down — null means we're on the list, otherwise we're inside a thread.
   const [mobileViewingId, setMobileViewingId] = useState(null);
-  const [filter, setFilter]             = useState("all");
   const [draft, setDraft]               = useState("");
   const [sending, setSending]           = useState(false);
   const [errorMsg, setErrorMsg]         = useState(null);
@@ -5939,23 +6262,11 @@ function SellerMessagesView({ user = null, accessToken = null, convList: convLis
     "completed":         { label: "Completed",         color: C.ash,       bg: C.sand,        icon: Check      },
   };
 
-  const filters = [
-    { id: "all",       label: "All" },
-    { id: "claim",     label: "Claims" },
-    { id: "offer",     label: "Offers" },
-    { id: "question",  label: "Q&A" },
-  ];
-
-  const counts = {
-    all:      conversations.length,
-    claim:    conversations.filter(c => c.type === "claim").length,
-    offer:    conversations.filter(c => c.type === "offer").length,
-    question: conversations.filter(c => c.type === "question").length,
-  };
   const unreadCount = conversations.filter(c => c.unread).length;
   const needsAction = conversations.filter(c => ["needs-response","pending","pickup-today"].includes(c.status)).length;
 
-  const filtered = conversations.filter(c => filter === "all" || c.type === filter);
+  // No type filter any more (BUG-088) — the list is every thread, newest first.
+  const filtered = conversations;
   const active = conversations.find(c => c.id === activeId) || conversations[0];
   const activeStatus = active ? statusMeta[active.status] : null;
   // Demo mode reads messages inline from the conversation; wired mode uses
@@ -6114,20 +6425,14 @@ function SellerMessagesView({ user = null, accessToken = null, convList: convLis
         </div>
       )}
 
-      {/* Filter tabs — hidden during mobile thread view so the thread gets full screen */}
-      {(!isMobile || !mobileViewingId) && (
-      <div style={{ display: "flex", gap: 8, marginBottom: isMobile ? 12 : 18, flexWrap: "wrap" }}>
-        {filters.map(f => {
-          const on = filter === f.id;
-          return (
-            <button key={f.id} onClick={() => setFilter(f.id)} style={{ display: "flex", alignItems: "center", gap: 7, padding: isMobile ? "7px 13px" : "8px 16px", borderRadius: 999, border: "1.5px solid " + (on ? C.ink : C.fawn), background: on ? C.ink : C.paper, color: on ? "#fff" : C.mink, fontFamily: F.head, fontSize: isMobile ? 12 : 13, fontWeight: 700, cursor: "pointer", transition: "all 150ms" }}>
-              {f.label}
-              <span style={{ fontFamily: F.head, fontSize: 10, fontWeight: 800, padding: "2px 7px", borderRadius: 999, background: on ? "rgba(255,255,255,0.18)" : C.sand, color: on ? "#fff" : C.ash }}>{counts[f.id]}</span>
-            </button>
-          );
-        })}
-      </div>
-      )}
+      {/* BUG-088 — the All / Claims / Offers / Q&A filter row was removed.
+          It looked functional but couldn't work: adaptSellerConversation
+          hardcodes `type: "question"` on every conversation, so Claims and
+          Offers were permanently 0 and Q&A was always identical to All.
+          Clicking anything either emptied the list or changed nothing.
+          To bring it back, first derive a real conversation type (claim when
+          the thread has a claim, offer when it has OFFER/COUNTER messages,
+          else question) — the chips are the easy half. */}
 
       <div style={{
         display: isMobile ? "flex" : "grid",
@@ -6153,7 +6458,7 @@ function SellerMessagesView({ user = null, accessToken = null, convList: convLis
           {filtered.length === 0 ? (
             <div style={{ padding: "40px 20px", textAlign: "center" }}>
               <MessageSquare size={28} style={{ color: C.smoke, marginBottom: 10 }}/>
-              <p style={{ fontFamily: F.body, fontSize: 13, fontWeight: 600, color: C.mink }}>No {filter === "all" ? "" : filter + " "}threads.</p>
+              <p style={{ fontFamily: F.body, fontSize: 13, fontWeight: 600, color: C.mink }}>No threads yet.</p>
             </div>
           ) : filtered.map(c => {
             const isActive = c.id === activeId;
@@ -6642,7 +6947,7 @@ function PickupsView({ onNav, embedded = false, accessToken = null, onChanged = 
 
   return (
     <div>
-      {!embedded && <InventoryTabs activeView="orders" onNav={onNav} ordersCount={pickups.length} ordersUrgent={todayCount} />}
+      {!embedded && <InventoryTabs activeView="orders" onNav={onNav} ordersCount={pickups.length} ordersUrgent={todayCount} accessToken={accessToken} />}
 
       {/* Success toast */}
       {successMsg && (
@@ -7561,6 +7866,7 @@ function EditItemView({ onBack, editingItem, aiSettings = {}, accessToken = null
   const [pickupDays, setPickupDays] = useState(Array.isArray(initialPickup.pickupDays) ? initialPickup.pickupDays : []);
   const [pickupCustom, setPickupCustom] = useState(Array.isArray(initialPickup.pickupCustomDates) ? initialPickup.pickupCustomDates : []);
   const [pickupNewDate, setPickupNewDate] = useState("");
+  const [pickupDateError, setPickupDateError] = useState("");
   const [pickupWindows, setPickupWindows] = useState(
     Array.isArray(initialPickup.pickupWindows) && initialPickup.pickupWindows.length > 0
       ? initialPickup.pickupWindows
@@ -7568,7 +7874,20 @@ function EditItemView({ onBack, editingItem, aiSettings = {}, accessToken = null
   );
   function togDay(d) { setPickupDays(p => p.includes(d) ? p.filter(x => x !== d) : [...p, d]); }
   function togWin(w) { setPickupWindows(p => p.includes(w) ? p.filter(x => x !== w) : [...p, w]); }
-  function addPickupDate() { if (pickupNewDate && !pickupCustom.includes(pickupNewDate)) { setPickupCustom(p => [...p, pickupNewDate]); setPickupNewDate(""); } }
+  // BUG-095 — reject past dates. The input's min attribute blocks the picker, but
+  // a typed/pasted value still reaches here, so this is the real client guard.
+  function addPickupDate() {
+    if (!pickupNewDate) return;
+    if (isPastISODate(pickupNewDate)) {
+      setPickupDateError("Pick-up dates can't be in the past.");
+      return;
+    }
+    setPickupDateError("");
+    if (!pickupCustom.includes(pickupNewDate)) {
+      setPickupCustom(p => [...p, pickupNewDate]);
+    }
+    setPickupNewDate("");
+  }
 
   const [showPayment, setShowPayment] = useState(false);
   // Bundle — seed from raw item data so an existing bundle reopens populated.
@@ -8003,7 +8322,7 @@ function EditItemView({ onBack, editingItem, aiSettings = {}, accessToken = null
                 {pickupMode === "custom" && (
                   <div style={{ marginBottom: 14 }}>
                     <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-                      <input type="date" value={pickupNewDate} onChange={e => setPickupNewDate(e.target.value)}
+                      <input type="date" min={todayLocalISO()} value={pickupNewDate} onChange={e => { setPickupNewDate(e.target.value); if (pickupDateError) setPickupDateError(""); }}
                         style={{ flex: 1, padding: "9px 12px", borderRadius: 10, border: "1.5px solid " + C.fawn, fontSize: 12, fontFamily: F.body, outline: "none", color: C.ink, background: C.paper, boxSizing: "border-box" }}/>
                       <button onClick={addPickupDate}
                         style={{ padding: "9px 16px", borderRadius: 10, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 800, background: C.green, color: "#fff", fontFamily: F.head, display: "flex", alignItems: "center", gap: 4, boxShadow: "0 2px 0 " + C.greenDeep }}>
@@ -8022,8 +8341,11 @@ function EditItemView({ onBack, editingItem, aiSettings = {}, accessToken = null
                         ))}
                       </div>
                     )}
-                    {pickupCustom.length === 0 && (
-                      <p style={{ fontFamily: F.body, fontSize: 11, fontWeight: 500, color: C.ash, fontStyle: "italic" }}>Add one or more specific dates when you'll be available.</p>
+                    {pickupDateError && (
+                      <p style={{ fontFamily: F.body, fontSize: 11, fontWeight: 700, color: C.claret }}>{pickupDateError}</p>
+                    )}
+                    {pickupCustom.length === 0 && !pickupDateError && (
+                      <p style={{ fontFamily: F.body, fontSize: 11, fontWeight: 500, color: C.ash, fontStyle: "italic" }}>Add one or more specific dates when you&apos;ll be available.</p>
                     )}
                   </div>
                 )}
@@ -9337,11 +9659,15 @@ function SF_SuccessBanner({ message, onClose }) {
 }
 
 /* Parent SettingsView — picks active tab and renders the right body. */
-function SettingsView({ user }) {
+// `initialSection` lets other screens deep-link into a specific settings pane
+// (e.g. the listing form's "Set your default" payment-method link). null = the
+// normal entry point: desktop opens on Account, mobile opens on the section list.
+function SettingsView({ user, initialSection = null }) {
   const { isMobile } = useViewport();
-  const [activeSection, setActiveSection] = useState("account");
+  const [activeSection, setActiveSection] = useState(initialSection || "account");
   // Mobile drill-down: null = section list, otherwise section id = detail view.
-  const [mobileViewingSection, setMobileViewingSection] = useState(null);
+  // A deep link drills straight in rather than dumping the user on the list.
+  const [mobileViewingSection, setMobileViewingSection] = useState(initialSection || null);
   const [toast, setToast] = useState(null);
 
   // Sell-with-AI waitlist opt-in — local-to-Settings since the teaser was
@@ -9895,6 +10221,16 @@ const fieldInput = {
   outline: "none",
 };
 
+// Seller views safe to restore from the URL after a refresh. Excludes the
+// transient flows — edit-item, item-detail, add-manual/chooser/ai, ai-setup,
+// ai-photos, ai-plan — which read in-memory state (`editingItem`, wizard step)
+// that doesn't survive a reload. "messages" and "history" are intentionally
+// shared with the buyer tab list so switching roles keeps you on the same tab.
+const SELLER_TABS = new Set([
+  "overview", "items", "orders", "claims", "pickups", "questions",
+  "messages", "history", "settings",
+]);
+
 export default function DropYardSellerDashboard({
   onSwitchRole = () => alert("In the full product, this switches to the buyer dashboard."),
   user = null,
@@ -9913,13 +10249,34 @@ export default function DropYardSellerDashboard({
   onUserChanged = null,
 } = {}) {
   const { isMobile } = useViewport();
-  const [view, setView] = useState("overview");
+  // BUG-087 — active view persisted in ?tab= so a refresh doesn't bounce the
+  // seller back to Overview. Safe to read `window` here: app/buyer/page.tsx
+  // gates the dashboards behind a `mounted` flag, so this never runs on SSR.
+  const [view, setView] = useState(() => {
+    if (typeof window === "undefined") return "overview";
+    const t = new URLSearchParams(window.location.search).get("tab");
+    return t && SELLER_TABS.has(t) ? t : "overview";
+  });
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    // Transient views (edit-item, the add/AI flows) are NOT written to the URL:
+    // they depend on in-memory state like `editingItem`, so restoring one on
+    // refresh would render an editor with nothing loaded. Leaving the previous
+    // value in place means a refresh mid-edit lands on the last real tab.
+    if (view === "overview") url.searchParams.delete("tab");
+    else if (SELLER_TABS.has(view)) url.searchParams.set("tab", view);
+    else return;
+    window.history.replaceState(null, "", url.pathname + url.search);
+  }, [view]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [aiSettings, setAiSettings] = useState({});
   const [aiPlan, setAiPlan] = useState("free");
   const [aiUsed, setAiUsed] = useState(3);
   const [editingItem, setEditingItem] = useState(null);
   const [aiEntryPoint, setAiEntryPoint] = useState("overview");
+  // Which Settings pane to open on. null = default entry point.
+  const [settingsSection, setSettingsSection] = useState(null);
   const aiConfigured = !!aiSettings.priceFloor;
 
   // BUG-057 — Sign-out confirmation. All Sign-out paths (TopNav, Sidebar
@@ -9945,11 +10302,20 @@ export default function DropYardSellerDashboard({
       setShowOnboarding(true);
       return;
     }
+    // Generic nav to Settings (sidebar, mobile nav) is a fresh entry — drop any
+    // pane left over from a deep link like "Set your default", otherwise
+    // Settings would keep reopening on Payments.
+    if (target === "settings") setSettingsSection(null);
     setView(target);
   };
 
   function goToEdit(item) { setEditingItem(item); setView("edit-item"); }
   function goToView(item) { setEditingItem(item); setView("item-detail"); }
+  // Deep-link into a specific Settings pane. `null` = normal entry (Account on
+  // desktop, section list on mobile). Used by the listing form's "Set your
+  // default" payment link, which previously called onGoToItems("ai-setup") —
+  // a prop that ignores its argument, so it landed on Inventory (BUG-083).
+  function goToSettings(sectionId = null) { setSettingsSection(sectionId); setView("settings"); }
 
   // ─── Conversation inbox (lifted to root for nav badges) ───
   // Owns the seller's conversation list at the root so the Sidebar, TopNav
@@ -10061,7 +10427,7 @@ export default function DropYardSellerDashboard({
         <TopNav
           user={user}
           onSignout={onSignoutRequest}
-          onOpenSettings={() => setView("settings")}
+          onOpenSettings={() => goToSettings(null)}
           activeView={view}
           onToggleSidebar={() => setSidebarCollapsed(c => !c)}
           onSwitchRole={onSwitchRole}
@@ -10077,17 +10443,21 @@ export default function DropYardSellerDashboard({
           <main className="dy-seller-main">
             {view === "overview" && <Overview onNav={safeNav} user={user} sellerItems={sellerItems} accessToken={accessToken}/>}
             {view === "items" && <MyItemsView onNav={safeNav} onEdit={goToEdit} onView={goToView} sellerItems={sellerItems} onItemsChange={onItemsChange} sellerItemsLoading={sellerItemsLoading} accessToken={accessToken}/>}
+            {view === "questions" && <QuestionsView onNav={safeNav} accessToken={accessToken}/>}
             {view === "item-detail" && <ItemDetailView item={editingItem} onBack={() => setView("items")} onEdit={() => setView("edit-item")} accessToken={accessToken}/>}
             {view === "orders" && <OrdersView onNav={setView} accessToken={accessToken} onClaimsChanged={onItemCreated}/>}
             {view === "claims" && <ClaimsView onNav={setView} accessToken={accessToken} onClaimsChanged={onItemCreated}/>}
             {view === "pickups" && <PickupsView onNav={setView} accessToken={accessToken} onChanged={onItemCreated}/>}
             {view === "messages" && <SellerMessagesView user={user} accessToken={accessToken} convList={convList} onConvListChange={setConvList}/>}
             {view === "history" && <SellerHistoryView accessToken={accessToken}/>}
-            {view === "settings" && <SettingsView user={user}/>}
+            {/* Keyed on the requested pane so arriving from a deep link while
+                Settings is already mounted still lands on the right section —
+                `initialSection` only seeds useState on mount. */}
+            {view === "settings" && <SettingsView key={settingsSection || "default"} user={user} initialSection={settingsSection}/>}
             {view === "edit-item" && <EditItemView onBack={() => setView("items")} editingItem={editingItem} aiSettings={aiSettings} accessToken={accessToken} onItemsChange={onItemsChange}/>}
 
-            {view === "add-chooser" && <ManualItemForm onDone={() => setView("items")} onBack={() => setView("items")} onGoToItems={() => setView("items")} onEnhanceAI={() => {setAiEntryPoint("add-manual");setView(aiConfigured ? "add-ai" : "ai-setup")}} aiSettings={aiSettings} accessToken={accessToken} onItemCreated={onItemCreated}/>}
-            {view === "add-manual" && <ManualItemForm onDone={() => setView("items")} onBack={() => setView("items")} onGoToItems={() => setView("items")} onEnhanceAI={() => {setAiEntryPoint("add-manual");setView(aiConfigured ? "add-ai" : "ai-setup")}} aiSettings={aiSettings} accessToken={accessToken} onItemCreated={onItemCreated}/>}
+            {view === "add-chooser" && <ManualItemForm onDone={() => setView("items")} onBack={() => setView("items")} onGoToItems={() => setView("items")} onGoToSettings={goToSettings} onEnhanceAI={() => {setAiEntryPoint("add-manual");setView(aiConfigured ? "add-ai" : "ai-setup")}} aiSettings={aiSettings} accessToken={accessToken} onItemCreated={onItemCreated}/>}
+            {view === "add-manual" && <ManualItemForm onDone={() => setView("items")} onBack={() => setView("items")} onGoToItems={() => setView("items")} onGoToSettings={goToSettings} onEnhanceAI={() => {setAiEntryPoint("add-manual");setView(aiConfigured ? "add-ai" : "ai-setup")}} aiSettings={aiSettings} accessToken={accessToken} onItemCreated={onItemCreated}/>}
             {view === "add-ai" && <AIPhotoFlow onDone={() => setView("items")} onBack={() => setView("add-manual")} aiSettings={aiSettings}/>}
 
             {view === "ai-setup" && <AISetup settings={aiSettings} onSave={setAiSettings} onComplete={() => {setView(aiEntryPoint==="add-manual"?"add-ai":"ai-photos")}} onBack={() => setView(aiEntryPoint==="add-manual"?"add-manual":"overview")} />}

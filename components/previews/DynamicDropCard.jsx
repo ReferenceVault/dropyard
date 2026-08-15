@@ -1,5 +1,6 @@
 "use client";
 import React, { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Bell,
@@ -110,6 +111,7 @@ function LiveRow({ item, index }) {
 }
 
 export default function DynamicDropCard() {
+  const router = useRouter();
   // `now` is intentionally null on the first render so SSR and the initial
   // client render produce identical markup (no hydration mismatch). The
   // useEffect below seeds it to `new Date()` immediately after mount and
@@ -138,6 +140,13 @@ export default function DynamicDropCard() {
   const remaining = targetAt && now
     ? Math.max(targetAt.getTime() - now.getTime(), 0)
     : 0;
+
+  // Warm /buyer once the Drop is live so the CTA lands instantly instead of
+  // paying for that route's first-load bundle at click time. Declared after
+  // `isLive` — referencing it from the dep array any earlier is a TDZ crash.
+  useEffect(() => {
+    if (isLive) router.prefetch("/buyer");
+  }, [isLive, router]);
   const time = useMemo(() => formatDuration(remaining), [remaining]);
 
   // Live items + stats pulled from /api/items. Total + unique sellers compute
@@ -279,16 +288,26 @@ export default function DynamicDropCard() {
               isLive → "/buyer" (the /buyer route gates anon visitors to /join,
                        so this works for both signed-in and signed-out users)
               isLive false → smooth-scroll to the Early Access waitlist
-                       (#early-access anchor on this same page) */}
+                       (#early-access anchor on this same page)
+
+            BUG-081 — the live branch used to let the browser follow the href,
+            which in the App Router is a FULL document reload: the whole React
+            tree is torn down and /buyer's bundle (both 1.4 MB dashboards are
+            static-imported there — see BUG-077C) is re-fetched and re-executed
+            before anything repaints. The old page stays on screen the whole
+            time, so the button reads as unresponsive. Now routed client-side.
+            The href stays for middle-click / open-in-new-tab / right-click. */}
         <motion.a
           whileHover={{ y: -1 }}
           whileTap={{ scale: 0.99 }}
           href={isLive ? "/buyer" : "#early-access"}
           onClick={(e) => {
-            if (isLive) return; // Let the browser navigate to /buyer
+            // Never hijack modified clicks — those mean "open in a new tab".
+            if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+            e.preventDefault();
+            if (isLive) { router.push("/buyer"); return; }
             // Same-page anchor — smooth scroll instead of the jarring jump
             // browsers do by default.
-            e.preventDefault();
             const target = typeof document !== "undefined" ? document.getElementById("early-access") : null;
             if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
             else if (typeof window !== "undefined") window.location.hash = "early-access";

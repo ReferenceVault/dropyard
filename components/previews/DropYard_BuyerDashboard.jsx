@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import Link from "next/link";
 import { apiRequest } from "@/lib/api";
 import { useSocketEvent } from "@/context/SocketContext";
@@ -1488,10 +1488,10 @@ function getPublicItemUrl(item) {
   const base = (typeof window !== "undefined" && window.location && window.location.origin)
     ? window.location.origin
     : "https://dropyard.app";
-  // No public per-item route exists yet — link to the marketing root so the
-  // recipient at least lands on the right surface. Wiring this to a
-  // /item/<id> deep link is a small follow-up once the public route ships.
-  return base + "/?ref=share&item=" + encodeURIComponent(item?.id || "");
+  // BUG-085 — points at the public item page (app/item/[id]). This used to be
+  // "/?ref=share&item=<id>", i.e. the marketing homepage, so recipients never
+  // saw the listing. `ref=share` is kept for traffic attribution.
+  return base + "/item/" + encodeURIComponent(item?.id || "") + "?ref=share";
 }
 async function shareListing(item) {
   const title = item?.title || item?.t || "DropYard listing";
@@ -2343,7 +2343,13 @@ function ClaimModal({ item, onClose, onConfirm, accessToken = null, onGoToMessag
   const [step, setStep] = useState("confirm"); // "confirm" | "offer-sent" | "done"
   const [mode, setMode] = useState("listed"); // "listed" | "offer"
   const [offer, setOffer] = useState(Math.round(item.price * 0.9));
-  const [slot, setSlot] = useState("Saturday 2:00 PM");
+  // Slots come from the seller's listing config, not a hardcoded list.
+  // Empty = seller gave nothing concrete ("any day" / no days selected), which
+  // renders a by-request notice instead of fabricated times. See BUG-082.
+  const allSlots = useMemo(() => buildPickupSlots(item), [item]);
+  const slots = useMemo(() => allSlots.slice(0, PICKUP_SLOT_LIMIT), [allSlots]);
+  const hiddenSlotCount = allSlots.length - slots.length;
+  const [slot, setSlot] = useState(() => allSlots[0] || "");
   const [whatsapp, setWhatsapp] = useState(true);
   const [waPhone, setWaPhone] = useState("");
   const [sending, setSending] = useState(false);
@@ -2352,8 +2358,6 @@ function ClaimModal({ item, onClose, onConfirm, accessToken = null, onGoToMessag
   // onConfirm can hand the real claim id to the Claims-tab insert (instead of
   // a temporary "bc-..." id that would block cancel/refetch flows).
   const [realClaim, setRealClaim] = useState(null);
-  const slots = ["Saturday 10:00 AM", "Saturday 2:00 PM", "Sunday 11:00 AM", "Sunday 4:00 PM"];
-
   // Real-item heuristic — backend cuids are non-numeric strings longer than 8
   // chars. Demo data uses numeric IDs ("c1", "c2"...) which we leave alone.
   const isRealItem = !!accessToken && typeof item.id === "string" && item.id.length > 8 && !item.id.startsWith("bc");
@@ -2480,9 +2484,8 @@ function ClaimModal({ item, onClose, onConfirm, accessToken = null, onGoToMessag
                   <div style={{ flex: 1 }}>
                     <p style={{ fontFamily: F.head, fontSize: 14, fontWeight: 800, color: C.ink, display: "flex", alignItems: "center", gap: 6 }}>
                       Make a different offer
-                      <Sparkles size={13} style={{ color: C.ai }}/>
                     </p>
-                    <p style={{ fontFamily: F.body, fontSize: 11, fontWeight: 600, color: C.mink, marginTop: 2 }}>The seller (or their AI agent) will respond</p>
+                    <p style={{ fontFamily: F.body, fontSize: 11, fontWeight: 600, color: C.mink, marginTop: 2 }}>The seller will respond</p>
                   </div>
                 </div>
                 {mode === "offer" && (
@@ -2492,10 +2495,8 @@ function ClaimModal({ item, onClose, onConfirm, accessToken = null, onGoToMessag
                       <input type="number" value={offer} onChange={e => setOffer(parseInt(e.target.value) || 0)} placeholder="Your offer" style={{ border: "none", outline: "none", flex: 1, fontFamily: F.head, fontSize: 18, fontWeight: 800, color: C.ink, background: "transparent" }}/>
                       <span style={{ fontFamily: F.body, fontSize: 11, fontWeight: 600, color: C.mink, whiteSpace: "nowrap" }}>vs ${item.price} asking</span>
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "8px 12px", borderRadius: 10, background: C.aiMist, border: "1px solid " + C.ai + "20" }}>
-                      <Sparkles size={11} style={{ color: C.ai, flexShrink: 0 }}/>
-                      <p style={{ fontFamily: F.body, fontSize: 11, fontWeight: 600, color: C.ai, lineHeight: 1.45 }}>This seller uses an AI agent — you'll get a response within seconds.</p>
-                    </div>
+                    {/* AI-agent response-time promise removed — the agent feature
+                        isn't shipped yet. Restore alongside the offer-sent notice. */}
                   </div>
                 )}
               </button>
@@ -2505,14 +2506,30 @@ function ClaimModal({ item, onClose, onConfirm, accessToken = null, onGoToMessag
             {mode === "listed" && (
               <div style={{ marginBottom: 22 }}>
                 <p style={{ fontFamily: F.head, fontSize: 11, fontWeight: 800, color: C.mink, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 10 }}>Pickup window</p>
-                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2, 1fr)", gap: 8 }}>
-                  {slots.map(sl => (
-                    <button key={sl} onClick={() => setSlot(sl)} style={{ padding: "10px 12px", borderRadius: 12, border: "1.5px solid " + (slot === sl ? C.green : C.fawn), background: slot === sl ? C.greenMist : C.paper, color: slot === sl ? C.greenDeep : C.mink, fontFamily: F.head, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
-                      {slot === sl && <Check size={11} style={{ marginRight: 5, verticalAlign: "middle" }}/>}
-                      {sl}
-                    </button>
-                  ))}
-                </div>
+                {slots.length === 0 ? (
+                  // Seller chose "any day" or left the availability blank — say
+                  // so rather than offering times they never agreed to.
+                  <div style={{ padding: "12px 14px", borderRadius: 12, background: C.sand, border: "1px solid " + C.fawn, display: "flex", alignItems: "center", gap: 10 }}>
+                    <Clock size={15} style={{ color: C.mink, flexShrink: 0 }}/>
+                    <p style={{ fontFamily: F.body, fontSize: 12.5, fontWeight: 600, color: C.mink, lineHeight: 1.45 }}>
+                      This seller didn&apos;t set fixed pickup times — you&apos;ll agree on one in chat after claiming.
+                    </p>
+                  </div>
+                ) : (
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2, 1fr)", gap: 8 }}>
+                    {slots.map(sl => (
+                      <button key={sl} onClick={() => setSlot(sl)} style={{ padding: "10px 12px", borderRadius: 12, border: "1.5px solid " + (slot === sl ? C.green : C.fawn), background: slot === sl ? C.greenMist : C.paper, color: slot === sl ? C.greenDeep : C.mink, fontFamily: F.head, fontSize: 13, fontWeight: 700, cursor: "pointer", textAlign: "left" }}>
+                        {slot === sl && <Check size={11} style={{ marginRight: 5, verticalAlign: "middle" }}/>}
+                        {sl}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {hiddenSlotCount > 0 && (
+                  <p style={{ fontFamily: F.body, fontSize: 11.5, fontWeight: 600, color: C.ash, marginTop: 8 }}>
+                    +{hiddenSlotCount} more time{hiddenSlotCount === 1 ? "" : "s"} available — ask the seller in chat.
+                  </p>
+                )}
 
                 {/* Payment method reminder */}
                 {item.paymentMethod && (
@@ -2583,7 +2600,7 @@ function ClaimModal({ item, onClose, onConfirm, accessToken = null, onGoToMessag
                 {sending
                   ? "Sending…"
                   : mode === "offer"
-                    ? (<><Sparkles size={16}/> Send offer of ${offer}</>)
+                    ? (<><DollarSign size={16}/> Send offer of ${offer}</>)
                     : (<><Check size={16}/> Claim at ${item.price}</>)}
               </button>
             </div>
@@ -2593,17 +2610,16 @@ function ClaimModal({ item, onClose, onConfirm, accessToken = null, onGoToMessag
         {/* STEP 2a — OFFER SENT */}
         {step === "offer-sent" && (
           <div style={{ padding: isMobile ? "0 18px 22px 18px" : "0 28px 28px 28px", textAlign: "center" }}>
-            <div style={{ width: 64, height: 64, borderRadius: "50%", background: C.aiMist, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
-              <Sparkles size={30} style={{ color: C.ai }}/>
+            {/* Success mark — green check (matches STEP 2b). Was a purple AI
+                Sparkles badge; removed with the AI-agent copy below since the
+                agent feature isn't shipped yet. */}
+            <div style={{ width: 64, height: 64, borderRadius: "50%", background: C.greenMist, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
+              <CheckCircle size={32} style={{ color: C.green }}/>
             </div>
             <h3 style={{ fontFamily: F.head, fontSize: 22, fontWeight: 900, color: C.ink, marginBottom: 8 }}>Offer sent!</h3>
             <p style={{ fontFamily: F.body, fontSize: 14, fontWeight: 500, color: C.mink, lineHeight: 1.55, marginBottom: 20 }}>
               You offered <b style={{ color: C.ink }}>${offer}</b> for <b style={{ color: C.ink }}>{item.title}</b>. The seller will respond shortly.
             </p>
-            <div style={{ padding: 14, borderRadius: 12, background: C.aiMist, border: "1px solid " + C.ai + "25", textAlign: "left", marginBottom: 12, display: "flex", alignItems: "center", gap: 10 }}>
-              <Sparkles size={14} style={{ color: C.ai, flexShrink: 0 }}/>
-              <p style={{ fontFamily: F.body, fontSize: 12, fontWeight: 600, color: C.ai, lineHeight: 1.5 }}>This seller uses an AI agent. You should receive a response within seconds — check your Messages tab.</p>
-            </div>
             <div style={{ padding: 14, borderRadius: 12, background: "#F0FFF4", border: "1px solid " + C.wa + "30", textAlign: "left", marginBottom: 20, display: "flex", alignItems: "center", gap: 10 }}>
               <MessageCircle size={14} style={{ color: C.wa, flexShrink: 0 }}/>
               <p style={{ fontFamily: F.body, fontSize: 12, fontWeight: 600, color: C.mink, lineHeight: 1.5 }}>You'll also be notified on WhatsApp when the seller responds.</p>
@@ -2644,11 +2660,10 @@ function ClaimModal({ item, onClose, onConfirm, accessToken = null, onGoToMessag
                 </div>
               </div>
             )}
-            <div style={{ padding: 14, borderRadius: 12, background: C.aiMist, border: "1px solid " + C.ai + "25", textAlign: "left", marginBottom: 20, display: "flex", alignItems: "center", gap: 10 }}>
-              <Sparkles size={14} style={{ color: C.ai, flexShrink: 0 }}/>
-              <p style={{ fontFamily: F.body, fontSize: 12, fontWeight: 600, color: C.ai, lineHeight: 1.5 }}>The seller's AI agent confirmed your claim and will send a reminder 1 hour before pickup.</p>
-            </div>
-            <div style={{ display: "flex", gap: 10 }}>
+            {/* AI-agent confirmation + "reminder 1 hour before pickup" notice
+                removed — the agent feature isn't shipped and nothing sends that
+                reminder. Restore when the agent lands. */}
+            <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
               <button onClick={() => { onConfirm(slot, item.price, realClaim); }} className="cta-primary" style={{ flex: 2, padding: "13px 0", borderRadius: 12, border: "none", background: C.green, color: "#fff", fontFamily: F.head, fontSize: 14, fontWeight: 800, cursor: "pointer", boxShadow: "0 2px 0 " + C.greenDeep }}>View in Claims</button>
               {/* "Done" still records the claim in the parent's local state so
                   the user finds it on the next visit to the Claims tab — the
@@ -2675,11 +2690,26 @@ function AskModal({ item, onClose, onSend }) {
   const [whatsapp, setWhatsapp] = useState(false);
   const [waPhone, setWaPhone] = useState("");
 
-  const handleSubmit = () => {
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState(null);
+
+  // Only flip to the success screen once the POST actually lands. Previously
+  // this set sent=true synchronously and fired onSend into the void, so a
+  // failed request still showed "Question sent!".
+  const handleSubmit = async () => {
     if (!msg.trim()) return;
     if (whatsapp && !waPhone.trim()) return; // require number if toggle is on
-    setSent(true);
-    if (onSend) onSend(msg);
+    if (sending) return;
+    setError(null);
+    setSending(true);
+    try {
+      if (onSend) await onSend(msg);
+      setSent(true);
+    } catch (err) {
+      setError(err?.message || "Couldn't post your question. Please try again.");
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -2708,10 +2738,12 @@ function AskModal({ item, onClose, onSend }) {
             <p style={{ fontFamily: F.head, fontSize: 11, fontWeight: 800, color: C.mink, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 8 }}>Your question</p>
             <textarea value={msg} onChange={e => setMsg(e.target.value)} placeholder="E.g., What's the condition? Any scratches? Does it come with accessories?" rows={5} style={{ width: "100%", padding: 14, borderRadius: 14, border: "1.5px solid " + C.fawn, fontFamily: F.body, fontSize: 14, fontWeight: 500, color: C.ink, outline: "none", resize: "vertical", background: C.paper }}/>
 
-            {/* AI agent hint */}
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, padding: "8px 12px", borderRadius: 10, background: C.aiMist, border: "1px solid " + C.ai + "20" }}>
-              <Sparkles size={12} style={{ color: C.ai, flexShrink: 0 }}/>
-              <p style={{ fontFamily: F.body, fontSize: 11, fontWeight: 600, color: C.ai, lineHeight: 1.45 }}>This seller uses an AI agent — your question will be answered instantly. All Q&As are visible to other buyers.</p>
+            {/* Public-Q&A disclosure. The "seller uses an AI agent — answered
+                instantly" promise was dropped here; the visibility notice is a
+                real disclosure and stays. */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, padding: "8px 12px", borderRadius: 10, background: C.sand, border: "1px solid " + C.fawn }}>
+              <MessageCircle size={12} style={{ color: C.mink, flexShrink: 0 }}/>
+              <p style={{ fontFamily: F.body, fontSize: 11, fontWeight: 600, color: C.mink, lineHeight: 1.45 }}>All Q&amp;As are visible to other buyers.</p>
             </div>
 
             {/* WhatsApp toggle — same UX pattern as ClaimModal */}
@@ -2743,20 +2775,35 @@ function AskModal({ item, onClose, onSend }) {
               )}
             </div>
 
+            {error && (
+              <div style={{ marginTop: 12, padding: "10px 12px", borderRadius: 10, background: C.claretMist, border: "1px solid " + C.claret + "40", display: "flex", alignItems: "flex-start", gap: 8 }}>
+                <AlertCircle size={14} style={{ color: C.claret, flexShrink: 0, marginTop: 1 }}/>
+                <p style={{ fontFamily: F.body, fontSize: 12, fontWeight: 600, color: C.claret, lineHeight: 1.45 }}>{error}</p>
+              </div>
+            )}
+
             <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
-              <button onClick={onClose} style={{ flex: 1, padding: "11px 0", borderRadius: 12, border: "1.5px solid " + C.fawn, background: C.paper, fontFamily: F.head, fontSize: 13, fontWeight: 700, color: C.mink, cursor: "pointer" }}>Cancel</button>
-              <button onClick={handleSubmit} disabled={!msg.trim() || (whatsapp && !waPhone.trim())} style={{ flex: 2, padding: "11px 0", borderRadius: 12, border: "none", background: (msg.trim() && (!whatsapp || waPhone.trim())) ? C.green : C.fawn, color: (msg.trim() && (!whatsapp || waPhone.trim())) ? "#fff" : C.ash, fontFamily: F.head, fontSize: 13, fontWeight: 800, cursor: (msg.trim() && (!whatsapp || waPhone.trim())) ? "pointer" : "not-allowed", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, boxShadow: (msg.trim() && (!whatsapp || waPhone.trim())) ? "0 2px 0 " + C.greenDeep : "none" }}>
-                <Send size={13}/> Submit question
-              </button>
+              <button onClick={onClose} disabled={sending} style={{ flex: 1, padding: "11px 0", borderRadius: 12, border: "1.5px solid " + C.fawn, background: C.paper, fontFamily: F.head, fontSize: 13, fontWeight: 700, color: C.mink, cursor: sending ? "not-allowed" : "pointer", opacity: sending ? 0.6 : 1 }}>Cancel</button>
+              {(() => {
+                const canSend = !!msg.trim() && (!whatsapp || !!waPhone.trim()) && !sending;
+                return (
+                  <button onClick={handleSubmit} disabled={!canSend} style={{ flex: 2, padding: "11px 0", borderRadius: 12, border: "none", background: canSend ? C.green : C.fawn, color: canSend ? "#fff" : C.ash, fontFamily: F.head, fontSize: 13, fontWeight: 800, cursor: canSend ? "pointer" : "not-allowed", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, boxShadow: canSend ? "0 2px 0 " + C.greenDeep : "none" }}>
+                    {sending ? "Posting…" : (<><Send size={13}/> Submit question</>)}
+                  </button>
+                );
+              })()}
             </div>
           </>
         ) : (
           <div style={{ textAlign: "center", padding: "8px 0" }}>
-            <div style={{ width: 58, height: 58, borderRadius: "50%", background: C.aiMist, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px" }}>
-              <Sparkles size={26} style={{ color: C.ai }}/>
+            {/* Was an "AI agent is responding…" state with a purple Sparkles
+                badge. Reworded to a plain question-sent confirmation — the
+                seller answers manually until the agent ships. */}
+            <div style={{ width: 58, height: 58, borderRadius: "50%", background: C.greenMist, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px" }}>
+              <CheckCircle size={28} style={{ color: C.green }}/>
             </div>
-            <p style={{ fontFamily: F.head, fontSize: 16, fontWeight: 900, color: C.ink, marginBottom: 6 }}>AI agent is responding…</p>
-            <p style={{ fontFamily: F.body, fontSize: 13, fontWeight: 500, color: C.mink, lineHeight: 1.55 }}>You'll see the answer in the Q&A section below the listing.</p>
+            <p style={{ fontFamily: F.head, fontSize: 16, fontWeight: 900, color: C.ink, marginBottom: 6 }}>Question sent!</p>
+            <p style={{ fontFamily: F.body, fontSize: 13, fontWeight: 500, color: C.mink, lineHeight: 1.55 }}>You&apos;ll see the seller&apos;s answer in the Q&amp;A section below the listing.</p>
 
             {whatsapp && (
               <div style={{ marginTop: 16, padding: 12, borderRadius: 12, background: "#F0FFF4", border: "1px solid " + C.wa + "30", textAlign: "left", display: "flex", alignItems: "center", gap: 10 }}>
@@ -2814,6 +2861,75 @@ function toDetailItem(item) {
   };
 }
 
+// BUG-082 — concrete pickup slots derived from what the SELLER actually
+// offered when listing. The claim modal used to show four invented times
+// ("Saturday 10:00 AM" etc.) regardless of the item, and that string is what
+// gets POSTed as the claim's pickupSlot — so sellers received commitments for
+// windows they never offered.
+//
+// Time ranges mirror the seller listing form exactly (DropYard_SellerDashboard
+// lines 3075-3077); if those change, change them here too.
+const PICKUP_WINDOW_LABELS = {
+  morning:   "9 am - 12 pm",
+  afternoon: "12 - 4 pm",
+  evening:   "4 - 7 pm",
+};
+const PICKUP_WINDOW_ORDER = ["morning", "afternoon", "evening"];
+const WEEKDAY_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const WEEKDAY_FULL = { Mon: "Monday", Tue: "Tuesday", Wed: "Wednesday", Thu: "Thursday", Fri: "Friday", Sat: "Saturday", Sun: "Sunday" };
+
+/**
+ * Build the selectable pickup slots for an item.
+ * Returns [] when the seller gave nothing concrete (mode "anytime", or no days
+ * / no dates) — the caller then renders a "coordinate in chat" state instead
+ * of inventing times.
+ */
+function buildPickupSlots(item) {
+  const mode    = item?.pickupMode || "flexible";
+  const days    = Array.isArray(item?.pickupDays) ? item.pickupDays : [];
+  const custom  = Array.isArray(item?.pickupCustomDates) ? item.pickupCustomDates : [];
+  // No windows selected = seller is open to any of them.
+  const rawWins = Array.isArray(item?.pickupWindows) && item.pickupWindows.length
+    ? item.pickupWindows
+    : PICKUP_WINDOW_ORDER;
+  const wins = PICKUP_WINDOW_ORDER.filter((w) => rawWins.includes(w));
+  if (!wins.length) return [];
+
+  // "anytime" is explicitly by-request — there's no day to anchor a slot to.
+  if (mode === "anytime") return [];
+
+  let dayLabels = [];
+  if (mode === "custom") {
+    dayLabels = custom
+      .slice()
+      .sort()
+      .map((d) => {
+        const parsed = new Date(d + "T00:00:00");
+        return Number.isNaN(parsed.getTime())
+          ? null
+          : parsed.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+      })
+      .filter(Boolean);
+  } else {
+    dayLabels = WEEKDAY_ORDER.filter((d) => days.includes(d)).map((d) => WEEKDAY_FULL[d] || d);
+  }
+  if (!dayLabels.length) return [];
+
+  const slots = [];
+  for (const day of dayLabels) {
+    for (const w of wins) {
+      slots.push(`${day} · ${PICKUP_WINDOW_LABELS[w]}`);
+    }
+  }
+  // Full list — the caller caps what it renders and surfaces the remainder
+  // explicitly. A seller can list up to 60 custom dates, so 60 x 3 windows
+  // would otherwise be an unusable wall of buttons.
+  return slots;
+}
+
+/** How many slot buttons the claim modal renders before summarising the rest. */
+const PICKUP_SLOT_LIMIT = 9;
+
 // Compact pickup-availability formatter. Returns {days, windows} strings ready
 // to render. Mirrors the seller dashboard's formatter so labels stay consistent
 // across the buyer view and the seller's listing flow.
@@ -2862,6 +2978,26 @@ function ItemDetail({ item, onBack, onClaimComplete, onGoToClaims, onGoToSeller,
   const [toast, setToast] = useState(null);
   const saved = savedIds && savedIds.has(item.id);
   const toggleSave = () => onToggleSave && onToggleSave(item.id);
+
+  // Public Q&A. Fetched per-item rather than ridden along on the feed payload,
+  // so the Discover grid doesn't pay for a questions join on every card.
+  // `qaTick` bumps after the buyer asks, to pull the new question back in.
+  // Mock/preview items (short synthetic ids) have no backend row — they render
+  // the empty state rather than inventing sample Q&A.
+  const isRealItem = typeof item.id === "string" && item.id.length > 8;
+  const [questions, setQuestions] = useState([]);
+  const [questionsLoading, setQuestionsLoading] = useState(false);
+  const [qaTick, setQaTick] = useState(0);
+  useEffect(() => {
+    if (!isRealItem) { setQuestions([]); return; }
+    let cancelled = false;
+    setQuestionsLoading(true);
+    apiRequest(`/api/questions/item/${item.id}`, accessToken ? { token: accessToken } : {})
+      .then((r) => { if (!cancelled) setQuestions(Array.isArray(r?.questions) ? r.questions : []); })
+      .catch(() => { if (!cancelled) setQuestions([]); })
+      .finally(() => { if (!cancelled) setQuestionsLoading(false); });
+    return () => { cancelled = true; };
+  }, [item.id, accessToken, isRealItem, qaTick]);
 
   // BUG-066 — multi-photo gallery. Backend stores `photos: string[]` but the
   // detail view was only rendering `item.img` (= photos[0]). Now we track an
@@ -3160,59 +3296,66 @@ function ItemDetail({ item, onBack, onClaimComplete, onGoToClaims, onGoToSeller,
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
               <h3 style={{ fontFamily: F.head, fontSize: 15, fontWeight: 800, color: C.mink, letterSpacing: "0.1em", textTransform: "uppercase" }}>Questions & Answers</h3>
               <span style={{ fontFamily: F.head, fontSize: 11, fontWeight: 700, color: C.ash, padding: "3px 10px", borderRadius: 999, background: C.sand, border: "1px solid " + C.fawn }}>
-                {item.questions.length} {item.questions.length === 1 ? "question" : "questions"}
+                {questions.length} {questions.length === 1 ? "question" : "questions"}
               </span>
             </div>
 
-            {item.questions.length === 0 ? (
+            {questionsLoading ? (
+              <div style={{ textAlign: "center", padding: "20px 10px" }}>
+                <p style={{ fontFamily: F.body, fontSize: 13, fontWeight: 600, color: C.ash }}>Loading questions…</p>
+              </div>
+            ) : questions.length === 0 ? (
               <div style={{ textAlign: "center", padding: "20px 10px", color: C.ash }}>
                 <MessageCircle size={24} style={{ color: C.smoke, marginBottom: 8 }}/>
                 <p style={{ fontFamily: F.body, fontSize: 13, fontWeight: 600, color: C.mink, marginBottom: 14 }}>No questions yet — be the first to ask.</p>
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 14 }}>
-                {item.questions.map((qa, i) => (
-                  <div key={i} style={{ padding: 16, borderRadius: 14, background: C.sand, border: "1px solid " + C.fawn }}>
-                    {/* Question */}
-                    <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 12 }}>
-                      <div style={{ width: 28, height: 28, borderRadius: "50%", background: avatarBg(qa.by), color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: F.head, fontSize: 11, fontWeight: 800, flexShrink: 0 }}>
-                        {qa.by.charAt(0)}
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
-                          <span style={{ fontFamily: F.head, fontSize: 12, fontWeight: 700, color: C.ink }}>{qa.by}</span>
-                          <span style={{ fontFamily: F.body, fontSize: 10, fontWeight: 600, color: C.ash }}>· {qa.ago}</span>
+                {questions.map((qa) => {
+                  const askerName = qa.askerName || "Buyer";
+                  const answered  = !!qa.answer;
+                  return (
+                    <div key={qa.id} style={{ padding: 16, borderRadius: 14, background: C.sand, border: "1px solid " + C.fawn }}>
+                      {/* Question */}
+                      <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 12 }}>
+                        <div style={{ width: 28, height: 28, borderRadius: "50%", background: avatarBg(askerName), color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: F.head, fontSize: 11, fontWeight: 800, flexShrink: 0 }}>
+                          {askerName.charAt(0)}
                         </div>
-                        <p style={{ fontFamily: F.body, fontSize: 13, fontWeight: 600, color: C.ink, lineHeight: 1.5 }}>{qa.q}</p>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3, flexWrap: "wrap" }}>
+                            <span style={{ fontFamily: F.head, fontSize: 12, fontWeight: 700, color: C.ink }}>{askerName}</span>
+                            {qa.isMine && (
+                              <span style={{ fontFamily: F.head, fontSize: 9, fontWeight: 800, padding: "1px 6px", borderRadius: 4, background: C.greenMist, color: C.greenDeep, letterSpacing: "0.05em" }}>YOU</span>
+                            )}
+                            <span style={{ fontFamily: F.body, fontSize: 10, fontWeight: 600, color: C.ash }}>· {relativeTimeShort(qa.createdAt)}</span>
+                          </div>
+                          <p style={{ fontFamily: F.body, fontSize: 13, fontWeight: 600, color: C.ink, lineHeight: 1.5 }}>{qa.body}</p>
+                        </div>
                       </div>
-                    </div>
-                    {/* Answer */}
-                    <div style={{ display: "flex", alignItems: "flex-start", gap: 10, paddingLeft: 10, borderLeft: "2px solid " + (qa.aiAnswered ? C.ai + "40" : accent + "40") }}>
-                      {qa.aiAnswered ? (
-                        <div style={{ width: 26, height: 26, borderRadius: "50%", background: "linear-gradient(135deg, " + C.ai + ", #6D28D9)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                          <Sparkles size={12} style={{ color: "#fff" }}/>
+                      {/* Answer — or an explicit awaiting state, so an unanswered
+                          question doesn't render as a blank reply block. */}
+                      {answered ? (
+                        <div style={{ display: "flex", alignItems: "flex-start", gap: 10, paddingLeft: 10, borderLeft: "2px solid " + accent + "40" }}>
+                          <div style={{ width: 26, height: 26, borderRadius: "50%", background: accent, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                            <User size={13}/>
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3, flexWrap: "wrap" }}>
+                              <span style={{ fontFamily: F.head, fontSize: 12, fontWeight: 700, color: accent }}>Seller</span>
+                              <span style={{ fontFamily: F.body, fontSize: 10, fontWeight: 600, color: C.ash }}>· {relativeTimeShort(qa.answeredAt)}</span>
+                            </div>
+                            <p style={{ fontFamily: F.body, fontSize: 13, fontWeight: 500, color: C.mink, lineHeight: 1.6 }}>{qa.answer}</p>
+                          </div>
                         </div>
                       ) : (
-                        <div style={{ width: 26, height: 26, borderRadius: "50%", background: accent, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                          <User size={13}/>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, paddingLeft: 10, borderLeft: "2px solid " + C.fawn }}>
+                          <Clock size={13} style={{ color: C.ash, flexShrink: 0 }}/>
+                          <p style={{ fontFamily: F.body, fontSize: 12, fontWeight: 600, color: C.ash, lineHeight: 1.5 }}>Awaiting the seller&apos;s answer.</p>
                         </div>
                       )}
-                      <div style={{ flex: 1 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
-                          <span style={{ fontFamily: F.head, fontSize: 12, fontWeight: 700, color: qa.aiAnswered ? C.ai : accent }}>
-                            {qa.aiAnswered ? "AI Agent" : "Seller"}
-                          </span>
-                          {qa.aiAnswered && (
-                            <span style={{ fontFamily: F.head, fontSize: 9, fontWeight: 800, padding: "1px 6px", borderRadius: 4, background: C.aiMist, color: C.ai, letterSpacing: "0.05em" }}>
-                              AUTO
-                            </span>
-                          )}
-                        </div>
-                        <p style={{ fontFamily: F.body, fontSize: 13, fontWeight: 500, color: C.mink, lineHeight: 1.6 }}>{qa.a}</p>
-                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 
@@ -3308,25 +3451,24 @@ function ItemDetail({ item, onBack, onClaimComplete, onGoToClaims, onGoToSeller,
 
       {showClaim && <ClaimModal item={item} onClose={() => setShowClaim(false)} onConfirm={handleClaimConfirm} accessToken={accessToken} onGoToMessages={onGoToMessages}/>}
       {showAsk && <AskModal item={item} onClose={() => setShowAsk(false)} onSend={async (msg) => {
-        // Wired path: create or reuse a conversation with the seller and post
-        // the question as the first message, then jump to the Messages tab.
+        // Posts a PUBLIC question onto the item's Q&A — visible to every buyer
+        // browsing this listing. This used to open a private conversation
+        // thread instead, which is why the Q&A panel could never populate.
+        // Private 1-to-1 chat still exists; it's reached via offers/claims.
         // Demo path (no token / mock id): show the existing toast.
         const isReal = accessToken && typeof item.id === "string" && item.id.length > 8;
         if (!isReal) {
           setToast("Question submitted to " + item.seller.name);
           return;
         }
-        try {
-          await apiRequest("/api/conversations", {
-            method: "POST",
-            token:  accessToken,
-            body:   JSON.stringify({ itemId: item.id, body: msg }),
-          });
-          setShowAsk(false);
-          if (onGoToMessages) onGoToMessages();
-        } catch (err) {
-          setToast("Couldn't send: " + (err?.message || "try again"));
-        }
+        // Errors propagate to AskModal, which surfaces them inline and keeps
+        // the composer open instead of showing a false success screen.
+        await apiRequest(`/api/questions/item/${item.id}`, {
+          method: "POST",
+          token:  accessToken,
+          body:   JSON.stringify({ body: msg }),
+        });
+        setQaTick((t) => t + 1);
       }}/>}
       <Toast message={toast} onClose={() => setToast(null)}/>
     </div>
@@ -5238,28 +5380,38 @@ function SellWithAICta({ onSwitchRole }) {
           </div>
         </div>
 
-        {/* "Sell with AI" CTA — flips the dashboard into seller mode so the
-            buyer can land on the seller Overview where the AI agent
-            waitlist (Settings → Sell with AI) lives. Previously this was
-            a permanently-disabled stub with no handler. */}
-        <button
-          onClick={() => onSwitchRole && onSwitchRole()}
-          disabled={!onSwitchRole}
-          style={{
-            display: "flex", alignItems: "center", gap: 8,
-            padding: "13px 24px", borderRadius: 999, border: "none",
-            background: onSwitchRole ? "linear-gradient(135deg, " + C.ai + " 0%, #6D28D9 100%)" : C.smoke,
-            color: onSwitchRole ? "#fff" : C.mink,
-            fontFamily: F.head, fontSize: 14, fontWeight: 800,
-            cursor: onSwitchRole ? "pointer" : "not-allowed",
-            opacity: onSwitchRole ? 1 : 0.7,
-            position: "relative",
+        {/* "Sell with AI" CTA — de-activated until the AI agent ships. It used to
+            flip the dashboard into seller mode; that handler is intentionally
+            detached so the button can't be clicked while the feature is unbuilt.
+            Re-enable by restoring the onSwitchRole onClick + dropping `disabled`. */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, position: "relative" }}>
+          <button
+            disabled
+            aria-disabled="true"
+            title="Sell with AI is coming soon"
+            style={{
+              display: "flex", alignItems: "center", gap: 8,
+              padding: "13px 24px", borderRadius: 999, border: "none",
+              background: C.smoke,
+              color: C.mink,
+              fontFamily: F.head, fontSize: 14, fontWeight: 800,
+              cursor: "not-allowed",
+              opacity: 0.7,
+              position: "relative",
+              whiteSpace: "nowrap",
+              boxShadow: "none",
+            }}
+          >
+            <Sparkles size={15}/> Sell with AI <ArrowRight size={15}/>
+          </button>
+          <span style={{
+            fontFamily: F.head, fontSize: 9, fontWeight: 800,
+            padding: "2px 8px", borderRadius: 999,
+            background: C.ai + "18", color: C.ai,
+            letterSpacing: "0.08em", textTransform: "uppercase",
             whiteSpace: "nowrap",
-            boxShadow: onSwitchRole ? "0 2px 0 #6D28D9, 0 4px 12px " + C.ai + "40" : "none",
-          }}
-        >
-          <Sparkles size={15}/> Sell with AI <ArrowRight size={15}/>
-        </button>
+          }}>Coming soon</span>
+        </div>
       </div>
     </section>
   );
@@ -5755,14 +5907,45 @@ function SettingsPage({ user }) {
 /* ============================================================
    MAIN APP
    ============================================================ */
+// Top-level buyer tabs that are safe to restore from the URL on refresh.
+// Anything driven by transient state (an open item, a modal) is deliberately
+// absent — restoring those would land on a screen with no data behind it.
+const BUYER_TABS = new Set(["discover", "saved", "claims", "messages", "history"]);
+
 export default function DropYardBuyerDashboard({
   onSwitchRole = () => alert("In the full product, this switches to the seller dashboard."),
   user = null,
   onSignout = null,
   accessToken = null,
+  // BUG-085 — item id from /buyer?item=<id>, set by the public share page's
+  // CTA so a recipient lands on the exact listing instead of generic Discover.
+  initialItemId = null,
+  // Called once the deep link has been consumed, so the parent can strip the
+  // query param and stop it re-firing on later renders.
+  onInitialItemConsumed = null,
 } = {}) {
   const { isMobile } = useViewport();
-  const [page, setPage] = useState("discover");
+
+  // BUG-087 — the active tab lives in the URL (?tab=) so a refresh, a bookmark,
+  // or browser Back doesn't dump the user back on Discover. Safe to read
+  // `window` in the initializer: app/buyer/page.tsx gates the dashboards behind
+  // a `mounted` flag, so this never runs during SSR.
+  // Only top-level destinations are persisted — see the seller dashboard for
+  // the equivalent list and why transient views are excluded.
+  const [page, setPage] = useState(() => {
+    if (typeof window === "undefined") return "discover";
+    const t = new URLSearchParams(window.location.search).get("tab");
+    return t && BUYER_TABS.has(t) ? t : "discover";
+  });
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    if (page === "discover") url.searchParams.delete("tab");
+    else url.searchParams.set("tab", page);
+    // replaceState, not pushState: tab changes shouldn't stack up history
+    // entries that the Back button has to chew through one at a time.
+    window.history.replaceState(null, "", url.pathname + url.search);
+  }, [page]);
 
   // BUG-057 — Sign-out confirmation. All "Sign out" entry points (UserMenu,
   // ItemDetail, MobileBottomNav etc.) go through onSignoutRequest which opens
@@ -5851,6 +6034,30 @@ export default function DropYardBuyerDashboard({
     : sneakPeekItems;
   const [viewingItem, setViewingItem] = useState(null);
   const [viewingSellerName, setViewingSellerName] = useState(null);
+
+  // BUG-085 — consume the ?item=<id> deep link set by the public share page.
+  // Fetched individually rather than looked up in the feed: the feed is
+  // paginated and filters out the viewer's own items, so a shared item is
+  // frequently absent from it. A bad or removed id just leaves the buyer on
+  // Discover — a shared link outliving its item is normal, not an error.
+  const consumedItemRef = useRef(null);
+  useEffect(() => {
+    if (!initialItemId || !accessToken) return;
+    if (consumedItemRef.current === initialItemId) return; // once per id
+    consumedItemRef.current = initialItemId;
+    let cancelled = false;
+    apiRequest(`/api/items/${encodeURIComponent(initialItemId)}`, { token: accessToken })
+      .then((r) => {
+        if (cancelled || !r?.item) return;
+        const ui = adaptBuyerItem(r.item);
+        if (!ui) return;
+        setPage("discover");
+        setViewingItem(toDetailItem(ui));
+      })
+      .catch(() => { /* removed / invalid id — stay on Discover */ })
+      .finally(() => { if (!cancelled && onInitialItemConsumed) onInitialItemConsumed(); });
+    return () => { cancelled = true; };
+  }, [initialItemId, accessToken, onInitialItemConsumed]);
   // Watchlist — demo set populates /preview/buyer-dashboard so the cards
   // look interactive; real users start with an empty Set and hydrate from
   // /api/watchlist so the topbar Saved badge doesn't briefly show "6" of
@@ -6191,11 +6398,20 @@ export default function DropYardBuyerDashboard({
         <TopBar page={page} setPage={setPage} savedCount={savedIds.size} claimsCount={claims.length} messagesUnread={messagesUnreadCount} onSwitchRole={onSwitchRole} onReset={resetNav} dropState={dropState} user={user} onSignout={onSignoutRequest}/>
 
         <div style={{ maxWidth: 1280, margin: "0 auto", padding: isMobile ? "16px 16px calc(76px + env(safe-area-inset-bottom, 0))" : "24px 32px 64px" }}>
-          {viewingSellerName && (
+          {/* BUG-080 — nav stack: Discover → seller profile → item detail.
+              `viewingItem` now OUTRANKS `viewingSellerName`, so tapping a card
+              on a seller's profile opens the item (previously the profile kept
+              rendering and the click looked dead). `viewingSellerName` is left
+              set underneath, so Back from the item returns to the profile
+              rather than all the way out to Discover.
+              The reverse direction — "View profile" from an item — clears
+              `viewingItem` explicitly, otherwise the item would outrank the
+              profile it's trying to open. */}
+          {viewingSellerName && !viewingItem && (
             <RegularSellerProfile sellerName={viewingSellerName} onBack={() => setViewingSellerName(null)} onSelect={setViewingItem} onClaimNow={setClaimItem} savedIds={savedIds} onToggleSave={toggleSave} itemsSource={itemsForUI} state={dropState}/>
           )}
-          {viewingItem && !viewingSellerName && (
-            <ItemDetail item={viewingItem} onBack={() => setViewingItem(null)} onClaimComplete={handleClaimComplete} onGoToClaims={() => { setViewingItem(null); setPage("claims"); }}  onViewSeller={(name) => setViewingSellerName(name)} savedIds={savedIds} onToggleSave={toggleSave} accessToken={accessToken} onGoToMessages={() => { setViewingItem(null); setPage("messages"); }} currentUserId={user?.id || null} onSwitchRole={onSwitchRole}/>
+          {viewingItem && (
+            <ItemDetail item={viewingItem} onBack={() => setViewingItem(null)} onClaimComplete={handleClaimComplete} onGoToClaims={() => { setViewingItem(null); setViewingSellerName(null); setPage("claims"); }}  onViewSeller={(name) => { setViewingItem(null); setViewingSellerName(name); }} savedIds={savedIds} onToggleSave={toggleSave} accessToken={accessToken} onGoToMessages={() => { setViewingItem(null); setViewingSellerName(null); setPage("messages"); }} currentUserId={user?.id || null} onSwitchRole={onSwitchRole}/>
           )}
 
           {!viewingItem && !viewingSellerName && (

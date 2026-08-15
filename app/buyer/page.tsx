@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import DropYardSellerDashboard from "@/components/previews/DropYard_SellerDashboard";
 import DropYardBuyerDashboard from "@/components/previews/DropYard_BuyerDashboard";
 import { EmailVerifyBanner } from "@/components/EmailVerifyBanner";
@@ -64,6 +64,33 @@ function AuthedBuyerContent() {
   // after mount so the markup matches.
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
+
+  // BUG-085 — /buyer?item=<id> arrives from the public share page's CTA (and
+  // from /join after a signed-out recipient creates an account). Held in state
+  // so the dashboard can open that listing, then stripped from the URL once
+  // consumed — otherwise a refresh or Back would keep reopening the item.
+  const searchParams = useSearchParams();
+  const [sharedItemId, setSharedItemId] = useState<string | null>(null);
+  const sharedItemSeededRef = useRef(false);
+  useEffect(() => {
+    if (sharedItemSeededRef.current) return;
+    const id = searchParams?.get("item");
+    if (id) {
+      sharedItemSeededRef.current = true;
+      setSharedItemId(id);
+    }
+  }, [searchParams]);
+  const clearSharedItemId = useCallback(() => {
+    setSharedItemId(null);
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has("item")) return;
+    // Strip ONLY `item` — the dashboard keeps its active tab in `?tab=`
+    // (BUG-087), and blanket-resetting the URL to "/buyer" would wipe it.
+    url.searchParams.delete("item");
+    url.searchParams.delete("ref");
+    window.history.replaceState(null, "", url.pathname + url.search);
+  }, []);
 
   const { user, signout, accessToken, refreshUser } = useAuth();
   const {
@@ -197,7 +224,16 @@ function AuthedBuyerContent() {
     return (
       <>
         <EmailVerifyBanner />
-        <DropYardBuyerDashboard onSwitchRole={() => setMode("seller")} user={user as any} onSignout={signout as any} accessToken={accessToken as any} />
+        {/* `as any` casts match the existing props: the dashboard is .jsx, so
+            TS infers its prop types from default values (null), not a signature. */}
+        <DropYardBuyerDashboard
+          onSwitchRole={() => setMode("seller")}
+          user={user as any}
+          onSignout={signout as any}
+          accessToken={accessToken as any}
+          initialItemId={sharedItemId as any}
+          onInitialItemConsumed={clearSharedItemId as any}
+        />
       </>
     );
   }
