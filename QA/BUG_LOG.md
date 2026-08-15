@@ -23,9 +23,403 @@
 
 ## Open bugs (P0/P1 first)
 
-_None._
+### BUG-091  ·  P1  ·  In-chat offer accept creates `CONFIRMED` claims the rest of the app can't see  ·  Status: Open
+**Title:** `POST /api/conversations/messages/:id/accept` writes `status: 'CONFIRMED'`, but every other surface reads `ACCEPTED`.
+**Found by:** Investigation of BUG-090 · **Found date:** 2026-08-14
+**Issue:** The unified claim lifecycle (BUG-055) uses `PROPOSED → ACCEPTED → PICKED_UP`. The in-chat offer-accept path ([routes/conversations.ts](dropyard_backend/src/routes/conversations.ts) ~line 537) instead creates the claim with `status: 'CONFIRMED'` and sets the item to `CLAIMED` rather than `RESERVED`.
+
+Consequences:
+  1. `GET /api/claims/incoming?status=ACCEPTED` — used by **PickupsView**, the Overview "scheduled pickups" stat, and the Orders tab — will **not** return these claims. A sale agreed through the in-chat Accept button never appears in Scheduled pickups.
+  2. `CONFIRMED` isn't even in `/incoming`'s `allowed` list (claims.ts:159), so it can't be queried explicitly — requesting it returns 400.
+  3. That path also skips the first-come-first-serve guard used by `POST /api/items/:id/claim` (no check for an existing PROPOSED/ACCEPTED claim, no check that the item is still LIVE), so it can stack a second live claim onto an item that already has one. This is the most likely way to end up with two live claims on one item.
+
+**Not reproduced against a live flow yet** — the dev DB currently holds only one claim (PICKED_UP), so no orphaned `CONFIRMED` rows exist to point at. Confirmed by reading the route and the `/incoming` allow-list.
+**Suggested fix:** use `ACCEPTED` + `RESERVED` in the accept path so it matches the lifecycle, add the same existing-claim guard as the items route, and decide whether `CONFIRMED` is a legacy value needing a data migration.
+
+
 
 ## P2 — Fixed this session
+
+### BUG-096  ·  P2  ·  Seller Overview → "Needs your attention" / hero counts  ·  Status: Fixed (verify)
+**Title:** A listing queued for the Drop is reported as "1 draft unfinished", and doesn't count toward the queued total.
+**Found by:** Narveer · **Found date:** 2026-08-15 · **Test case:** exploratory (round 2, item #3)
+**Repro steps:** Queue an item for the next Drop → open seller Overview.
+**Expected:** Counted as queued for the Drop; no draft warning.
+**Actual:** "1 draft unfinished" under Needs your attention; queued count stays 0.
+**Environment:** Chrome, 1280px, local dev
+**Fix commit:** _(local, July3DropF)_
+**Re-tested:** Lint/parse clean, app serves. Browser pass pending — see caveat.
+**Notes:** Same root as [[BUG-093]], different surface. `Overview` derives its own counts from `sellerItems` and predates `queuedAt`:
+  - `draftsCount` counted **every** `status === "DRAFT"`, and a queued item *is* DRAFT until the Drop opens — so it was reported as an unfinished draft.
+  - `queuedCount` required `status === "LIVE"`, which a queued item only becomes when the Drop opens — so it counted 0 for exactly the items it was meant to count.
+Both now key off `queuedAt`: `isQueuedForDrop = status === "DRAFT" && !!queuedAt`; queued counts LIVE-or-queued in the DROP pool, drafts count DRAFT **without** `queuedAt`. The Inventory tab counts and row pills already route through `lifecycleOf`, fixed under BUG-093.
+
+**Caveat — could not reproduce against data.** The item in the report ("Kid's Bike") does not exist in this dev database; only two June items do. So the screenshots come from a different environment. Two things must be true there for the fix to show: the **backend must be restarted** (otherwise `publish` is ignored and `queuedAt` is never set), and **both `queuedAt` migrations must have run** (`add_item_queued_at`, `backfill_item_queued_at`). An item created before those will have `queuedAt = NULL` and legitimately still reads as a draft unless the backfill stamped it.
+
+**Self-inflicted defect caught and fixed in the same pass:** the BUG-095 error-message insertion nested a JSX expression inside another (`{cond && ( {expr} )}`) in all three pickup forms, which is a hard parse error — the seller dashboard would not have compiled. Repaired, and restructured while fixing: the error now renders independently of the date list instead of only when the list is empty, so it stays visible once a seller has already added a date.
+
+### BUG-095  ·  P2  ·  Listing + Edit forms → Pickup availability → Specific dates  ·  Status: Fixed (verify)
+**Title:** Pick-up dates in the past are accepted with no warning.
+**Found by:** Narveer · **Found date:** 2026-08-15 · **Test case:** exploratory (round 2, item #2)
+**Repro steps:** List or edit an item → Pickup availability → Specific dates → enter a date months in the past → Add → Save.
+**Expected:** Blocked with a clear message.
+**Actual:** Accepted and stored silently.
+**Environment:** Chrome, 1280px, local dev
+**Fix commit:** _(local, July3DropB + July3DropF)_
+**Re-tested:** Automated e2e over create + edit paths — 8/8.
+**Notes:** Nothing validated the date on either side. Fixed in three layers, because the field appears in **three** separate forms (`AISetup`, `ManualItemForm`, `EditItemView`), each with its own copy of the state and handler:
+  1. `min={todayLocalISO()}` on every date input — blocks the calendar picker.
+  2. A guard in each `addPickupDate()` with an inline red message, since a typed or pasted value bypasses `min`.
+  3. Server-side validation, because the client is bypassable and the API is the real contract.
+
+Two details worth keeping:
+  - **Local date, not `toISOString()`.** `toISOString()` converts to UTC first, so for Ottawa (UTC-4/-5) it reports the *next* day for part of every evening — which would have let sellers pick yesterday. Both the helper and the server build `YYYY-MM-DD` from local calendar parts and compare **as strings**; lexicographic comparison of zero-padded ISO dates is exact and dodges `new Date('2026-06-15')` parsing as UTC midnight.
+  - **Today is allowed** — listing something for pickup later the same day is legitimate.
+
+**Create vs edit differ deliberately.** Create rejects any past date outright. Edit rejects only dates that are past **and not already stored**: the edit form round-trips the whole array on every save, so a blanket rule would have locked sellers out of editing *any* older listing whose dates had since passed — an invisible dead-end, since the error would surface on Save with no obvious link to the date chips. The PATCH route diffs against `existing.pickupCustomDates` and names the offending dates in the error.
+
+Verified: past rejected on create; today accepted; future accepted; a mixed batch rejected if any entry is past; re-saving an existing past date succeeds and the edit applies; adding a new past date is rejected and names it; cleaning up to future-only succeeds.
+
+### BUG-094  ·  P3  ·  Listing form → Payment method notice  ·  Status: Fixed (verify)
+**Title:** "You haven't set a default payment method" shows even for sellers who have set one.
+**Found by:** Narveer · **Found date:** 2026-08-15 · **Test case:** exploratory (round 2, item #1)
+**Repro steps:** Set a default in Settings → Payments, then start a new listing and look at the Payment method section.
+**Expected:** Either no notice, or wording that's true either way.
+**Actual:** Asserts you haven't set one.
+**Environment:** Chrome, 1280px, local dev
+**Fix commit:** _(local, July3DropF)_
+**Re-tested:** Lint clean; browser pass pending.
+**Notes:** The notice was gated on `!aiSettings.paymentMethod`. `aiSettings` is `useState({})` at the seller-dashboard root and is written **only** by the AI Setup wizard (`onSave={setAiSettings}`) — never hydrated from the user profile. So the gate was true for everyone who hadn't run that wizard, regardless of their real settings, and would have wrongly *hidden* the notice for anyone who had.
+
+The seller's actual default lives on `user.acceptedPaymentMethods`, persisted via `PATCH /api/auth/me/preferences`. Pointing the gate at that doesn't help either: the column carries a schema default of `["CASH","ETRANSFER"]`, so every account has one from signup and "never set it" is indistinguishable from "deliberately chose both". There is no dependable signal to gate on without a new field.
+
+Fix (as requested): drop the meaningless gate, show the notice always, and phrase it conditionally so it's accurate for both groups — *"If you haven't set a default payment method, set your default so it applies to every listing."* Link text lowercased to read correctly mid-sentence.
+
+**Also reported in the same item:** "Set your default" redirecting to Inventory — already fixed under **BUG-083** earlier this session (`onGoToSettings("payments")`, verified wired at both `ManualItemForm` mounts). The screenshot predates that fix; it still shows the hardcoded "90+ other sellers" replaced by BUG-084.
+
+### BUG-093  ·  P1  ·  Listing flow → "Queue for the next Drop"  ·  Status: Fixed (verify)
+**Title:** Choosing "Queue for the next Drop" produced an item labelled **Draft** that had to be published a second time.
+**Found by:** Narveer · **Found date:** 2026-08-14 · **Test case:** exploratory (feedback item #22)
+**Repro steps:**
+1. Seller → List New Item, fill it in
+2. Under "When should this go live?" pick **Queue for the next Drop**
+3. Click the publish button, then open Inventory → My items
+**Expected:** Status reads "Queued for Saturday's Drop"; nothing further to do.
+**Actual:** Status reads **Draft**, with a **Publish** button that reopens a "Where should it go live?" chooser asking the same question again.
+**Environment:** Chrome, 1280px, local dev
+**Fix commit:** _(local, July3DropB + July3DropF)_
+**Re-tested:** Automated e2e across all create paths, sneak-peek exposure, and Drop promotion — 9/9.
+**Notes:** Root cause was a **missing data distinction**, not a display bug. `handleSubmit` sent byte-identical payloads for all three buttons — its own docstring said so: *"Backend currently treats all the same (status: DRAFT). The action only affects the success-screen copy."* So "Save as draft" and "Queue for Saturday's Drop" produced identical rows (`status: DRAFT, placement: DROP`), and `lifecycleOf` — which checked `status === "draft"` first — had nothing to tell them apart and labelled both "Draft".
+
+Fixing the label alone was impossible without the data, and chasing it surfaced two further defects from the same root:
+  1. **Private drafts were auto-published.** `promoteItemsToLive` promoted *every* DRAFT attached to the Drop, so anything "saved as a draft" went LIVE on Saturday by itself.
+  2. **"Save as draft" with Shelf selected published immediately.** The backend derived status from placement alone (`SHELF → LIVE`), ignoring which button was pressed.
+
+Fix — new nullable `Item.queuedAt`, set when a seller *commits* an item to a Drop and null for a private draft (migration `add_item_queued_at`, plus `backfill_item_queued_at` which stamps existing DRAFT-with-dropId rows so deploying this doesn't strand items that were about to go live). `POST /api/items` takes a `publish` flag (defaults **true** for back-compat with callers that don't send it):
+
+| button | publish | result |
+|---|---|---|
+| Save as draft | false | DRAFT, `queuedAt` null — private, never auto-promoted, whatever the placement radio said |
+| Queue for the next Drop | true | DRAFT + `queuedAt` — hidden until Saturday, then auto-promoted; shows as **Queued** |
+| List now on the Shelf | true | LIVE immediately |
+
+Also updated: `promoteItemsToLive` only promotes `queuedAt != null`; `GET /api/items/sneak-peek` filters on it too (otherwise buyers would see other people's private drafts); `PATCH /api/items/:id` stamps `queuedAt` when an item moves into the DROP pool and clears it on a move to SHELF. Frontend sends `publish`, threads `queuedAt` through `adaptItem` as `isQueued`, and `lifecycleOf` checks queued **before** the plain-draft branch.
+
+Verified: each create path lands the right status/queuedAt; omitting `publish` preserves old behaviour; the queued item appears in Sneak Peek while the private draft does not; and a simulated Drop opening promotes the queued item while leaving the draft alone.
+
+### BUG-092  ·  P2  ·  Seller → Edit item → Delete item  ·  Status: Fixed (verify)
+**Title:** "Items can only be deleted during the Submission phase" — deletion blocked 4 days out of 7, including for unpublished drafts.
+**Found by:** Narveer · **Found date:** 2026-08-14 · **Test case:** exploratory (feedback item #21)
+**Repro steps:** Seller → My items → Edit an item → Delete item, on any day that isn't Mon–Wed.
+**Expected:** The item is deleted.
+**Actual:** 403 "Items can only be deleted during the Submission phase."
+**Environment:** Chrome, 1280px, local dev (phase was PREVIEW)
+**Fix commit:** _(local, July3DropB)_
+**Re-tested:** Automated e2e covering every branch — 9/9, run during PREVIEW (i.e. the old gate would have blocked all of it).
+**Notes:** Root cause — `DELETE /api/items/:id` gated on the Drop calendar: `if (phase !== 'SUBMISSION') return 403`. Since SUBMISSION is Mon–Wed, deletion was impossible Thu–Sun, regardless of the item. A seller couldn't remove a DRAFT they had never published.
+
+The gate was crude but it was guarding something real, so it wasn't simply removed. `Item` cascades to **claims, conversations *and every message in them*, watchlist rows and questions** — deleting the wrong item silently destroys a buyer's active claim and both parties' chat history. The correct axis is item **state**, not the day of the week:
+  - **Active claim (PROPOSED/ACCEPTED) → 409.** A buyer is mid-transaction; release or cancel is the right action, not a silent delete of their claim and thread.
+  - **Completed sale (PICKED_UP) → 409.** It's a financial record both sides see in History.
+  - **Everything else → allowed, in any phase.** Drafts, queued items, live-but-unclaimed items, and items whose only claims are dead (cancelled/declined/expired).
+
+Ownership check (`403 Not your item`) unchanged.
+
+Verified in PREVIEW phase: draft deletable; live-unclaimed deletable; active claim blocked with a message telling the seller what to do first; deletable again once released; sold item protected; non-owner still rejected.
+
+**Note:** deletion remains genuinely destructive for allowed cases — an item with buyer conversations but no claim will take those threads with it. That's standard marketplace behaviour (the thread's subject is gone), but the seller-side confirm dialog does not currently say so. Worth a copy pass.
+
+### BUG-090  ·  P1  ·  Seller → Inventory → Orders → Pending claims  ·  Status: Fixed (verify)
+**Title:** Released / cancelled / declined / completed claims all keep showing under "Pending claims".
+**Found by:** Narveer · **Found date:** 2026-08-14 · **Test case:** exploratory (feedback item #20)
+**Repro steps:**
+1. List an item; a buyer claims it
+2. As the seller, release it back to be sold
+3. Open Inventory → Orders → Pending claims
+**Expected:** No pending claims — the released one is closed.
+**Actual:** The released claim still listed, plus earlier claims on the item; the "Pending Claims" counter includes them all.
+**Environment:** Chrome, 1280px, local dev
+**Fix commit:** _(local, July3DropF)_
+**Re-tested:** Automated e2e reproducing the exact release scenario — 9/9.
+**Notes:** Root cause — `ClaimsView` fetched `GET /api/claims/incoming` with **no status filter**. With no `status` query param the backend builds `where = { sellerId }` and returns **every claim the seller has ever had**, in every terminal state: CANCELLED, DECLINED, EXPIRED, PICKED_UP, CONFIRMED. All rendered as "pending".
+
+The comment directly above the fetch asserted *"Backend GET /api/claims/incoming returns only PROPOSED claims"* — an assumption the backend never honoured. Each side behaved per its own contract, so nothing ever threw. Comment corrected in place so it can't mislead again.
+
+Fix: both fetches in `ClaimsView` (initial load + socket reload) now pass `?status=PROPOSED`. That is exactly "live negotiation" — `PATCH /:id/amount` (counter) keeps the status at PROPOSED and only flips `lastAmountBy`, so it still covers both "your turn" (Accept/Counter/Decline) and "waiting for buyer".
+
+Verified end to end: claim → shows as pending; seller releases → CANCELLED; the **unfiltered** call still returns it (the old broken behaviour, asserted explicitly in the test) while the **filtered** call returns 0; re-claiming the relisted item yields exactly one pending claim at the new amount, not two.
+
+Related discovery logged separately as **BUG-091** (Open) — the in-chat Accept path writes `CONFIRMED` instead of `ACCEPTED`, hiding those claims from Scheduled pickups and skipping the duplicate-claim guard. That is the likeliest route to two simultaneous live claims on one item.
+
+### BUG-089  ·  P3  ·  Seller → My items → row actions  ·  Status: Fixed (verify)
+**Title:** Share icon shown on claimed items.
+**Found by:** Narveer · **Found date:** 2026-08-14 · **Test case:** exploratory (feedback item #19)
+**Repro steps:** List an item → have a buyer claim it → Inventory → My items → look at the row's Actions column.
+**Expected:** No Share affordance — the sale is already in flight.
+**Actual:** Share icon present; sharing sends people to a listing nobody else can claim.
+**Environment:** Chrome, 1280px, local dev
+**Fix commit:** _(local, July3DropF)_
+**Re-tested:** Pending browser pass.
+**Notes:** The guard was `lc !== "draft"` (BUG-051), written before the `claimed` lifecycle existed (BUG-053). When `claimed` was added it silently inherited a Share button. Rewritten as an allow-list — `["queued","live","shelf"].includes(lc)` — so any future lifecycle must opt in rather than inherit. Checked the other `Share2` usages in the seller dashboard: both are drop-level ("Share what I'm bringing" in `LiveHero`, and the ShareSheet header), not per-item, so claimed status doesn't apply.
+**Still open:** the buyer `ItemCard` computes `isClaimed` ([DropYard_BuyerDashboard.jsx:1544](dropyard_frontend/components/previews/DropYard_BuyerDashboard.jsx#L1544)) but does not gate its own share button on it — same defect, buyer side, left untouched pending a decision.
+
+### BUG-088  ·  P2  ·  Seller → Messages → Conversations filter chips  ·  Status: Fixed (verify)
+**Title:** All / Claims / Offers / Q&A filter row does nothing.
+**Found by:** Narveer · **Found date:** 2026-08-14 · **Test case:** exploratory (feedback item #18)
+**Repro steps:** Seller → Messages → click Claims, then Offers, then Q&A.
+**Expected:** Threads filtered by type.
+**Actual:** Claims and Offers always empty; Q&A always identical to All. A claim thread was counted under Q&A.
+**Environment:** Chrome, 1280px, local dev
+**Fix commit:** _(local, July3DropF)_
+**Re-tested:** Pending browser pass.
+**Notes:** The filter *logic* was fine (`conversations.filter(c => filter === "all" || c.type === filter)`). The data was not: `adaptSellerConversation` hardcodes `type: "question"` on every conversation, so Claims/Offers were structurally always 0 and Q&A always equalled All. Removed the chip row plus the now-dead `filters` / `counts` arrays and the orphaned `filter` state; empty-state copy simplified to "No threads yet."
+
+**Note on previews:** the demo conversations used by the unauthed `/preview/seller-dashboard` *do* carry real types (claim/offer/question), so the row genuinely worked there. Removing it is right for real users but does cost the preview that affordance.
+**To restore properly:** derive a real conversation type in the adapter — claim when the thread has a claim, offer when it has OFFER/COUNTER messages, else question. A breadcrumb comment saying exactly this was left at the removal site. The buyer dashboard has the identical dead row ([line 4521](dropyard_frontend/components/previews/DropYard_BuyerDashboard.jsx#L4521), same hardcoded type at line 66) — deliberately left alone pending a decision.
+
+### BUG-087  ·  P2  ·  /buyer — both dashboards  ·  Status: Fixed (verify)
+**Title:** Refreshing any tab throws you back to the default one (seller → Overview, buyer → Discover).
+**Found by:** Narveer · **Found date:** 2026-08-14 · **Test case:** exploratory (feedback item #17)
+**Repro steps:**
+1. Go to Messages (either dashboard)
+2. Refresh the page
+**Expected:** Still on Messages.
+**Actual:** Seller lands on Overview; buyer lands on Discover.
+**Environment:** Chrome, 1280px, local dev
+**Fix commit:** _(local, July3DropF)_
+**Re-tested:** Routes serve 200 with and without `?tab=`; tsc + lint clean. Browser pass pending.
+**Notes:** Root cause — the active tab lived only in React state (`useState("discover")` / `useState("overview")`) with no URL sync, so a reload reset it. Same class of issue as a bookmark or a shared dashboard link losing its place.
+
+Fix: both dashboards now persist the active tab in `?tab=` and seed their initial state from it on mount. Safe to read `window` in the state initializer because `app/buyer/page.tsx` gates both dashboards behind a `mounted` flag (the hydration guard), so it never runs during SSR.
+
+Deliberate choices:
+  - **One shared `tab` param, validated per dashboard.** Each falls back to its own default if the value isn't in its allow-list. Self-healing across a role switch (`?tab=items` → buyer mode → invalid → Discover → param cleared), and because "messages"/"history" are in *both* lists, switching roles keeps you on the same tab.
+  - **Transient views are never written to the URL** — seller `edit-item`, `item-detail`, `add-manual`/`add-chooser`/`add-ai`, `ai-setup`, `ai-photos`, `ai-plan`. They read in-memory state (`editingItem`, wizard step) that doesn't survive a reload, so restoring one would render an editor with nothing behind it. Refreshing mid-edit lands on the last real tab instead.
+  - **`replaceState`, not `pushState`** — tab clicks shouldn't stack history entries the Back button has to chew through one at a time.
+  - The default tab clears the param rather than writing `?tab=discover` / `?tab=overview`, keeping the URL clean.
+
+Follow-on fix: BUG-085's `?item=` cleanup used `replaceState(null, "", "/buyer")`, which would have wiped the new `tab` param. It now deletes only its own keys (`item`, `ref`).
+
+### BUG-086  ·  P0  ·  Backend socket auth — ALL real-time features  ·  Status: Fixed (verify)
+**Title:** Every WebSocket handshake from a browser was rejected. No real-time updates anywhere; messages only appear after a manual refresh.
+**Found by:** Narveer · **Found date:** 2026-08-14 · **Test case:** exploratory (feedback item #16)
+**Repro steps:**
+1. Sign in as buyer in one browser, seller in another
+2. Send a message from either side
+3. Watch the other window — and your own
+**Expected:** Message appears live on both sides.
+**Actual:** Neither side updates until the page is refreshed.
+**Environment:** Chrome, local dev (and production — this shipped)
+**Fix commit:** _(local, July3DropB)_
+**Re-tested:** Cookie-handshake + both-party delivery verified by automated e2e (4/4 after fix; the same test failed the handshake before it). Browser pass pending.
+**Notes:** Root cause is **not** in the messaging code. `src/lib/socket.ts` had `import cookie from 'cookie'`. `cookie@1.1.1` sets `__esModule: true` but ships **no default export**, so under `esModuleInterop` that compiles to `__importDefault(require('cookie'))`, which returns the module unchanged and leaves `.default` undefined. `cookie.parse(...)` therefore threw `TypeError: Cannot read properties of undefined (reading 'parse')` on **every** handshake.
+
+That TypeError was swallowed by a `catch` written for malformed Cookie headers, so `token` stayed undefined, the handshake fell through to `handshake.auth.token` — which the browser client never sends (it relies on cookies by design) — and every connection was rejected with "Missing auth token". Silent, no logs, no client-visible error beyond the socket health dot.
+
+Diagnosis path worth recording: the backend emit logic is correct and was proven so first — `emitToUser` fires to **both** parties (conversations.ts:386-387), and a socket client authenticating with `auth.token` received all events (6/6). Only when the test was switched to cookie-only auth — the actual browser path — did the handshake fail. Reproduced the compiled `__importDefault` behaviour directly to confirm.
+
+Fix: named import — `import { parse as parseCookie } from 'cookie'`. The catch now also logs, since it had been hiding a hard failure with no trace.
+
+**Scope — this is much wider than messaging.** Every socket-driven feature has been dead since commit `78346b7` ("feat: cookie auth, strict CSP, socket health dot"), which introduced this import along with the cookie migration:
+  - live message delivery (both directions, including your own sent message — the composer deliberately has no optimistic append and relies on the server echo)
+  - notification badges on both dashboards
+  - Discover-feed refresh on `claim:new` / `claim:updated`
+  - conversation-list refresh and unread clearing
+  - seller claims / pickups / questions auto-refresh
+**This is very likely the "serious cache issue" flagged on 2026-06-09** — stale data everywhere needing a manual refresh was the symptom; the per-list socket ticks added then were correct but could never fire.
+
+**Not changed:** `handleSend` still doesn't optimistically append; it relies on the server echo, matching the documented "REST writes, sockets push" architecture. With the handshake fixed the echo arrives in milliseconds. Adding an optimistic append would need id reconciliation (the dedupe key is the server-assigned `message.id`), so it was left alone deliberately.
+
+### BUG-085  ·  P1  ·  Share button (buyer + seller) → shared link  ·  Status: Fixed (verify)
+**Title:** Shared item links open the marketing homepage instead of the item.
+**Found by:** Narveer · **Found date:** 2026-08-14 · **Test case:** exploratory (feedback item #15)
+**Repro steps:**
+1. Seller → My items → click the share icon on a listing (or buyer → item card share icon)
+2. Share to WhatsApp
+3. Open the link from WhatsApp
+**Expected:** The item's page.
+**Actual:** dropyard.app homepage. The recipient has no way to find the item.
+**Environment:** Chrome + WhatsApp, local dev
+**Fix commit:** _(local, July3DropF)_
+**Re-tested:** Route + OG tags + 404 path verified by curl. Real WhatsApp unfurl pending (needs a public URL).
+**Notes:** Not a regression — a known gap carried since the share buttons shipped. The old URL was `"/?ref=share&item=<id>"`, and BUG-042's note already recorded "no public per-item page exists yet — the recipient lands on the marketing root for now". Nothing ever consumed `?item=`.
+
+Fix — built the missing public route.
+  - **`app/item/[id]/page.tsx`** — the project's first dynamic route. Deliberately a **server** component: `generateMetadata` emits Open Graph + Twitter tags, which is what WhatsApp/iMessage/Slack scrape to build a link preview. A client component could render the page, but the shared link would still unfurl as a bare URL — half the point of sharing. Works signed-out (`GET /api/items/:id` is `optionalAuth`). `cache: "no-store"` because price/availability change constantly and shared links are usually opened well after the fact. S3 photo URLs are already absolute, which is what OG scrapers require.
+  - **`app/item/[id]/not-found.tsx`** — shared links outlive the items they point at, so a missing item is a normal destination, not an error. Offers Browse/Home instead of a dead end. Also covers the backend being unreachable (`fetchItem` returns null rather than throwing).
+  - **Share URLs** in both dashboards now build `/item/<id>?ref=share`, keeping `ref=share` for attribution.
+  - **Deep link consumed.** The page's CTA goes to `/buyer?item=<id>` — and `/buyer` now actually honours it, otherwise the CTA would be exactly the kind of dead-end this bug is about. `DropYardBuyerDashboard` gained `initialItemId` / `onInitialItemConsumed`; it fetches that single item and opens its detail view. Fetched individually rather than looked up in the feed, because the feed is paginated and filters out the viewer's own items, so a shared item is frequently absent from it. The param is stripped from the URL once consumed so refresh/Back don't reopen it. A removed or invalid id silently leaves the buyer on Discover.
+  - `NEXT_PUBLIC_SITE_URL` added to `.env.example` (absolute `og:url` / canonical). Defaults to `https://dropyard.app`.
+
+Verified: page renders 200 with correct `og:title` / `og:description` / `og:image` / `og:url`; bogus id renders the not-found page; `/buyer?item=<id>` serves 200; `tsc --noEmit` clean; lint clean on new files.
+
+**Known gap:** `notFound()` on this route returns **HTTP 200** in dev, while a genuinely unmatched route (`/zzz-nope`) correctly returns 404. Content is right either way; the status matters for scrapers/SEO. Most likely a dev-mode streaming artifact — the response commits before `notFound()` runs, since `generateMetadata` resolved first. **Not confirmed against a production build:** running `next build` right now would write production artifacts into the same `.next` the dev server is using, which is precisely the mixed-artifact state that caused this session's opening Turbopack panic. Re-check after the next real build.
+
+### BUG-084  ·  P2  ·  Seller → List item → "When should this go live?"  ·  Status: Fixed (verify)
+**Title:** "alongside 90+ other sellers" is hardcoded — no relation to actual Drop participation.
+**Found by:** Narveer · **Found date:** 2026-08-14 · **Test case:** exploratory (feedback item #14)
+**Repro steps:**
+1. Seller → List New Item → scroll to "When should this go live?"
+2. Read the "Queue for the next Drop" description
+**Expected:** A real count of sellers in the upcoming Drop.
+**Actual:** Always "90+ other sellers", on a platform with far fewer.
+**Environment:** Chrome, 1280px, local dev
+**Fix commit:** _(local, July3DropB + July3DropF)_
+**Re-tested:** Counting logic verified by automated e2e (8/8). Browser pass pending.
+**Notes:** Root cause — literal string in the copy. No count existed anywhere in the API to replace it with.
+
+Fix — backend `GET /api/drop/current` now returns real participation:
+  - `sellerCount` — distinct sellers with items attached to the current Drop
+  - `otherSellerCount` — the same minus the caller (route moved to `optionalAuth`), so a seller who already has items queued isn't counted among their own "other sellers". Derived from the `groupBy` rows already fetched — no extra query.
+  - `itemCount` — total items in the Drop
+  Counted statuses are DRAFT (queued, promoted on open) and LIVE. RESERVED/CLAIMED/SOLD are excluded — they aren't inventory a new seller is listing alongside — and ARCHIVED is gone entirely.
+
+Frontend: `ManualItemForm` fetches the count and composes the clause. **The clause is omitted entirely when the count is 0 or hasn't loaded** — "alongside 0 other sellers" reads worse than saying nothing, and an unloaded count must never fall back to a guess. Singular/plural handled ("1 other seller").
+
+Verified: adding a seller increments; a second item from the *same* seller does not; a second distinct seller does; SOLD items don't count; each authed viewer is excluded from their own `otherSellerCount`; anonymous callers see the full count.
+
+**Still hardcoded** in `DropYard_SellerDashboard_final.jsx:2650` and `_v2.jsx:2651` — preview-only files that don't render at /buyer. Fix before the FINAL dashboard integration.
+
+### BUG-083  ·  P2  ·  Seller → List item → Payment method → "Set your default"  ·  Status: Fixed (verify)
+**Title:** "Set your default" link lands on the Inventory page instead of Settings → Payments.
+**Found by:** Narveer · **Found date:** 2026-08-14 · **Test case:** exploratory (feedback item #13)
+**Repro steps:**
+1. Seller → List New Item
+2. Scroll to "Payment method" — the amber "You haven't set a default payment method" notice appears
+3. Click "Set your default"
+**Expected:** Settings → Payments.
+**Actual:** Inventory ("My items").
+**Environment:** Chrome, 1280px, local dev
+**Fix commit:** _(local, July3DropF)_
+**Re-tested:** Pending browser pass.
+**Notes:** Root cause — the link called `onGoToItems("ai-setup")`. That prop is wired at both `ManualItemForm` mounts as `onGoToItems={() => setView("items")}`, an arrow that **takes no parameter**, so the `"ai-setup"` argument was silently discarded and every click fell through to Inventory. The argument was wrong anyway: `"ai-setup"` is the AI-configuration view, not payment settings.
+
+Fix:
+  - `SettingsView` gained `initialSection` (default `null` = normal entry: Account on desktop, section list on mobile). A deep link now also drills straight in on mobile instead of dumping the user on the section list.
+  - New root `goToSettings(sectionId)` helper + `settingsSection` state; `onOpenSettings` routes through it so the normal entry point resets the pane.
+  - `ManualItemForm` gained a dedicated `onGoToSettings` prop; the link now calls `onGoToSettings("payments")`. `onGoToItems` is left alone — its other use (line 3469, "go to my items" after saving) is legitimate.
+
+Two follow-on issues found and fixed while wiring:
+  - The Sidebar/mobile nav reach Settings through `safeNav("settings")`, bypassing the helper — so after using the deep link once, every later visit to Settings would have reopened on Payments. `safeNav` now clears `settingsSection` on a generic Settings nav.
+  - `initialSection` only seeds `useState` on mount, so arriving from the deep link while Settings was already mounted would have been ignored. `SettingsView` is now keyed on the requested pane to force a remount.
+
+### BUG-082  ·  P1  ·  /buyer item detail → Claim modal → "Pickup window"  ·  Status: Fixed (verify)
+**Title:** Claim modal offers four invented pickup times instead of the seller's actual availability.
+**Found by:** Narveer · **Found date:** 2026-08-14 · **Test case:** exploratory (feedback item #12)
+**Repro steps:**
+1. As a seller, list an item and set Pickup availability → Specific dates (e.g. 2026-07-11, 2026-07-12) + time windows
+2. As a buyer, open that item and click "Claim at $X"
+3. Look at the PICKUP WINDOW section
+**Expected:** The dates/windows the seller selected.
+**Actual:** Always "Saturday 10:00 AM / Saturday 2:00 PM / Sunday 11:00 AM / Sunday 4:00 PM", identical on every item.
+**Environment:** Chrome, 1280px, local dev
+**Fix commit:** _(local, July3DropF)_
+**Re-tested:** Slot-builder logic unit-verified across 9 input shapes. Browser pass pending.
+**Notes:** Root cause — `ClaimModal` had `const slots = ["Saturday 10:00 AM", ...]` hardcoded and never looked at the item. **P1 rather than cosmetic:** that string is submitted as the claim's `pickupSlot`, so sellers were receiving pickup commitments for windows they never offered.
+
+Data was fine end to end — confirmed `pickupMode` / `pickupDays` / `pickupCustomDates` / `pickupWindows` are stored, returned by `/api/items`, and carried through `toDetailItem`. The item-detail "Pickup availability" panel already rendered them correctly via `formatPickupSummary`; only the claim modal ignored them.
+
+Fix: new `buildPickupSlots(item)` composes `day × time-window` from the listing config —
+  - `custom` → each selected date, formatted "Sat, Jul 11"
+  - `flexible` → each selected weekday, formatted "Saturday", in Mon→Sun order
+  - `anytime`, or no days/dates selected → returns `[]`, and the modal shows "This seller didn't set fixed pickup times — you'll agree on one in chat after claiming" rather than fabricating options
+  - no windows selected → treated as all three (seller is open to any)
+Window labels ("9 am - 12 pm" / "12 - 4 pm" / "4 - 7 pm") mirror the seller listing form exactly (DropYard_SellerDashboard 3075-3077) — keep them in sync.
+
+Rendering is capped at 9 buttons (a seller may list up to 60 dates → 180 combos). The remainder is surfaced as "+N more times available — ask the seller in chat" rather than being silently dropped.
+
+Verified outputs: 2 dates × 3 windows → 6 slots; `flexible` Sat+Sun × 2 windows → 4 slots; `anytime` → by-request notice; malformed date strings filtered out; `undefined` item → by-request notice.
+
+### BUG-081  ·  P2  ·  / (homepage) DynamicDropCard → "Enter the Live Drop"  ·  Status: Fixed (verify)
+**Title:** "Enter the Live Drop" CTA feels unresponsive — click produces no visible change for seconds.
+**Found by:** Narveer · **Found date:** 2026-08-14 · **Test case:** exploratory (feedback item #11)
+**Repro steps:**
+1. Be in a LIVE Drop phase (or set `DROP_OPEN_DAY = 5` in lib/dropCycle.ts to force it)
+2. Load the homepage, find the hero Drop card (desktop only — `hidden lg:block`)
+3. Click "Enter the Live Drop"
+**Expected:** Immediate navigation to /buyer.
+**Actual:** Nothing appears to happen.
+**Environment:** Chrome, desktop, local dev
+**Fix commit:** _(local, July3DropF)_
+**Re-tested:** Pending browser pass — see caveat below.
+**Notes:** The handler was **not** broken. Verified: `isLive` is true (the stats row renders the live-only "Items Live"/"Claimed" labels), `href` is correctly `/buyer`, the `onClick` early-returned so the browser would follow it, the `#early-access` fallback target exists, there is no overlay / `pointer-events` trap, nothing wraps the anchor, and `/buyer` serves 200 in ~80 ms (so it is not an on-demand-compile stall).
+
+Root cause — it was a plain `<a href="/buyer">`. In the App Router that is a **full document reload**: the entire React tree is torn down and /buyer's bundle is re-fetched and re-executed before anything repaints. /buyer static-imports *both* 1.4 MB dashboards (BUG-077C), so that payload is large. During the whole round-trip the browser keeps painting the **old** page, then /buyer renders "Checking access…" while AuthContext resolves. Net effect from the user's side: click → nothing → eventual change. Reads as a dead button.
+
+Fix: route client-side via `useRouter().push("/buyer")` instead of letting the browser follow the href, and `router.prefetch("/buyer")` once `isLive` so the route is already warm. The `href` is retained for middle-click / open-in-new-tab / right-click, and modified clicks (meta/ctrl/shift/alt, non-primary button) are explicitly not hijacked.
+
+Also note: the prefetch effect must sit **after** `const isLive` — putting it above puts `isLive` in the temporal dead zone via the dependency array, which throws `Cannot access 'isLive' before initialization` and blanks the card. (Hit and corrected during the fix.)
+
+**Caveat:** the exact "unresponsive" symptom could not be reproduced headlessly — no browser automation in this repo. The full-reload cost is a real, verified defect and is the strongest candidate, but if the button is still dead after this change, open DevTools → Network, click it, and check whether a document request to /buyer is issued at all. If none is, the click isn't reaching the anchor and the cause is elsewhere.
+
+### BUG-080  ·  P1  ·  /buyer seller profile → item card  ·  Status: Fixed (verify)
+**Title:** Item cards on a seller's profile don't open the item detail — the click is silently swallowed.
+**Found by:** Narveer · **Found date:** 2026-08-14 · **Test case:** exploratory (feedback item #10)
+**Repro steps:**
+1. Sign in as a buyer, open any item on /buyer
+2. Click "View profile" on the seller card
+3. On the seller profile, click any item card under "Current listings"
+**Expected:** The item detail page opens.
+**Actual:** Nothing happens. The card has hover/cursor affordances, so it reads as broken.
+**Environment:** Chrome, 1280px, local dev
+**Fix commit:** _(local, July3DropF)_
+**Re-tested:** Pending browser pass.
+**Notes:** Root cause — render precedence, not a missing handler. `ItemCard` wires `onClick={onOpen}` and the profile passes `onOpen={() => onSelect(toDetailItem(i))}`, so `setViewingItem` **did** fire and state **did** update. But the two panels were gated as:
+```jsx
+{viewingSellerName && (<RegularSellerProfile .../>)}
+{viewingItem && !viewingSellerName && (<ItemDetail .../>)}
+```
+`viewingSellerName` is still set while you're on the profile, so `ItemDetail`'s guard never passed and the profile kept rendering. A pure state update with no visual change — which is why it looks like a dead click.
+
+Fix: `viewingItem` now outranks `viewingSellerName` (`{viewingSellerName && !viewingItem}` / `{viewingItem}`). `viewingSellerName` is deliberately left set underneath so **Back from the item returns to the seller profile**, not all the way out to Discover.
+
+Simply flipping the precedence would have broken the opposite direction — "View profile" from an item detail, where `viewingItem` is set and would then outrank the profile being opened. So `onViewSeller` now clears `viewingItem` explicitly. `onGoToClaims` / `onGoToMessages` also clear `viewingSellerName`, otherwise leaving the item would drop the user onto the seller profile instead of the tab they asked for (latent once precedence changed).
+
+Resulting nav stack: Discover → seller profile → item → Back → seller profile → Back → Discover.
+
+### BUG-079  ·  P1  ·  /buyer item detail → Questions & Answers  ·  Status: Fixed (verify)
+**Title:** Previous questions and answers never appear in the Q&A panel — the feature had no backend at all.
+**Found by:** Narveer · **Found date:** 2026-08-14 · **Test case:** exploratory (feedback item #9)
+**Repro steps:**
+1. Sign in as a buyer, open any item on /buyer
+2. Scroll to "Questions & Answers"
+3. Click "Ask a question", submit one, reload the item
+**Expected:** The question (and the seller's answer once given) appears in the Q&A panel.
+**Actual:** Panel always reads "0 questions · No questions yet — be the first to ask", on every item, forever.
+**Environment:** Chrome, 1280px, local dev
+**Fix commit:** _(local, July3DropB + July3DropF)_
+**Re-tested:** Backend verified by automated e2e (25/25 route + guard assertions). Browser pass pending.
+**Notes:** Root cause — the Q&A panel was a design-only surface. There was **no `Question` model in `schema.prisma`, no route, and no API field**; `item.questions` came from an adapter line that defaulted to `[]` and nothing ever populated it. Worse, "Ask a question" did not create a question at all — it POSTed to `/api/conversations`, opening a **private** 1-to-1 message thread and navigating to Messages, so nothing could ever reach the public panel. The `qa.aiAnswered` / "AI Agent · AUTO" render branch was dead code for the same reason.
+
+Fix — built the feature end to end:
+  - **Schema:** new `Question` model (`itemId`, `askerId`, `body`, `answer?`, `answeredAt?`, `answeredById?`) + relations on `Item` and `User`. Migration `20260814144422_add_item_questions`. Indexed `[itemId, createdAt]`, `[askerId]`, `[answeredById]` from the start (BUG-077A lesson — don't ship an unindexed hot table).
+  - **Routes** (`src/routes/questions.ts`, mounted `/api/questions`): `GET /item/:itemId` (optionalAuth, public read, returns `isMine` for the viewer), `POST /item/:itemId` (auth + new `questionCreationLimiter`, 30/hr per user), `PATCH /:id/answer` (seller only), `DELETE /:id` (seller always; asker only while unanswered → 409 otherwise), `GET /pending` (seller's unanswered queue).
+  - **Guards:** seller cannot ask on their own item (403 — would let them seed fake social proof on a public surface); asker identity exposes only `{id, name}`, never email/postal code.
+  - **Buyer UI:** `ItemDetail` fetches `/api/questions/item/:id` per item (not joined onto the Discover feed — avoids an N+1 across the grid), renders real Q&A with a "YOU" chip on your own question and an explicit **"Awaiting the seller's answer"** state so an unanswered question no longer renders a blank reply block.
+  - **AskModal:** repointed to `POST /api/questions/item/:id`. Also fixed a latent bug — it set `sent = true` synchronously and fired `onSend` into the void, so a failed request still showed the "Question sent!" success screen. Now awaits the POST, shows inline errors, keeps the composer open on failure.
+  - **Seller UI:** new **Questions** tab in `InventoryTabs` with a live unanswered badge, and a `QuestionsView` queue showing the listing, the asker, and an inline public-answer composer.
+
+**Related:** the "All Q&As are visible to other buyers" line in the Ask modal was *false* before this change (questions went to a private thread). It is now accurate.
 
 ### BUG-078  ·  P1  ·  Email blast send rotates tokens with no transaction → orphan sends + dead old-blast unsubscribe links  ·  Status: Open
 **Title:** Pre-push review of BUG-071 surfaced two related issues in `POST /api/admin/email-blasts/send` ([routes/admin.ts](dropyard_backend/src/routes/admin.ts) around line 825).
