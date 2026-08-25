@@ -35,7 +35,7 @@ export const ADMIN_NAV: AdminNavSection[] = [
       { id: "overview", label: "Overview", href: "/admin",          icon: LayoutDashboard },
       { id: "inbox",    label: "Inbox",    href: "/admin/inbox",    icon: Inbox },
       { id: "users",    label: "Users",    href: "/admin/users",    icon: Users },
-      { id: "items",    label: "Items",    href: "/admin/items",    icon: Package,       badge: "Soon", disabled: true },
+      { id: "items",    label: "Items",    href: "/admin/items",    icon: Package },
       { id: "claims",   label: "Claims",   href: "/admin/claims",   icon: ShoppingBag,   badge: "Soon", disabled: true },
       { id: "messages", label: "Messages", href: "/admin/messages", icon: MessageSquare, badge: "Soon", disabled: true },
     ],
